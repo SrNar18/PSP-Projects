@@ -277,7 +277,7 @@ static void car_draw(const Car *c,float ox,float oy,int chosen){
  }
  if(chosen)circle(x,y,2,LIME);
 }
-static void person_draw(float wx,float wy,float ox,float oy,int player,int n){int x=wx-ox,y=wy-oy;if(x<-10||y<-10||x>490||y>282)return;circle(x+2,y+4,5,RGB(27,36,37));rect(x-3,y-3,6,9,player?TEAL:carcolors[n%6]);rect(x-2,y+5,2,3,INK);rect(x+1,y+5,2,3,INK);circle(x,y-4,3,RGB(208,154,115));if(player)rect(x-2,y-7,5,2,INK);}
+static void person_draw(float wx,float wy,float ox,float oy,int player,int n){int x=wx-ox,y=wy-oy;if(x<-10||y<-10||x>490||y>282)return;circle(x+2,y+4,5,RGB(27,36,37));if(player){rect(x-5,y-9,10,15,INK);}rect(x-3,y-3,6,9,player?TEAL:carcolors[n%6]);rect(x-2,y+5,2,3,INK);rect(x+1,y+5,2,3,INK);circle(x,y-4,3,RGB(208,154,115));if(player)rect(x-2,y-7,5,2,INK);}
 static void tree(int x,int y,int n){rect(x-1,y,3,13,RGB(92,74,49));circle(x+3,y,13,RGB(27,59,49));circle(x-3,y-5,11,n%2?RGB(57,99,65):RGB(50,86,61));rect(x-5,y-10,4,2,RGB(105,139,83));}
 static void world_draw(void){
  float ox=clampf(g.x-240,0,WORLD_W-W),oy=clampf(g.y-137,0,WORLD_H-H);g.cameraX=ox;g.cameraY=oy;

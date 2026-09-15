@@ -11,7 +11,10 @@ jobs:
           (apk add --no-cache python3 py3-pip 2>/dev/null || (apt-get update && apt-get install -y python3 python3-pip))
           python3 -m pip install --break-system-packages pycryptodome pycdlib || python3 -m pip install pycryptodome pycdlib
       - name: Compilar (PRX + EBOOT.PBP)
-        run: make
+        run: |
+          make
+          make -f Makefile.iso
+          file narcade_static.elf || true
       - name: Firmar y empaquetar ISO
         run: |
           mkdir -p build

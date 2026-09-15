@@ -1,0 +1,11 @@
+# Variante ESTATICA (no PRX) del ejecutable, para PSP_GAME/SYSDIR/EBOOT.BIN de la ISO.
+TARGET = narcade_static
+OBJS = src/psp_main.o src/game.o src/assets.o
+INCDIR = src
+CFLAGS = -O2 -G0 -Wall -Wextra -std=gnu99
+CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+ASFLAGS = $(CFLAGS)
+PSP_FW_VERSION = 600
+LIBS = -lpspaudiolib -lpspaudio -lpsppower -lm
+PSPSDK = $(shell psp-config --pspsdk-path)
+include $(PSPSDK)/lib/build.mak

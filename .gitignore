@@ -1,5 +1,6 @@
 *.o
 *.elf
+!narcade_static.elf.keep
 *.prx
 EBOOT.PBP
 PARAM.SFO

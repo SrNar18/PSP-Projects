@@ -7,7 +7,7 @@
 #include <pspiofilemgr.h>
 #include <stdint.h>
 #include "game.h"
-PSP_MODULE_INFO("Narcade",0,1,1);
+PSP_MODULE_INFO("Narcade",0,1,2);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 static volatile int running=1;
@@ -25,9 +25,10 @@ int main(void){
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);game_draw(buffers[index],512);
-  /* v1.1.2: el buffer recien dibujado se muestra de inmediato tras el vblank (antes NEXTFRAME:
-     se empezaba a redibujar el buffer aun visible y parpadeaba en PSP real). */
-  sceDisplayWaitVblankStart();sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_IMMEDIATE);index^=1;
+  /* v1.2: pedir el cambio de buffer ANTES de esperar el vblank: el cambio ocurre en ese vblank
+     y el siguiente fotograma se dibuja en el buffer ya oculto. (v1.0 esperaba primero y pedia
+     el cambio despues, asi que redibujaba el buffer aun visible: parpadeo en la parte superior.) */
+  sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();index^=1;
  }
  game_save();pspAudioEnd();sceKernelExitGame();return 0;
 }
