@@ -2,7 +2,6 @@
 #include <pspdisplay.h>
 #include <pspctrl.h>
 #include <pspge.h>
-#include <pspdmac.h>
 #include <pspaudiolib.h>
 #include <psppower.h>
 #include <pspiofilemgr.h>
@@ -15,7 +14,7 @@ PSP_HEAP_SIZE_KB(4096);
 #define FB_STRIDE 512
 #define FB_H 272
 #define FB_BYTES (FB_STRIDE*FB_H*4)
-/* v1.1: se dibuja en RAM (con cache, rapido) y se vuelca a VRAM por DMA.
+/* v1.1: se dibuja en RAM (con cache, rapido) y se vuelca a VRAM con memcpy (escritura secuencial).
    Escribir pixel a pixel en VRAM sin cache era muy lento en hardware real. */
 static uint32_t backbuf[FB_STRIDE*FB_H] __attribute__((aligned(64)));
 static volatile int running=1;
@@ -38,8 +37,7 @@ int main(void){
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
   game_draw(backbuf,FB_STRIDE);
   /* Volcar el backbuffer al buffer de VRAM que NO se esta mostrando. */
-  sceKernelDcacheWritebackRange(backbuf,FB_BYTES);
-  if(sceDmacMemcpy(vram[index],backbuf,FB_BYTES)<0)memcpy(vram[index],backbuf,FB_BYTES);
+  memcpy(vram[index],backbuf,FB_BYTES);
   /* v1.1: esperar el vblank y cambiar de buffer de forma INMEDIATA. Antes se usaba
      NEXTFRAME y se empezaba a redibujar el buffer aun visible: parpadeo en PSP real. */
   sceDisplayWaitVblankStart();

@@ -13,6 +13,7 @@ subprocess.run([sys.executable,str(root/'tools/prxencrypter.py'),str(root/'narca
 shutil.copy(root/'build/EBOOT_signed.BIN',stage/'PSP_GAME/SYSDIR/EBOOT.BIN')
 shutil.copy(root/'build/EBOOT_signed.BIN',stage/'PSP_GAME/SYSDIR/BOOT.BIN')
 shutil.copy(root/'assets/ICON0.png',stage/'PSP_GAME/ICON0.PNG')
+shutil.copy(root/'assets/PIC1.png',stage/'PSP_GAME/PIC1.PNG')
 (stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
 (stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 1.0 - made by Naresz. Original homebrew. Assets embedded in executable.\n')
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:

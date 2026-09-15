@@ -8,9 +8,9 @@ Hechos por Claude tras probar en la consola fisica con CFW PRO 6.60.
    Ahora: dibujar -> volcar -> esperar vblank -> `SETBUF_IMMEDIATE`.
 2. **Rendimiento** (`src/psp_main.c`, `src/game.c`): el juego escribia pixel a pixel en VRAM
    sin cache (muy lento en hardware; PPSSPP no lo penaliza). Ahora se dibuja en un backbuffer
-   en RAM con cache y se copia a VRAM con `sceDmacMemcpy` (fallback memcpy). Se anadio `px()`
+   en RAM con cache y se copia a VRAM con memcpy. Se anadio `px()`
    para trazar pixeles sin pasar por `rect()` con recorte (coches, lineas, texto), y `rect()`
-   recorre por filas. Requiere `-lpspdmac` (Makefile).
+   recorre por filas. Copia a VRAM con memcpy (v1.1.1: se retiro sceDmacMemcpy porque la importacion impedia arrancar en la consola). Fondo XMB: assets/PIC1.png (480x272) en EBOOT e ISO.
 3. **ISO firmada** (`tools/package_iso.py`): el modo disco de la PSP rechaza un EBOOT.BIN sin
    firmar ("datos danados"). `tools/prxencrypter.py` (port Python del PrxEncrypter de pspsdk;
    `pip install pycryptodome`) firma el PRX con cabecera ~PSP tag 0xADF305F0 y se usa para
