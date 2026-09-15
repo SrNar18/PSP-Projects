@@ -25,7 +25,7 @@ int main(void){
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);game_draw(buffers[index],512);
-  sceDisplayWaitVblankStart();sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);index^=1;
+  sceDisplayWaitVblankStart();sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_IMMEDIATE);index^=1;
  }
  game_save();pspAudioEnd();sceKernelExitGame();return 0;
 }
