@@ -1,0 +1,25 @@
+NARCADE - made by Naresz
+
+Los archivos de codigo, historia, graficos programados y musica sintetizada
+de este proyecto se entregan al solicitante para usarlos, modificarlos y
+redistribuirlos. Las fuentes y bibliotecas de terceros conservan sus propias
+licencias; estos permisos no pretenden reemplazarlas.
+
+Allura Regular: Copyright 2010 The Allura Project Authors
+SIL Open Font License, Version 1.1. Ver tools/Allura-LICENSE.txt.
+Se usa para dibujar la firma en cursiva de la pantalla inicial.
+
+DejaVu Sans Mono y DejaVu Sans Bold:
+Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+DejaVu changes are in public domain. Ver tools/DejaVu-LICENSE.txt.
+
+PSPDEV/PSPSDK, Newlib y GCC runtime:
+El juego se compila y enlaza con herramientas y bibliotecas de PSPDEV.
+Ver las licencias oficiales del SDK y sus componentes:
+https://github.com/pspdev/pspsdk
+https://sourceware.org/newlib/COPYING.NEWLIB
+https://www.gnu.org/licenses/gcc-exception-3.1.html
+No se distribuye el SDK ni el emulador dentro de este paquete.
+
+PlayStation y PSP son marcas de sus respectivos titulares. Este proyecto
+homebrew no esta afiliado a Sony, Rockstar ni Grand Theft Auto.

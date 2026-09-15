@@ -1,0 +1,27 @@
+"""Build a genuine ISO-9660 PSP disc image from the native PRX executable."""
+import pathlib, subprocess, shutil, io, hashlib
+import pycdlib
+root=pathlib.Path(__file__).resolve().parents[1]
+stage=root/'build/umd';stage.mkdir(parents=True,exist_ok=True)
+(stage/'PSP_GAME/SYSDIR').mkdir(parents=True,exist_ok=True)
+(stage/'PSP_GAME/USRDIR').mkdir(exist_ok=True)
+subprocess.run(['mksfoex','-s','CATEGORY=UG','-s','DISC_ID=NARC00001','-s','DISC_VERSION=1.00','-s','PSP_SYSTEM_VER=6.00','-d','BOOTABLE=1','-d','PARENTAL_LEVEL=5','-d','REGION=32768','Narcade',str(stage/'PSP_GAME/PARAM.SFO')],check=True)
+# v1.1: el modo disco de la PSP exige un EBOOT.BIN firmado (~PSP). Se firma el PRX con el
+# port de PrxEncrypter (tools/prxencrypter.py, requiere pycryptodome) antes de meterlo en la ISO.
+import sys
+subprocess.run([sys.executable,str(root/'tools/prxencrypter.py'),str(root/'narcade.prx'),str(root/'build/EBOOT_signed.BIN'),str(root/'tools/psp_headers.h')],check=True)
+shutil.copy(root/'build/EBOOT_signed.BIN',stage/'PSP_GAME/SYSDIR/EBOOT.BIN')
+shutil.copy(root/'build/EBOOT_signed.BIN',stage/'PSP_GAME/SYSDIR/BOOT.BIN')
+shutil.copy(root/'assets/ICON0.png',stage/'PSP_GAME/ICON0.PNG')
+(stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
+(stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 1.0 - made by Naresz. Original homebrew. Assets embedded in executable.\n')
+for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:
+ shutil.copy(root/source,stage/'PSP_GAME/USRDIR'/dest)
+iso=pycdlib.PyCdlib();iso.new(interchange_level=1,vol_ident='NARCADE',sys_ident='PSP GAME',pub_ident_str='NARESZ')
+for d in ['/PSP_GAME','/PSP_GAME/SYSDIR','/PSP_GAME/USRDIR']:iso.add_directory(d)
+for p in sorted(stage.rglob('*')):
+ if p.is_file():iso.add_file(str(p),iso_path='/'+p.relative_to(stage).as_posix()+';1')
+out=root/'Narcade.iso';iso.write(str(out));iso.close()
+check=pycdlib.PyCdlib();check.open(str(out));buf=io.BytesIO();check.get_file_from_iso_fp(buf,iso_path='/PSP_GAME/SYSDIR/EBOOT.BIN;1');assert buf.getvalue()==(root/'build/EBOOT_signed.BIN').read_bytes();check.close()
+print(out.name,out.stat().st_size,'bytes; executable verified')
+print('SHA256',hashlib.sha256(out.read_bytes()).hexdigest())

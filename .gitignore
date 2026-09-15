@@ -1,0 +1,9 @@
+*.o
+*.elf
+*.prx
+EBOOT.PBP
+PARAM.SFO
+Narcade.iso
+build/
+out/
+__pycache__/

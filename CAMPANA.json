@@ -1,0 +1,1502 @@
+{
+  "locations": [
+    [
+      "Refugio de Nico",
+      0,
+      3
+    ],
+    [
+      "Taller de Luna",
+      1,
+      4
+    ],
+    [
+      "Cafe de Vera",
+      3,
+      3
+    ],
+    [
+      "Radio Ladera",
+      0,
+      1
+    ],
+    [
+      "Estacion del Metro",
+      4,
+      2
+    ],
+    [
+      "Archivo del Centro",
+      4,
+      3
+    ],
+    [
+      "Cancha de la 13",
+      0,
+      2
+    ],
+    [
+      "Estadio",
+      2,
+      1
+    ],
+    [
+      "Terminal del Norte",
+      4,
+      0
+    ],
+    [
+      "Bodega del Rio",
+      5,
+      4
+    ],
+    [
+      "Mirador",
+      1,
+      0
+    ],
+    [
+      "Torre Prisma",
+      6,
+      6
+    ],
+    [
+      "Mercado de Belen",
+      1,
+      6
+    ],
+    [
+      "Parque de Laureles",
+      2,
+      3
+    ],
+    [
+      "Hospital",
+      3,
+      5
+    ],
+    [
+      "Subestacion",
+      6,
+      2
+    ],
+    [
+      "Cabina del Cable",
+      0,
+      0
+    ],
+    [
+      "Imprenta",
+      3,
+      4
+    ],
+    [
+      "Galeria del Poblado",
+      6,
+      5
+    ],
+    [
+      "Antena Oriental",
+      7,
+      1
+    ],
+    [
+      "Deposito de buses",
+      5,
+      0
+    ],
+    [
+      "Puente de San Juan",
+      4,
+      4
+    ],
+    [
+      "Plaza de la Luz",
+      3,
+      2
+    ],
+    [
+      "Servidor Central",
+      7,
+      6
+    ],
+    [
+      "Taller de Vinilos",
+      2,
+      5
+    ],
+    [
+      "Jardin del Sur",
+      4,
+      6
+    ],
+    [
+      "Estudio Ritmo",
+      1,
+      2
+    ],
+    [
+      "Azotea de Sara",
+      6,
+      0
+    ],
+    [
+      "Parque del Rio",
+      4,
+      5
+    ],
+    [
+      "Observatorio",
+      7,
+      3
+    ]
+  ],
+  "missions": [
+    {
+      "title": "Una entrega equivocada",
+      "who": "Nico",
+      "intro": "Volvi a Medellin para empezar de cero. Luna me presta su carro para una entrega. Pero el sobre lleva mi nombre... y una fecha de manana.",
+      "outro": "Vera encuentra una orden de desalojo firmada con mi identidad. Alguien vende el barrio en nombre de gente que nunca firmo.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 1,
+          "text": "Luna: hay carros en las calles. TRIANGULO para entrar. El verde del taller es prestado.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 2,
+          "text": "Consigue un carro y lleva el sobre al Cafe de Vera.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 2,
+          "text": "Abre el sobre digital: el archivo usa cuatro digitos.",
+          "seed": 173,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 0,
+          "text": "Vuelve al refugio. Vera guardo una copia de la orden.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 250
+    },
+    {
+      "title": "El nombre en la lista",
+      "who": "Vera",
+      "intro": "La firma falsa aparece en el Archivo del Centro. Quiero ver el original. Sara, mi hermana, trabajaba alli antes de desaparecer.",
+      "outro": "No es solo tu firma. Hay cientos. En todos los expedientes aparece una empresa ficticia: Prisma.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 5,
+          "text": "Habla con el archivista. Solo quedan terminales sin conexion.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 5,
+          "text": "Reconecta el PC del archivo para consultar las firmas.",
+          "seed": 22,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 5,
+          "text": "Reconstruye la secuencia del expediente de Sara.",
+          "seed": 12,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 17,
+          "text": "La imprenta puede conservar una copia fisica.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 285
+    },
+    {
+      "title": "Frecuencia de barrio",
+      "who": "Mara",
+      "intro": "Radio Ladera recibe mensajes de Sara mezclados con interferencia. Si arreglo el enlace, tal vez escuchemos su voz.",
+      "outro": "Sara: No confien en las pantallas. Miren la ciudad. La primera llave esta donde el concreto aprendio a cantar.",
+      "steps": [
+        {
+          "kind": "TUNE",
+          "loc": 3,
+          "text": "Sintoniza la voz escondida en Radio Ladera.",
+          "seed": 34,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 26,
+          "text": "Sincroniza el sample en el estudio de hip hop.",
+          "seed": 3,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 6,
+          "text": "Busca el mural de la cancha en la Comuna 13.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 6,
+          "text": "Resuelve la clave del mural con sus cuatro pistas.",
+          "seed": 421,
+          "par": 0
+        }
+      ],
+      "reward": 320
+    },
+    {
+      "title": "Pintura fresca",
+      "who": "Tiza",
+      "intro": "Taparon el mural durante la noche. Tiza salvo los bocetos, pero su mochila quedo al otro lado del patio vigilado.",
+      "outro": "El boceto contiene un mapa de apagones. No ocurren al azar: preparan calles completas para vaciarlas.",
+      "steps": [
+        {
+          "kind": "STEALTH",
+          "loc": 6,
+          "text": "Cruza el patio sin tocar los haces de vigilancia.",
+          "seed": 15,
+          "par": 0
+        },
+        {
+          "kind": "LOCK",
+          "loc": 6,
+          "text": "Abre el estuche de los bocetos.",
+          "seed": 8,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 13,
+          "text": "Lleva los bocetos al parque de Laureles.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 2,
+          "text": "Vera compara los apagones con los desalojos.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 355
+    },
+    {
+      "title": "La vuelta de Luna",
+      "who": "Luna",
+      "intro": "Un comprador tiene la lista de los camiones de Prisma. Solo negociara con quien gane su recorrido. No me gusta, pero necesitamos esa lista.",
+      "outro": "Luna reconoce una matricula: es el camion que recogio los equipos del archivo la noche en que Sara desaparecio.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 1,
+          "text": "Luna prepara el recorrido. Consigue un carro resistente.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 7,
+          "text": "Completa seis controles urbanos antes del limite.",
+          "seed": 5,
+          "par": 115
+        },
+        {
+          "kind": "LOCK",
+          "loc": 20,
+          "text": "Abre el casillero del conductor.",
+          "seed": 9,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 1,
+          "text": "Vuelve al taller con la lista de matriculas.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 390
+    },
+    {
+      "title": "La ciudad se apaga",
+      "who": "Vera",
+      "intro": "El siguiente corte empieza esta noche. El hospital esta en la zona. Podemos mantener la luz si llegamos a la subestacion a tiempo.",
+      "outro": "El hospital sigue encendido. Prisma ya sabe que estamos aqui. Un mensaje aparece en mi telefono: Devuelve lo que no es tuyo.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 14,
+          "text": "Lleva una bateria de emergencia al hospital.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 15,
+          "text": "Restablece el circuito de la subestacion.",
+          "seed": 14,
+          "par": 0
+        },
+        {
+          "kind": "CHASE",
+          "loc": 21,
+          "text": "Despista la persecucion y reduce la busqueda a cero.",
+          "seed": 2,
+          "par": 18
+        },
+        {
+          "kind": "TALK",
+          "loc": 0,
+          "text": "Reunete con Vera. Fin del capitulo I.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 425
+    },
+    {
+      "title": "Debajo del ruido",
+      "who": "Mara",
+      "intro": "La amenaza llevaba un ruido de fondo: frenos de bus y una campana. Mara cree que podemos encontrar donde grabaron el mensaje.",
+      "outro": "El sonido viene del deposito del Norte. Un vigilante recuerda a Sara: ella entro caminando, sin que nadie la obligara.",
+      "steps": [
+        {
+          "kind": "TUNE",
+          "loc": 3,
+          "text": "Aisla la frecuencia de fondo del mensaje.",
+          "seed": 87,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 20,
+          "text": "Repite la secuencia de accesos del deposito.",
+          "seed": 41,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 8,
+          "text": "Pregunta por Sara en la terminal.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 27,
+          "text": "Busca una senal en la antigua azotea de Sara.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 460
+    },
+    {
+      "title": "La habitacion cerrada",
+      "who": "Nico",
+      "intro": "Sara dejo una caja en su azotea. La cerro con juegos que inventabamos de pequenos. Si la abro, sabre por que no volvio a casa.",
+      "outro": "Una nota: Me infiltre en Prisma. Si desaparezco, busquen los tres nodos. No vengan a rescatarme sin pruebas.",
+      "steps": [
+        {
+          "kind": "LOCK",
+          "loc": 27,
+          "text": "Abre la caja de Sara.",
+          "seed": 24,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 27,
+          "text": "Descifra la clave del diario de Sara.",
+          "seed": 689,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 29,
+          "text": "Reconstruye las coordenadas de los tres nodos.",
+          "seed": 22,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 2,
+          "text": "Comparte el diario con Vera.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 495
+    },
+    {
+      "title": "Un favor al mercado",
+      "who": "Dona Luz",
+      "intro": "Dona Luz conoce al tecnico del nodo occidental. Su puesto pierde alimentos en cada apagon. Hoy toca devolver un favor al barrio.",
+      "outro": "Luz entrega el plano del primer nodo. El tecnico escondio sus notas en un viejo vinilo para que Prisma no las borrara.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 12,
+          "text": "Recoge las cajas refrigeradas del mercado.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 12,
+          "text": "Haz seis entregas por la ciudad sin agotar el tiempo.",
+          "seed": 12,
+          "par": 130
+        },
+        {
+          "kind": "TALK",
+          "loc": 24,
+          "text": "Pregunta por el vinilo azul.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 24,
+          "text": "Lee el patron grabado en el surco del vinilo.",
+          "seed": 7,
+          "par": 0
+        }
+      ],
+      "reward": 530
+    },
+    {
+      "title": "Nodo occidental",
+      "who": "Tiza",
+      "intro": "El primer nodo esta detras de la cabina del Cable. Tiza conoce el camino. Sus murales nos serviran de referencia.",
+      "outro": "Conseguimos una tercera parte del registro maestro. Cada desalojo activa una transferencia a la misma cuenta opaca.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 16,
+          "text": "Localiza el acceso de mantenimiento del Cable.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 16,
+          "text": "Evita los haces del corredor tecnico.",
+          "seed": 32,
+          "par": 0
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 16,
+          "text": "Conecta el nodo occidental al terminal aislado.",
+          "seed": 65,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 16,
+          "text": "Extrae la primera llave del registro.",
+          "seed": 728,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 3,
+          "text": "Mara guarda una copia fuera de la red.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 565
+    },
+    {
+      "title": "La carrera del mensajero",
+      "who": "Luna",
+      "intro": "Un mensajero transporta los recibos originales. Le prometieron proteger a su familia, pero ahora quiere salir. Le hemos preparado una ruta.",
+      "outro": "El mensajero deja los recibos y se va. La firma que autoriza las compras es de Cardenal, el director de Prisma.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 8,
+          "text": "Recoge al mensajero en un carro.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 8,
+          "text": "Recorre los seis puntos seguros.",
+          "seed": 9,
+          "par": 105
+        },
+        {
+          "kind": "CHASE",
+          "loc": 28,
+          "text": "Pierde a quienes siguieron al mensajero.",
+          "seed": 4,
+          "par": 22
+        },
+        {
+          "kind": "TALK",
+          "loc": 14,
+          "text": "Deja al mensajero en el hospital.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 600
+    },
+    {
+      "title": "El precio de una firma",
+      "who": "Vera",
+      "intro": "Los recibos bastan para denunciar las compras, pero alguien filtra la denuncia. Esta noche vienen por la imprenta y sus copias.",
+      "outro": "Salvamos los documentos. Mi nombre ya no es el unico en la lista de Prisma: ahora estan los de todos mis amigos.",
+      "steps": [
+        {
+          "kind": "LOCK",
+          "loc": 17,
+          "text": "Abre el deposito de la imprenta.",
+          "seed": 31,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 17,
+          "text": "Clasifica las copias antes de salir.",
+          "seed": 66,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 10,
+          "text": "Lleva los documentos al mirador.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 10,
+          "text": "Vera decide seguir. Fin del capitulo II.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 635
+    },
+    {
+      "title": "Luces sobre el rio",
+      "who": "Sara",
+      "intro": "Por fin llama Sara. Esta viva. No puede salir aun: encontro un plan para borrar las deudas de Prisma y culpar a los vecinos.",
+      "outro": "Sara nos da una hora y una frecuencia. El nodo del rio contiene las rutas del dinero, pero abre solo durante el cambio de turno.",
+      "steps": [
+        {
+          "kind": "TUNE",
+          "loc": 10,
+          "text": "Encuentra la frecuencia privada de Sara.",
+          "seed": 45,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 9,
+          "text": "Acercate a la bodega del rio en un carro.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 9,
+          "text": "Cruza el patio durante el cambio de guardia.",
+          "seed": 61,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 9,
+          "text": "Recoge la tarjeta que Sara dejo en la reja.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 670
+    },
+    {
+      "title": "El nodo del agua",
+      "who": "Nico",
+      "intro": "La bodega parece abandonada. Por debajo pasan cables nuevos. El registro del rio esta protegido por un circuito independiente.",
+      "outro": "El dinero no sale de la ciudad. Regresa como creditos impagables a los mismos barrios que quieren vaciar.",
+      "steps": [
+        {
+          "kind": "CIRCUIT",
+          "loc": 9,
+          "text": "Alimenta el segundo nodo.",
+          "seed": 97,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 9,
+          "text": "Abre el registro financiero.",
+          "seed": 213,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 9,
+          "text": "Copia las transferencias en el orden correcto.",
+          "seed": 58,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 2,
+          "text": "Vera une las primeras dos llaves.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 705
+    },
+    {
+      "title": "Bajo el puente",
+      "who": "Tiza",
+      "intro": "Un vecino vio a Prisma mover un servidor por San Juan. Tiza quiere fotografiar la etiqueta antes de que lo escondan.",
+      "outro": "La etiqueta muestra el destino: Torre Prisma. El ultimo nodo esta dentro de su propia sede.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 21,
+          "text": "Encuentra al vecino bajo el puente.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 21,
+          "text": "Llega al contenedor sin activar la vigilancia.",
+          "seed": 42,
+          "par": 0
+        },
+        {
+          "kind": "LOCK",
+          "loc": 21,
+          "text": "Abre la cubierta de la etiqueta.",
+          "seed": 47,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 17,
+          "text": "Lleva la evidencia a la imprenta.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 740
+    },
+    {
+      "title": "Noche de vinilos",
+      "who": "Mara",
+      "intro": "Necesitamos una invitacion a la galeria que financia Prisma. Mara toca esta noche alli. Puedo ayudarla en la consola y entrar como parte del equipo.",
+      "outro": "Entre dos canciones oimos a Cardenal: el borrado se llama Horizonte. Se ejecutara cuando inauguren la torre.",
+      "steps": [
+        {
+          "kind": "RHYTHM",
+          "loc": 26,
+          "text": "Ensaya el primer tema del concierto.",
+          "seed": 11,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 18,
+          "text": "Lleva a Mara y los equipos a la galeria.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 18,
+          "text": "Completa la sesion de la galeria.",
+          "seed": 19,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 18,
+          "text": "Aisla la conversacion de Cardenal.",
+          "seed": 75,
+          "par": 0
+        }
+      ],
+      "reward": 775
+    },
+    {
+      "title": "Un carro sin dueno",
+      "who": "Luna",
+      "intro": "Sara necesita que retiremos un carro de Prisma antes de que revisen su maletero. Dentro escondio una copia del programa Horizonte.",
+      "outro": "Horizonte no solo borra archivos. Puede apagar semaforos, comunicaciones y bombas de agua para impedir que la gente salga.",
+      "steps": [
+        {
+          "kind": "STEALTH",
+          "loc": 11,
+          "text": "Alcanza el parqueadero de la torre.",
+          "seed": 89,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 1,
+          "text": "Consigue un carro y lleva el respaldo al taller.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CHASE",
+          "loc": 1,
+          "text": "El rastreador alerta a los perseguidores. Despistalos.",
+          "seed": 3,
+          "par": 24
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 1,
+          "text": "Desconecta el rastreador del respaldo.",
+          "seed": 111,
+          "par": 0
+        }
+      ],
+      "reward": 810
+    },
+    {
+      "title": "La grieta",
+      "who": "Vera",
+      "intro": "La filtracion salio de nuestro refugio. Encuentro el comunicador de Luna conectado a Prisma. Ella insiste en que alguien lo copio.",
+      "outro": "La copia se hizo antes de que Luna nos conociera. El traidor no esta en el taller: esta dentro del sistema que usamos para hablar.",
+      "steps": [
+        {
+          "kind": "MEMORY",
+          "loc": 0,
+          "text": "Compara las secuencias del comunicador.",
+          "seed": 91,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 1,
+          "text": "Abre el historial del dispositivo de Luna.",
+          "seed": 541,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 3,
+          "text": "Mueve la radio a una banda limpia.",
+          "seed": 104,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 1,
+          "text": "Escucha a Luna. Fin del capitulo III.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 845
+    },
+    {
+      "title": "Plan en papel",
+      "who": "Vera",
+      "intro": "Abandonamos los telefonos. Para entrar en la torre usaremos planos, senales de radio y tres llaves fisicas. Cada persona carga solo una parte.",
+      "outro": "El plano tiene una sala borrada. Sara cree que ahi mantienen el nodo oriental y el control del programa Horizonte.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 17,
+          "text": "Recoge los planos impresos.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 17,
+          "text": "Interpreta las marcas del plano.",
+          "seed": 873,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 29,
+          "text": "Lleva los planos al observatorio.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 29,
+          "text": "Marca la frecuencia de emergencia.",
+          "seed": 92,
+          "par": 0
+        }
+      ],
+      "reward": 880
+    },
+    {
+      "title": "La tercera llave",
+      "who": "Sara",
+      "intro": "Para copiar la llave oriental necesito sostener la conexion desde fuera. Sara abrira el terminal durante su descanso.",
+      "outro": "La tercera llave esta completa. Pero Sara no responde al despedirse. Solo se escucha una puerta metalica.",
+      "steps": [
+        {
+          "kind": "CIRCUIT",
+          "loc": 19,
+          "text": "Conecta la antena oriental.",
+          "seed": 132,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 19,
+          "text": "Mantiene el enlace con Sara.",
+          "seed": 119,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 19,
+          "text": "Reconstruye la llave oriental.",
+          "seed": 104,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 19,
+          "text": "Valida las tres partes del registro.",
+          "seed": 967,
+          "par": 0
+        }
+      ],
+      "reward": 915
+    },
+    {
+      "title": "Puertas de vidrio",
+      "who": "Nico",
+      "intro": "No voy a dejarla ahi. Luna encuentra una entrada de servicio. Vera me pide que piense antes de correr: sin las pruebas, Sara habra arriesgado todo para nada.",
+      "outro": "Llegamos tarde. Sara dejo su chaqueta y una nota: Me llevan al Central. Todavia tengo el original.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 11,
+          "text": "Llega a la torre con un carro.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "LOCK",
+          "loc": 11,
+          "text": "Abre la entrada de mantenimiento.",
+          "seed": 59,
+          "par": 0
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 11,
+          "text": "Atraviesa el piso de seguridad.",
+          "seed": 117,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 11,
+          "text": "Busca a Sara en la sala borrada.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 950
+    },
+    {
+      "title": "Desviar la tormenta",
+      "who": "Mara",
+      "intro": "Prisma cierra las salidas del Centro. Mara propone una transmision falsa para que muevan sus equipos. Necesita tiempo y una senal convincente.",
+      "outro": "El desvio funciona. Tenemos una ventana para evacuar los barrios antes del borrado.",
+      "steps": [
+        {
+          "kind": "TUNE",
+          "loc": 3,
+          "text": "Encuentra una portadora libre.",
+          "seed": 141,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 3,
+          "text": "Compone el patron de la transmision senal.",
+          "seed": 23,
+          "par": 0
+        },
+        {
+          "kind": "CHASE",
+          "loc": 22,
+          "text": "Atrae la persecucion lejos del hospital y escapa.",
+          "seed": 5,
+          "par": 26
+        },
+        {
+          "kind": "TALK",
+          "loc": 14,
+          "text": "Confirma que la evacuacion puede empezar.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 985
+    },
+    {
+      "title": "Ruta de salida",
+      "who": "Dona Luz",
+      "intro": "No todos pueden dejar sus casas. Luz organiza alimentos y Luna prepara carros. Yo tengo que conectar los seis puntos de encuentro.",
+      "outro": "Los puntos estan listos. Tiza pinta las rutas sobre el suelo. Esta vez la ciudad puede leer sus propias salidas.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 12,
+          "text": "Recoge los suministros en el mercado.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 12,
+          "text": "Conecta seis puntos de encuentro.",
+          "seed": 17,
+          "par": 120
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 14,
+          "text": "Reactiva la reserva electrica del hospital.",
+          "seed": 171,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 6,
+          "text": "Confirma las rutas con Tiza.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1020
+    },
+    {
+      "title": "El expediente completo",
+      "who": "Vera",
+      "intro": "Tenemos tres llaves y cientos de nombres. Para publicar las pruebas debemos reconstruir un expediente que cualquiera pueda verificar.",
+      "outro": "Por primera vez la historia esta completa. Cardenal recibe el aviso judicial y adelanta Horizonte a esta misma noche.",
+      "steps": [
+        {
+          "kind": "MEMORY",
+          "loc": 5,
+          "text": "Ordena los registros de los tres nodos.",
+          "seed": 151,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 5,
+          "text": "Desbloquea el expediente completo.",
+          "seed": 358,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 2,
+          "text": "Entrega el expediente a Vera.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 2,
+          "text": "Decidimos actuar esta noche. Fin del capitulo IV.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1055
+    },
+    {
+      "title": "Hora cero",
+      "who": "Luna",
+      "intro": "La luz cae por sectores. No queda tiempo para entrar con cuidado. Luna prepara el carro, Mara abre la radio y Vera avisa a los vecinos.",
+      "outro": "El Centro queda conectado a la radio del barrio. Aunque apaguen la red, podremos hablar.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 1,
+          "text": "Reunete con Luna y revisa el carro.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 1,
+          "text": "Activa seis repetidores de emergencia.",
+          "seed": 22,
+          "par": 105
+        },
+        {
+          "kind": "TUNE",
+          "loc": 22,
+          "text": "Sincroniza la Plaza de la Luz.",
+          "seed": 176,
+          "par": 0
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 15,
+          "text": "Sostiene la energia del Centro.",
+          "seed": 198,
+          "par": 0
+        }
+      ],
+      "reward": 1090
+    },
+    {
+      "title": "Las voces que faltan",
+      "who": "Mara",
+      "intro": "La radio recibe peticiones de ayuda y testimonios. Entre las voces aparece la de Sara. Esta dentro del Servidor Central y aun puede guiarnos.",
+      "outro": "Sara revela el acceso trasero. Tambien nos advierte: destruir el servidor borraria las pruebas. Hay que copiar antes de detenerlo.",
+      "steps": [
+        {
+          "kind": "TUNE",
+          "loc": 3,
+          "text": "Separa la voz de Sara del ruido.",
+          "seed": 211,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 3,
+          "text": "Memoriza sus instrucciones de acceso.",
+          "seed": 177,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 25,
+          "text": "Lleva una bateria al Jardin del Sur.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 25,
+          "text": "Los vecinos abren una ruta hacia el Central.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1125
+    },
+    {
+      "title": "Cruzar la linea",
+      "who": "Nico",
+      "intro": "El camino del Sur esta abierto, pero Prisma lo vigila. El plan depende de llegar con el disco de Vera intacto.",
+      "outro": "Llegamos al acceso del Central. Dentro, Horizonte ya empezo a borrar los registros mas antiguos.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 23,
+          "text": "Lleva el disco al Servidor Central.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CHASE",
+          "loc": 23,
+          "text": "Despista el ultimo seguimiento.",
+          "seed": 6,
+          "par": 28
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 23,
+          "text": "Cruza el corredor de acceso.",
+          "seed": 208,
+          "par": 0
+        },
+        {
+          "kind": "LOCK",
+          "loc": 23,
+          "text": "Abre el cuarto de mantenimiento.",
+          "seed": 83,
+          "par": 0
+        }
+      ],
+      "reward": 1160
+    },
+    {
+      "title": "Al otro lado",
+      "who": "Sara",
+      "intro": "Sara responde detras de una puerta. Para abrirla debo reconstruir el circuito que Prisma desarmo. La escucho contar el tiempo entre cada corte.",
+      "outro": "Sara sale. Esta agotada, pero se niega a marcharse sin copiar los nombres que todavia quedan en la maquina.",
+      "steps": [
+        {
+          "kind": "CIRCUIT",
+          "loc": 23,
+          "text": "Reconstruye la alimentacion de la puerta.",
+          "seed": 222,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 23,
+          "text": "Introduce la clave que Sara dejo dividida en pistas.",
+          "seed": 816,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 23,
+          "text": "Repite la secuencia de desbloqueo.",
+          "seed": 212,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 23,
+          "text": "Habla con Sara, cara a cara.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1195
+    },
+    {
+      "title": "No borres sus nombres",
+      "who": "Sara",
+      "intro": "La copia necesita una alimentacion estable. Si fallamos tendremos que intentarlo de nuevo mientras el sistema sigue cerrando accesos.",
+      "outro": "La copia termina. Miles de firmas vuelven a tener dueno. Cardenal huye de la torre mientras Horizonte se queda sin ordenes.",
+      "steps": [
+        {
+          "kind": "CIRCUIT",
+          "loc": 23,
+          "text": "Aisla la copia del circuito de borrado.",
+          "seed": 251,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 23,
+          "text": "Estabiliza el canal de transferencia.",
+          "seed": 246,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 23,
+          "text": "Mantiene sincronizada la transferencia.",
+          "seed": 31,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 23,
+          "text": "Sella el respaldo con la clave final.",
+          "seed": 492,
+          "par": 0
+        }
+      ],
+      "reward": 1230
+    },
+    {
+      "title": "Amanecer pendiente",
+      "who": "Luna",
+      "intro": "La salida esta bloqueada. Luna llega desde el Sur, pero necesitamos llevar el disco a la radio antes de que corten la ultima antena.",
+      "outro": "Mara conecta el disco. Tenemos las pruebas y a Sara de vuelta. Falta decidir que hacer con todo lo que encontramos.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 3,
+          "text": "Lleva a Sara y el respaldo a Radio Ladera.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CHASE",
+          "loc": 3,
+          "text": "Escapa del ultimo cerco.",
+          "seed": 7,
+          "par": 30
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 3,
+          "text": "Devuelve la energia a la radio.",
+          "seed": 283,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 3,
+          "text": "Reune al grupo. Fin del capitulo V.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1265
+    },
+    {
+      "title": "Lo que queda",
+      "who": "Vera",
+      "intro": "La caida de Prisma no devuelve automaticamente las casas. Cada familia necesita sus documentos. Podemos ayudar a reconstruirlos.",
+      "outro": "Los primeros expedientes vuelven a sus duenos. Luz abre el mercado otra vez, esta vez con una copia de seguridad en papel.",
+      "steps": [
+        {
+          "kind": "MEMORY",
+          "loc": 5,
+          "text": "Reconstruye los expedientes recuperados.",
+          "seed": 247,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 12,
+          "text": "Entrega las primeras carpetas a Dona Luz.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 12,
+          "text": "Recupera los registros del mercado.",
+          "seed": 632,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 12,
+          "text": "Escucha a los vecinos.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1300
+    },
+    {
+      "title": "Calles con memoria",
+      "who": "Tiza",
+      "intro": "Tiza quiere pintar los nombres de quienes defendieron sus barrios. No como heroes: como vecinos que decidieron quedarse juntos.",
+      "outro": "El nuevo mural no tapa el anterior. Lo rodea. La primera llave sigue ahi, para que nadie olvide como empezo todo.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 6,
+          "text": "Lleva pintura y bocetos a la cancha.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 6,
+          "text": "Acompana el ritmo de la jornada del mural.",
+          "seed": 37,
+          "par": 0
+        },
+        {
+          "kind": "RACE",
+          "loc": 6,
+          "text": "Lleva copias del mural a seis barrios.",
+          "seed": 28,
+          "par": 135
+        },
+        {
+          "kind": "TALK",
+          "loc": 6,
+          "text": "Mira el mural con Tiza.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1335
+    },
+    {
+      "title": "Una ultima senal",
+      "who": "Sara",
+      "intro": "Queda una copia de Horizonte en la antena oriental. Ya no controla la ciudad, pero podria usarse otra vez si alguien la encuentra.",
+      "outro": "El ultimo respaldo queda bloqueado y documentado. Sara entrega las llaves a una red de vecinos, para que nadie tenga todas a la vez.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 19,
+          "text": "Acompana a Sara a la antena.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "STEALTH",
+          "loc": 19,
+          "text": "Evita los sensores que siguen activos.",
+          "seed": 279,
+          "par": 0
+        },
+        {
+          "kind": "CIRCUIT",
+          "loc": 19,
+          "text": "Desconecta el ultimo respaldo.",
+          "seed": 317,
+          "par": 0
+        },
+        {
+          "kind": "CODE",
+          "loc": 19,
+          "text": "Revoca las credenciales de Horizonte.",
+          "seed": 759,
+          "par": 0
+        }
+      ],
+      "reward": 1370
+    },
+    {
+      "title": "El sonido del regreso",
+      "who": "Mara",
+      "intro": "Mara organiza un concierto abierto. No hay lista de invitados ni equipos de Prisma. La ciudad vuelve a escucharse a si misma.",
+      "outro": "Luna baila por primera vez en semanas. Sara se rie. Vera apaga el telefono. Yo me quedo un rato sin pensar en la siguiente entrega.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 26,
+          "text": "Recoge los equipos del estudio.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TUNE",
+          "loc": 22,
+          "text": "Prepara la emision desde la plaza.",
+          "seed": 292,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 22,
+          "text": "Toca la primera sesion del concierto.",
+          "seed": 43,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 22,
+          "text": "Cierra el concierto con el segundo tema.",
+          "seed": 49,
+          "par": 0
+        }
+      ],
+      "reward": 1405
+    },
+    {
+      "title": "La decision",
+      "who": "Vera",
+      "intro": "Tenemos pruebas publicas y datos privados de los vecinos. Vera propone llevar el expediente a la justicia. Mara pide publicar tambien una version protegida para todos.",
+      "outro": "Nadie recuperara esas semanas. Pero podemos decidir como se cuenta la historia y quien conserva el control de sus datos.",
+      "steps": [
+        {
+          "kind": "TALK",
+          "loc": 2,
+          "text": "Escucha a Vera: un expediente verificable para la justicia.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 3,
+          "text": "Escucha a Mara: una memoria publica que proteja a los vecinos.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "MEMORY",
+          "loc": 5,
+          "text": "Separa los nombres privados de las pruebas publicas.",
+          "seed": 302,
+          "par": 0
+        },
+        {
+          "kind": "CHOICE",
+          "loc": 10,
+          "text": "Decide como compartir las pruebas desde el mirador.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1440
+    },
+    {
+      "title": "Medellin despierta",
+      "who": "Nico",
+      "intro": "La ciudad no se arreglo en una noche. Hay trabajo, calles por recorrer y deudas que no caben en un archivo. Pero el amanecer ya no pertenece a Prisma.",
+      "outro": "Sara vuelve al mirador. Luna me devuelve las llaves del carro. Mara enciende la radio. Vera pregunta que hare ahora. Sonrio: primero, una vuelta por la ciudad.",
+      "steps": [
+        {
+          "kind": "DRIVE",
+          "loc": 1,
+          "text": "Visita a Luna en el taller.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "TALK",
+          "loc": 12,
+          "text": "Pasa por el mercado de Dona Luz.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "RHYTHM",
+          "loc": 3,
+          "text": "Graba el tema final en Radio Ladera.",
+          "seed": 55,
+          "par": 0
+        },
+        {
+          "kind": "DRIVE",
+          "loc": 10,
+          "text": "Conduce hasta el mirador para ver el amanecer.",
+          "seed": 0,
+          "par": 0
+        },
+        {
+          "kind": "ENDING",
+          "loc": 10,
+          "text": "Habla con Sara. Despues podras seguir explorando.",
+          "seed": 0,
+          "par": 0
+        }
+      ],
+      "reward": 1475
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+name: Build Narcade PSP
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/pspdev/pspdev:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias Python
+        run: |
+          (apk add --no-cache python3 py3-pip 2>/dev/null || (apt-get update && apt-get install -y python3 python3-pip))
+          python3 -m pip install --break-system-packages pycryptodome pycdlib || python3 -m pip install pycryptodome pycdlib
+      - name: Compilar (PRX + EBOOT.PBP)
+        run: make
+      - name: Firmar y empaquetar ISO
+        run: |
+          mkdir -p build
+          python3 tools/package_iso.py
+          mkdir -p out/PSP/GAME/NARCADE
+          cp EBOOT.PBP out/PSP/GAME/NARCADE/
+          cp Narcade.iso out/
+          sha256sum out/Narcade.iso out/PSP/GAME/NARCADE/EBOOT.PBP
+      - uses: actions/upload-artifact@v4
+        with:
+          name: narcade-psp
+          path: out
