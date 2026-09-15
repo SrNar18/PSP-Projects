@@ -56,13 +56,11 @@ static int wrapi(int x,int n){return (x%n+n)%n;}
 static int pressed(int b){return (g.pressed&b)!=0;}
 static int held(int b){return (g.held&b)!=0;}
 static void notice(const char *s){snprintf(g.notice,sizeof(g.notice),"%s",s);g.noticeT=4;}
-/* v1.1: dibujo optimizado para PSP real: recorrido por filas y trazado de pixel sin recorte por llamada. */
-static inline void px(int x,int y,uint32_t c){if((unsigned)x<(unsigned)W&&(unsigned)y<(unsigned)H)fb[y*pitch+x]=c;}
-static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;if(x1<=x0||y1<=y0)return;int n=x1-x0;for(int j=y0;j<y1;j++){uint32_t *row=fb+j*pitch+x0;for(int i=0;i<n;i++)row[i]=c;}}
-static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){px(x,y,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
+static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;for(int j=y0;j<y1;j++)for(int i=x0;i<x1;i++)fb[j*pitch+i]=c;}
+static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){rect(x,y,1,1,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
 static void circle(int x,int y,int r,uint32_t c){for(int yy=-r;yy<=r;yy++){int xx=(int)sqrtf((float)(r*r-yy*yy));rect(x-xx,y+yy,xx*2+1,1,c);}}
 static void outline(int x,int y,int w,int h,uint32_t c){rect(x,y,w,1,c);rect(x,y+h-1,w,1,c);rect(x,y,1,h,c);rect(x+w-1,y,1,h,c);}
-static void text(int x,int y,const char *s,uint32_t c,int scale){int start=x;for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';for(int yy=0;yy<12;yy++){unsigned row=font_bits[(ch-32)*12+yy];for(int xx=0;xx<7;xx++)if(row&(1<<xx)){if(scale==1)px(x+xx,y+yy,c);else rect(x+xx*scale,y+yy*scale,scale,scale,c);}}x+=7*scale;}}
+static void text(int x,int y,const char *s,uint32_t c,int scale){int start=x;for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';for(int yy=0;yy<12;yy++){unsigned row=font_bits[(ch-32)*12+yy];for(int xx=0;xx<7;xx++)if(row&(1<<xx))rect(x+xx*scale,y+yy*scale,scale,scale,c);}x+=7*scale;}}
 static int textwrap(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
 static void label(int x,int y,const char *s,uint32_t c){rect(x-4,y-2,(int)strlen(s)*7+8,15,INK);text(x,y,s,c,1);}
 static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,20,LIME);text(28,12,a,WHITE,1);text(28,29,b,MUTED,1);}
@@ -269,11 +267,11 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
 static void car_draw(const Car *c,float ox,float oy,int chosen){
  int x=(int)(c->x-ox),y=(int)(c->y-oy);if(x<-32||y<-32||x>512||y>300)return;
  float ca=cosf(c->a),sa=sinf(c->a);uint32_t color=c->police?RGB(41,71,87):carcolors[c->type];
- for(int yy=-21;yy<=21;yy++)for(int xx=-21;xx<=21;xx++){float u=xx*ca+yy*sa,v=-xx*sa+yy*ca;if(fabsf(u)<19&&fabsf(v)<10)px(x+xx+2,y+yy+3,RGB(13,23,27));}
+ for(int yy=-21;yy<=21;yy++)for(int xx=-21;xx<=21;xx++){float u=xx*ca+yy*sa,v=-xx*sa+yy*ca;if(fabsf(u)<19&&fabsf(v)<10)rect(x+xx+2,y+yy+3,1,1,RGB(13,23,27));}
  for(int yy=-21;yy<=21;yy++)for(int xx=-21;xx<=21;xx++){float u=xx*ca+yy*sa,v=-xx*sa+yy*ca;uint32_t col=color;int draw=0;
   if(fabsf(u)<18&&fabsf(v)<9){draw=1;if((u>5&&u<10)||(u<-6&&u>-11))col=RGB(21,48,62);if(fabsf(v)>7&&fabsf(u)>11)col=RGB(19,24,27);if(u>15&&fabsf(v)>4)col=GOLD;if(u<-15&&fabsf(v)>4)col=CORAL;}
   if(c->police&&fabsf(u)<2&&fabsf(v)<8){draw=1;col=(v>0)?TEAL:CORAL;}
-  if(draw)px(x+xx,y+yy,col);
+  if(draw)rect(x+xx,y+yy,1,1,col);
  }
  if(chosen)circle(x,y,2,LIME);
 }
