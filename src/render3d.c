@@ -270,52 +270,57 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
 }
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
+    /* v2.2 (Claude): proporciones humanas. Altura 29.2 = ~7 cabezas; hombros 8.4 de ancho (antes 11.3),
+       torso 4.8 de fondo (antes 7.2), cuello visible, brazos con codo y manos, piernas separadas con rodilla.
+       Se conservan materiales, UVs y la animacion de andar (step/lift/bob). */
     float phase=view->time*8.5f,swing=walking?sinf(phase):0;
     float bob=walking?fabsf(cosf(phase))*.22f:0;
     for(int side=-1;side<=1;side+=2){
-        float step=side*swing*3.3f,lift=walking?fmaxf(0,side*swing)*1.5f:0;
-        /* Wide straight legs; fullness at thigh/knee and a stacked open hem.
-           Both knee rings deform together: no detached limb segments. */
+        float step=side*swing*3.0f,lift=walking?fmaxf(0,side*swing)*1.4f:0;
+        float lz=side*1.85f;
+        /* Pantalon: bajo, pantorrilla, rodilla, muslo, cadera. */
         BodyRing pants[]={
-            {step,1.65f+lift,side*2.65f,2.45f,2.30f},
-            {step*.94f,2.5f+lift,side*2.65f,2.70f,2.48f},
-            {step*.80f,4.4f+lift,side*2.60f,2.35f,2.30f},
-            {step*.5f-.3f,7.4f+lift*.6f,side*2.58f,2.55f,2.40f},
-            {step*.20f,10.7f+bob,side*2.55f,2.65f,2.45f},
-            {0,14.3f+bob,side*2.50f,2.50f,2.48f}};
+            {step,1.7f+lift,lz,1.55f,1.50f},
+            {step*.9f,3.6f+lift,lz,1.42f,1.38f},
+            {step*.65f,7.0f+lift*.7f,lz,1.55f,1.50f},
+            {step*.3f,10.5f+bob,lz,1.80f,1.70f},
+            {step*.1f,12.6f+bob,lz,2.00f,1.85f},
+            {0,13.8f+bob,lz,2.10f,1.90f}};
         cloth(pants,6,JEANS,JEANS,0xffffffffu,x,z,angle);
-        /* Rounded sneaker toe, heel and rubber sole instead of cuboid feet. */
-        BodyRing sole[]={{step+.8f,.18f+lift,side*2.65f,3.30f,1.78f},{step+.8f,.65f+lift,side*2.65f,3.35f,1.82f}};
+        /* Zapatilla: suela de goma y empeine redondeado. */
+        BodyRing sole[]={{step+.55f,.15f+lift,lz,2.45f,1.20f},{step+.55f,.60f+lift,lz,2.50f,1.25f}};
         cloth(sole,2,SIDEWALK,SIDEWALK,COLOR(238,234,219),x,z,angle);
-        BodyRing shoe[]={{step+.8f,.65f+lift,side*2.65f,3.25f,1.75f},{step+.6f,1.30f+lift,side*2.65f,3.0f,1.65f},{step-.15f,2.2f+lift,side*2.65f,1.85f,1.40f}};
+        BodyRing shoe[]={{step+.55f,.60f+lift,lz,2.40f,1.18f},{step+.45f,1.25f+lift,lz,2.15f,1.10f},{step-.05f,2.15f+lift,lz,1.35f,.95f}};
         cloth(shoe,3,SLEEVE,SLEEVE,0xffffffffu,x,z,angle);
-        float arm=-step*.48f;
-        BodyRing sleeve[]={{arm,17.5f+bob,side*6.05f,1.85f,1.85f},{arm*.6f,19.6f+bob,side*6.00f,2.05f,1.95f},{0,21.0f+bob,side*5.65f,1.95f,1.8f},{0,22.1f+bob,side*4.95f,1.25f,1.15f},{0,22.45f+bob,side*4.55f,.25f,.3f}};
+        /* Brazo: manga corta desde el hombro, antebrazo con ligera flexion de codo y mano. */
+        float arm=-step*.45f,az=side*5.15f;
+        BodyRing sleeve[]={{arm*.9f,17.4f+bob,az,1.05f,1.00f},{arm*.6f,19.6f+bob,az,1.15f,1.10f},{arm*.2f,21.4f+bob,az-side*.15f,1.25f,1.18f},{0,22.35f+bob,az-side*.6f,.85f,.75f},{0,22.6f+bob,az-side*.9f,.2f,.2f}};
         cloth(sleeve,5,SLEEVE,SLEEVE,0xffffffffu,x,z,angle);
-        BodyRing forearm[]={{arm+1.0f,13.7f+bob,side*6.35f,.85f,.82f},{arm+.5f,15.5f+bob,side*6.4f,1.12f,1.02f},{arm,18.0f+bob,side*6.25f,1.15f,1.05f}};
+        BodyRing forearm[]={{arm+.9f,13.5f+bob,az+side*.1f,.80f,.76f},{arm+.55f,15.5f+bob,az+side*.05f,.90f,.85f},{arm*.9f,17.6f+bob,az,.98f,.94f}};
         cloth(forearm,3,SKIN,SKIN,0xffffffffu,x,z,angle);
-        BodyRing hand[]={{arm+1.2f,12.0f+bob,side*6.35f,.62f,.55f},{arm+1.2f,12.8f+bob,side*6.35f,.85f,.70f},{arm+1.0f,14.0f+bob,side*6.35f,.70f,.65f}};
+        BodyRing hand[]={{arm+1.05f,11.6f+bob,az+side*.1f,.55f,.48f},{arm+1.1f,12.4f+bob,az+side*.1f,.80f,.62f},{arm+.95f,13.7f+bob,az+side*.1f,.72f,.62f}};
         cloth(hand,3,SKIN,SKIN,0xffffffffu,x,z,angle);
     }
-    BodyRing shirt[]={{0,12.0f+bob,0,3.6f,5.65f},{0,12.5f+bob,0,3.65f,5.70f},{0,16.0f+bob,0,3.35f,5.2f},{0,20.5f+bob,0,3.35f,5.35f},{0,22.5f+bob,0,2.70f,5.05f},{0,23.25f+bob,0,1.40f,1.55f}};
+    /* Camiseta: bajo, cintura, pecho, hombros, cuello. */
+    BodyRing shirt[]={{0,12.4f+bob,0,2.35f,3.70f},{0,13.0f+bob,0,2.40f,3.75f},{0,16.5f+bob,0,2.35f,3.55f},{0,20.0f+bob,0,2.50f,3.95f},{0,21.9f+bob,0,2.20f,4.20f},{0,22.75f+bob,0,1.35f,1.55f}};
     cloth(shirt,6,JACKET,JACKET_BACK,0xffffffffu,x,z,angle);
-    BodyRing neck[]={{0,22.9f+bob,0,1.10f,1.1f},{.10f,24.4f+bob,0,1.05f,1.0f}};
+    BodyRing neck[]={{0,22.5f+bob,0,.95f,.90f},{.15f,24.5f+bob,0,.92f,.88f}};
     cloth(neck,2,SKIN,SKIN,0xffffffffu,x,z,angle);
-    /* Narrower jaw, smaller textured head and rounded cranium. */
-    BodyRing head[]={{.35f,24.0f+bob,0,.8f,.8f},{.30f,24.6f+bob,0,1.50f,1.30f},{.10f,25.6f+bob,0,1.95f,1.75f},{0,27.1f+bob,0,1.95f,1.80f},{-.1f,28.4f+bob,0,1.60f,1.5f},{-.1f,29.0f+bob,0,.65f,.75f},{-.1f,29.15f+bob,0,.02f,.02f}};
+    /* Cabeza: menton, mandibula, pomulos, craneo redondeado. */
+    BodyRing head[]={{.35f,24.1f+bob,0,.85f,.85f},{.30f,24.8f+bob,0,1.50f,1.32f},{.12f,25.9f+bob,0,1.85f,1.65f},{0,27.3f+bob,0,1.90f,1.70f},{-.1f,28.5f+bob,0,1.55f,1.45f},{-.1f,29.05f+bob,0,.65f,.7f},{-.1f,29.2f+bob,0,.02f,.02f}};
     for(int j=0;j<6;j++)for(int k=0;k<12;k++){
         int front=k<3||k>=9;
         int mat=front?(j>=4?HAIR:FACE):(j>=2?HAIR:SKIN);
-        float vt=1-(head[j+1].y-24-bob)/5.15f,vb=1-(head[j].y-24-bob)/5.15f;
+        float vt=1-(head[j+1].y-24.1f-bob)/5.1f,vb=1-(head[j].y-24.1f-bob)/5.1f;
         Vertex v[4]={body_vertex(head[j+1],k,vt,0xffffffffu,x,z,angle),body_vertex(head[j+1],k+1,vt,0xffffffffu,x,z,angle),body_vertex(head[j],k+1,vb,0xffffffffu,x,z,angle),body_vertex(head[j],k,vb,0xffffffffu,x,z,angle)};
         polygon(mat,v,4);
     }
     for(int side=-1;side<=1;side+=2){
-        BodyRing ear[]={{0,25.2f+bob,side*1.72f,.20f,.18f},{0,25.9f+bob,side*1.88f,.38f,.25f},{-.1f,26.6f+bob,side*1.76f,.20f,.16f}};
+        BodyRing ear[]={{0,25.5f+bob,side*1.62f,.18f,.16f},{0,26.1f+bob,side*1.78f,.34f,.22f},{-.1f,26.7f+bob,side*1.66f,.18f,.14f}};
         cloth(ear,3,SKIN,SKIN,0xffffffffu,x,z,angle);
     }
-    Point nose=local(2.43f,26.1f+bob,0,x,z,angle);
-    Point a=local(1.88f,26.9f+bob,0,x,z,angle),b=local(1.88f,25.85f+bob,-.35f,x,z,angle),c=local(1.88f,25.85f+bob,.35f,x,z,angle);
+    Point nose=local(2.30f,26.2f+bob,0,x,z,angle);
+    Point a=local(1.80f,26.95f+bob,0,x,z,angle),b=local(1.80f,25.95f+bob,-.32f,x,z,angle),c=local(1.80f,25.95f+bob,.32f,x,z,angle);
     Vertex nv[3]={{.5f,.5f,0xffffffffu,nose.x,nose.y,nose.z},{.5f,.5f,0xffffffffu,a.x,a.y,a.z},{.5f,.5f,0xffffffffu,b.x,b.y,b.z}};
     polygon(SKIN,nv,3);nv[1]=(Vertex){.5f,.5f,0xffffffffu,c.x,c.y,c.z};polygon(SKIN,nv,3);
 }

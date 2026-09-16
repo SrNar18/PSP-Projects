@@ -5,27 +5,77 @@
 #include <pspaudiolib.h>
 #include <psppower.h>
 #include <pspiofilemgr.h>
+#include <psputility.h>
+#include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include "game.h"
 #include "render3d.h"
-PSP_MODULE_INFO("Narcade",0,2,1);
+PSP_MODULE_INFO("Narcade",0,2,2);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 static volatile int running=1;
 static int exit_cb(int a,int b,void *p){(void)a;(void)b;(void)p;running=0;return 0;}
 static int callbacks(SceSize n,void *p){(void)n;(void)p;int cb=sceKernelCreateCallback("Narcade exit",exit_cb,0);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
 static void audio_cb(void *buffer,unsigned int frames,void *p){(void)p;game_audio(buffer,frames);}
+
+/* ---- Guardado nativo: dialogo de la Memory Stick (sceUtilitySavedata), 4 ranuras ---- */
+#define SAVE_GAME "NARC00001"
+static char saveNames[][20]={"0000","0001","0002","0003",""};
+static unsigned char saveBuf[4096] __attribute__((aligned(64)));
+static SceUtilitySavedataParam sd;
+extern const unsigned char icon0_png[],icon0_png_end[];
+static int any_slot_exists(void){
+ for(int i=0;i<4;i++){char path[64];snprintf(path,sizeof(path),"ms0:/PSP/SAVEDATA/" SAVE_GAME "%s",saveNames[i]);SceUID d=sceIoDopen(path);if(d>=0){sceIoDclose(d);return 1;}}
+ return 0;}
+/* mode 0 = LISTSAVE, 1 = LISTLOAD. Devuelve 1 si termino bien, 0 si cancelado/error.
+   Mientras el dialogo esta abierto seguimos dibujando el juego debajo con el mismo doble buffer. */
+static int savedata_dialog(int mode,uint32_t **buffers,int *index){
+ memset(&sd,0,sizeof(sd));sd.base.size=sizeof(sd);
+ sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_LANGUAGE,&sd.base.language);
+ sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_UNKNOWN,&sd.base.buttonSwap);
+ sd.base.graphicsThread=0x11;sd.base.accessThread=0x13;sd.base.fontThread=0x12;sd.base.soundThread=0x10;
+ sd.mode=mode?PSP_UTILITY_SAVEDATA_LISTLOAD:PSP_UTILITY_SAVEDATA_LISTSAVE;sd.overwrite=1;sd.focus=PSP_UTILITY_SAVEDATA_FOCUS_LATEST;
+ strcpy(sd.key,"NARCADEKEY2026");strcpy(sd.gameName,SAVE_GAME);strcpy(sd.saveName,"0000");sd.saveNameList=saveNames;strcpy(sd.fileName,"DATA.BIN");
+ sd.dataBuf=saveBuf;sd.dataBufSize=sizeof(saveBuf);sd.dataSize=0;
+ if(!mode){int n=game_export_save(saveBuf,sizeof(saveBuf));if(n<=0)return 0;sd.dataSize=n;
+  strcpy(sd.sfoParam.title,"Narcade");game_save_summary(sd.sfoParam.savedataTitle,sizeof(sd.sfoParam.savedataTitle),sd.sfoParam.detail,sizeof(sd.sfoParam.detail));sd.sfoParam.parentalLevel=1;
+  sd.icon0FileData.buf=(void*)icon0_png;sd.icon0FileData.bufSize=sd.icon0FileData.size=(unsigned)(icon0_png_end-icon0_png);}
+ if(sceUtilitySavedataInitStart(&sd)<0)return 0;
+ /* Un solo buffer mientras dura el dialogo: el sistema lo dibuja encima del buffer visible, y si
+    alternaramos buffers se veria solo en fotogramas alternos. La pantalla de pausa es estatica. */
+ uint32_t *fb=buffers[*index^1];game_draw(fb,512);
+ sceDisplaySetFrameBuf(fb,512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart(); /* nunca IMMEDIATE: pantalla negra en PSP E-1000 */
+ for(;;){
+  sceDisplayWaitVblankStart();
+  int st=sceUtilitySavedataGetStatus();
+  if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
+  else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilitySavedataShutdownStart();
+  else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
+ }
+ if(sd.base.result!=0)return 0;
+ if(mode)return game_import_save(saveBuf,(int)sd.dataSize);
+ return 1;
+}
+static void handle_save_request(int req,uint32_t **buffers,int *index){
+ if(req==2){ /* CONTINUAR: solo abrir el dialogo si hay alguna partida guardada */
+  if(!any_slot_exists()){game_continue();return;}
+  game_request_result(2,savedata_dialog(1,buffers,index));
+ }else game_request_result(req,savedata_dialog(0,buffers,index));
+}
 int main(void){
  int th=sceKernelCreateThread("Narcade callbacks",callbacks,0x11,0x1000,0,0);if(th>=0)sceKernelStartThread(th,0,0);
  scePowerSetClockFrequency(333,333,166);
  sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
  sceDisplaySetMode(0,480,272);
  uint32_t *buffers[2];buffers[0]=(uint32_t*)((uintptr_t)sceGeEdramGetAddr()|0x40000000);buffers[1]=buffers[0]+512*272;
- r3_init();game_init();sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
+ r3_init();game_init();game_set_native_savedata(1);sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
  pspAudioInit();pspAudioSetChannelCallback(0,audio_cb,0);
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
-  game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);game_draw(buffers[index],512);
+  game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
+  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);before=sceKernelGetSystemTimeWide();continue;}
+  game_draw(buffers[index],512);
   /* v1.2: pedir el cambio de buffer ANTES de esperar el vblank: el cambio ocurre en ese vblank
      y el siguiente fotograma se dibuja en el buffer ya oculto. (v1.0 esperaba primero y pedia
      el cambio despues, asi que redibujaba el buffer aun visible: parpadeo en la parte superior.) */

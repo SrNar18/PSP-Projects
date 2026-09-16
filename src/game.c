@@ -146,23 +146,51 @@ static void world_init(void){
  g.cars[1].type=0;
  for(int i=0;i<42;i++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
 }
+int cachecount_public(void);
+static void fill_save(Save *s);
 static uint32_t savecheck(const Save *s){uint32_t h=2166136261u;const unsigned char *p=(const unsigned char*)s;for(size_t i=0;i<offsetof(Save,check);i++){h^=p[i];h*=16777619u;}return h;}
 void game_set_save_path(const char *p){snprintf(g.savepath,sizeof(g.savepath),"%s",p);}
 int game_save(void){
  if(!g.active)return 1;
- Save s;memset(&s,0,sizeof(s));s.magic=0x4e415243;s.version=1;s.mission=g.mission;s.step=g.step;s.cash=g.cash;s.reputation=g.reputation;s.ending=g.ending;s.x=g.x;s.y=g.y;s.health=g.health;s.playtime=g.playtime;s.caches=g.caches;s.jobs=g.jobs;s.station=g.station;s.check=savecheck(&s);
- if(s.mission<36&&s.step>=missions[s.mission].count){s.mission++;s.step=0;s.check=savecheck(&s);}
+ Save s;fill_save(&s);
  char tmp[300],bak[300];snprintf(tmp,sizeof(tmp),"%s.tmp",g.savepath);snprintf(bak,sizeof(bak),"%s.bak",g.savepath);
  FILE *f=fopen(tmp,"wb");if(!f){g.saveOK=0;return 0;}int ok=fwrite(&s,1,sizeof(s),f)==sizeof(s);if(fclose(f))ok=0;
  if(!ok){remove(tmp);g.saveOK=0;return 0;}
  remove(bak);rename(g.savepath,bak);if(rename(tmp,g.savepath)){rename(bak,g.savepath);g.saveOK=0;return 0;}g.saveOK=1;return 1;
 }
+/* v2.2 (Claude): guardado nativo de PSP. El bucle principal consulta game_take_request() y abre el
+   dialogo de la Memory Stick (sceUtilitySavedata); los datos van y vienen con export/import. */
+static int nativeSave=0,saveRequest=0;
+void game_set_native_savedata(int on){nativeSave=on;}
+int game_take_request(void){int r=saveRequest;saveRequest=0;return r;}
+void game_request_result(int req,int ok){
+ if(req==1)notice(ok?"Partida guardada en la Memory Stick.":"Guardado cancelado.");
+ else if(req==3){if(ok){game_save();g.screen=TITLE;g.menu=0;}else notice("Guardado cancelado. Sigues en la partida.");}
+ else if(req==2&&!ok)game_continue();}
+static void fill_save(Save *s){memset(s,0,sizeof(*s));s->magic=0x4e415243;s->version=1;s->mission=g.mission;s->step=g.step;s->cash=g.cash;s->reputation=g.reputation;s->ending=g.ending;s->x=g.x;s->y=g.y;s->health=g.health;s->playtime=g.playtime;s->caches=g.caches;s->jobs=g.jobs;s->station=g.station;s->check=savecheck(s);
+ if(s->mission<36&&s->step>=missions[s->mission].count){s->mission++;s->step=0;s->check=savecheck(s);}}
+int game_export_save(void *buf,int cap){if(!g.active||cap<(int)sizeof(Save))return 0;fill_save((Save*)buf);return sizeof(Save);}
+void game_save_summary(char *title,int titlecap,char *detail,int detailcap){
+ int m=g.mission<36?g.mission:35;snprintf(title,titlecap,"Mision %02d/36 - %s",g.mission<36?g.mission+1:36,g.mission<36?missions[m].title:"Historia completada");
+ int h=(int)g.playtime/3600,mi=((int)g.playtime/60)%60;
+ snprintf(detail,detailcap,"$%d  -  %d vinilos  -  %d encargos\nTiempo de juego %d:%02d\nmade by Naresz",g.cash,cachecount_public(),g.jobs,h,mi);}
+static int apply_save(const Save *sp){Save s=*sp;
+ if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
+ if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
+ g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;return 1;}
+int game_import_save(const void *buf,int len){if(len<(int)sizeof(Save))return 0;if(!apply_save((const Save*)buf))return 0;g.screen=WORLD;notice("Partida cargada desde la Memory Stick.");return 1;}
 static int loadfile(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;size_t n=fread(&s,1,sizeof(s),f);fclose(f);
+ if(n!=sizeof(s))return 0;return apply_save(&s);}
+#if 0
+static int loadfile_old(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;size_t n=fread(&s,1,sizeof(s),f);fclose(f);
  if(n!=sizeof(s)||s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
  g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;return 1;
 }
+#endif
 static int load_game(void){if(loadfile(g.savepath))return 1;char b[300];snprintf(b,sizeof(b),"%s.bak",g.savepath);return loadfile(b);}
+static void fresh_game(void);
+void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
 static void fresh_game(void){g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;world_init();start_mission();}
@@ -318,7 +346,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
- if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
+ if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
  else if(g.screen==WORLD){g.playtime+=dt;world_tick(ax,ay,dt);}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
@@ -333,9 +361,9 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   else if(g.pauseTab==1)g.journalPage=wrapi(g.journalPage+delta,3);
   else if(g.pauseTab==2)g.menu=wrapi(g.menu+delta,2);
   if(pressed(B_CROSS)){
-   if(g.pauseTab==2&&g.menu==0)notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");
+   if(g.pauseTab==2&&g.menu==0){if(nativeSave&&g.active)saveRequest=1;else notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");}
    else if(g.pauseTab==2&&g.menu==1)g.screen=g.pauseBack;
-   else if(g.pauseTab==3){if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
+   else if(g.pauseTab==3){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
   }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
  int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE)||rhythm;
@@ -399,6 +427,7 @@ static void world_draw(void){
  }
 }
 static int cachecount(void){int n=0;for(int i=0;i<24;i++)if(g.caches&(1u<<i))n++;return n;}
+int cachecount_public(void){return cachecount();}
 static void hud(void){char b[180];rect(0,0,W,31,INK);text(11,7,"NARCADE",LIME,1);snprintf(b,sizeof(b),"$%d",g.cash);text(82,7,b,WHITE,1);
  text(178,7,districts[district(g.x,g.y)],MUTED,1);for(int i=0;i<5;i++)rect(396+i*15,8,10,10,g.heat>i?CORAL:RGB(47,62,66));
  rect(10,24,110,3,RGB(66,67,65));rect(10,24,(int)(g.health*1.1f),3,TEAL);

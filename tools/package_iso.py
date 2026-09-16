@@ -12,6 +12,7 @@ shutil.copy(root/'narcade_static.elf',stage/'PSP_GAME/SYSDIR/EBOOT.BIN')
 shutil.copy(root/'narcade_static.elf',stage/'PSP_GAME/SYSDIR/BOOT.BIN')
 shutil.copy(root/'assets/ICON0.png',stage/'PSP_GAME/ICON0.PNG')
 shutil.copy(root/'assets/PIC1.png',stage/'PSP_GAME/PIC1.PNG')
+shutil.copy(root/'assets/SND0.AT3',stage/'PSP_GAME/SND0.AT3')  # musica en la XMB (tools/make_snd0.py)
 (stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
 (stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 3D 2.1 streetwear - made by Naresz. Original homebrew. Assets embedded in executable.\n')
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:
