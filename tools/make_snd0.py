@@ -50,8 +50,12 @@ def frames_to_at3(frame: int, data: bytes, joint: int) -> bytes:
     fmt = struct.pack('<HHIIHHH', 0x0270, 2, srate, frame * srate // 1024, frame, 0, 14)
     # extradata canonica (validada por el parser del firmware): 1, 0x1000, modo, modo(igual), 1
     fmt += struct.pack('<HIHHI', 1, 0x1000, joint, joint, 1)
-    fact = struct.pack('<II', samples, 0)
-    body = b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + b'fact' + struct.pack('<I', len(fact)) + fact + b'data' + struct.pack('<I', len(data)) + data
+    delay = 0x400  # retardo del codificador ATRAC3 (primer sample util)
+    fact = struct.pack('<II', samples, delay)
+    # chunk smpl con un bucle sobre todo el archivo, como los SND0.AT3 de Sony (at3tool -wholeloop)
+    smpl = struct.pack('<9I', 0, 0, 22676, 60, 0, 0, 0, 1, 24) + struct.pack('<6I', 0, 0, delay, samples - 1, 0, 0)
+    body = (b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + b'fact' + struct.pack('<I', len(fact)) + fact
+            + b'smpl' + struct.pack('<I', len(smpl)) + smpl + b'data' + struct.pack('<I', len(data)) + data)
     return b'RIFF' + struct.pack('<I', len(body)) + body
 
 def oma_to_at3(oma: bytes) -> bytes:
