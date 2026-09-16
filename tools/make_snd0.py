@@ -58,6 +58,22 @@ def frames_to_at3(frame: int, data: bytes, joint: int) -> bytes:
             + b'smpl' + struct.pack('<I', len(smpl)) + smpl + b'data' + struct.pack('<I', len(data)) + data)
     return b'RIFF' + struct.pack('<I', len(body)) + body
 
+def oma_plus_to_at3(oma: bytes) -> bytes:
+    """OMA ATRAC3plus -> RIFF/WAVE extensible (0xFFFE + GUID), el formato de los SND0.AT3 oficiales."""
+    assert oma[:4] == b'EA3'; hdr = struct.unpack('>H', oma[4:6])[0]
+    assert oma[32] == 1, 'no es ATRAC3plus'
+    params = oma[33:36]; frame = ((int.from_bytes(params, 'big') & 0x3FF) * 8) + 8
+    data = oma[hdr:]; data = data[:len(data) // frame * frame]; nframes = len(data) // frame; samples = nframes * 2048
+    srate = 44100; chans = 2
+    fmt = struct.pack('<HHIIHHH', 0xFFFE, chans, srate, frame * srate // 2048, frame, 0, 34)
+    fmt += struct.pack('<HI', 0x0800, 3) + bytes.fromhex('BFAA23E958CB7144A119FFFA01E4CE62') + struct.pack('<H', 1) + params[1:3] + bytes(8)
+    delay = 0x866
+    fact = struct.pack('<II', samples, delay)
+    smpl = struct.pack('<9I', 0, 0, 22676, 60, 0, 0, 0, 1, 24) + struct.pack('<6I', 0, 0, delay, samples - 1, 0, 0)
+    body = (b'WAVE' + b'fmt ' + struct.pack('<I', len(fmt)) + fmt + b'fact' + struct.pack('<I', len(fact)) + fact
+            + b'smpl' + struct.pack('<I', len(smpl)) + smpl + b'data' + struct.pack('<I', len(data)) + data)
+    return b'RIFF' + struct.pack('<I', len(body)) + body
+
 def oma_to_at3(oma: bytes) -> bytes:
     assert oma[:4] == b'EA3\x01', 'no es OMA'
     hdr = struct.unpack('>H', oma[4:6])[0]
@@ -89,7 +105,10 @@ def main():
         subprocess.run([ff, '-hide_banner', '-loglevel', 'error', '-y', '-ss', str(a.start), '-to', str(a.end), '-i', a.audio,
                         '-ac', '2', '-ar', '44100', '-sample_fmt', 's16',
                         '-af', f'afade=t=in:st=0:d=0.5,afade=t=out:st={dur - 0.7:.2f}:d=0.7', str(wav)], check=True)
-        if a.lp4:
+        if a.codec == 'atrac3plus':
+            subprocess.run([a.atracdenc, '-e', 'atrac3plus', '-i', str(wav), '-o', str(oma)], check=True, stdout=subprocess.DEVNULL)
+            at3 = oma_plus_to_at3(oma.read_bytes())
+        elif a.lp4:
             # ATRAC3 LP4 66 kbps (frames de 192 bytes, joint stereo): el formato clasico de SND0.AT3.
             # atracdenc solo lo permite via contenedor RealMedia; '--bitrate 64' produce frames de 192 bytes.
             rm = pathlib.Path(td) / 'clip.rm'
@@ -100,7 +119,7 @@ def main():
             subprocess.run([a.atracdenc, '-e', a.codec, '-i', str(wav), '-o', str(oma)], check=True, stdout=subprocess.DEVNULL)
             at3 = oma_to_at3(oma.read_bytes())
     pathlib.Path(a.out).write_bytes(at3)
-    print(f'{a.out}: {len(at3)} bytes, {dur:.1f} s, ATRAC3 {"LP4 66 kbps" if a.lp4 else "LP2 132 kbps"} 44.1 kHz')
+    print(f'{a.out}: {len(at3)} bytes, {dur:.1f} s, ' + ('ATRAC3plus (tasa fija de atracdenc)' if a.codec == 'atrac3plus' else 'ATRAC3 ' + ('LP4 66 kbps' if a.lp4 else 'LP2 132 kbps')) + ' 44.1 kHz')
 
 if __name__ == '__main__':
     main()

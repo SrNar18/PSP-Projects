@@ -39,3 +39,5 @@ Hechos por Claude tras probar en la consola fisica con CFW PRO 6.60.
   START > cuaderno); minimapa circular abajo a la izquierda; chincheta "!" del objetivo en el mapa.
 - Pendiente para Codex: el jugador aparece dentro de la caja del terminal del refugio y atraviesa
   coches (colision 2D vs escena 3D).
+- SND0.AT3 (musica XMB): pendiente. La XMB real reproduce SND0 de Sony (ATRAC3plus) en el EBOOT de Narcade,
+  pero rechaza todo lo generado con atracdenc (ver tools/make_snd0.py). Requiere at3tool.exe (Sony).
