@@ -5,6 +5,9 @@
 #include <string.h>
 #include <math.h>
 #include <stddef.h>
+#ifdef NARCADE_3D
+#include "render3d.h"
+#endif
 
 #define W 480
 #define H 272
@@ -42,10 +45,15 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
+ float viewYaw,walking;
+ int pauseTab,pauseBack;
  char notice[160],dialog[640],speaker[60],savepath[256];
  Car cars[CAR_COUNT]; Ped peds[42]; Puzzle p;
 } g;
 static uint32_t *fb;static int pitch;
+#ifdef NARCADE_3D
+static uint32_t *renderTarget;
+#endif
 static volatile int audioStation=0,audioEnabled=0;
 static unsigned audioPos=0;static int audioLast=-1;
 static uint32_t rng=137;
@@ -76,6 +84,52 @@ static int solid(float x,float y){
  return !parkblock(bx,by)&&lx>94&&lx<288&&ly>94&&ly<280;
 }
 static int free_at(float x,float y,int radius){return !solid(x-radius,y-radius)&&!solid(x+radius,y-radius)&&!solid(x-radius,y+radius)&&!solid(x+radius,y+radius);}
+/* Four separating axes for two oriented 36x18 car footprints. */
+static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *depth){
+ float dx=b->x-a->x,dy=b->y-a->y,best=1e9f;
+ if(fabsf(dx)>42||fabsf(dy)>42)return 0;
+ float ac=cosf(a->a),as=sinf(a->a),bc=cosf(b->a),bs=sinf(b->a);
+ float axes[4][2]={{ac,as},{-as,ac},{bc,bs},{-bs,bc}};
+ for(int k=0;k<4;k++){
+  float x=axes[k][0],y=axes[k][1];
+  float ra=18*fabsf(x*ac+y*as)+9*fabsf(-x*as+y*ac);
+  float rb=18*fabsf(x*bc+y*bs)+9*fabsf(-x*bs+y*bc);
+  float projection=dx*x+dy*y,overlap=ra+rb-fabsf(projection);
+  if(overlap<=0)return 0;
+  if(overlap<best){best=overlap;*nx=projection<0?-x:x;*ny=projection<0?-y:y;}
+ }
+ *depth=best;return 1;
+}
+static int car_free_at(const Car *c,float x,float y){
+ float ca=cosf(c->a),sa=sinf(c->a);
+ for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++)
+  if(solid(x+ca*i*18-sa*j*9,y+sa*i*18+ca*j*9))return 0;
+ return 1;
+}
+static void separate_cars(void){
+ /* Resolve independently of damage cooldown. Several passes settle pile-ups. */
+ for(int pass=0;pass<8;pass++){
+  int changed=0;
+  for(int i=0;i<CAR_COUNT;i++)for(int j=i+1;j<CAR_COUNT;j++){
+   Car *a=&g.cars[i],*b=&g.cars[j];float nx,ny,depth;
+   if(!car_overlap(a,b,&nx,&ny,&depth))continue;
+   float push=depth+.06f,ax=a->x-nx*push*.5f,ay=a->y-ny*push*.5f;
+   float bx=b->x+nx*push*.5f,by=b->y+ny*push*.5f;
+   int moveA=car_free_at(a,ax,ay),moveB=car_free_at(b,bx,by);
+   if(moveA&&moveB){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
+   else if(car_free_at(a,a->x-nx*push,a->y-ny*push)){a->x-=nx*push;a->y-=ny*push;changed=1;}
+   else if(car_free_at(b,b->x+nx*push,b->y+ny*push)){b->x+=nx*push;b->y+=ny*push;changed=1;}
+   /* Stop the closing velocity; parked cars remain stationary afterwards. */
+   float impact=fabsf(a->speed)+fabsf(b->speed);
+   if(pass==0&&(i==g.car||j==g.car)&&impact>25&&g.hitCD<=0){
+    g.cars[g.car].hp-=impact*.025f;g.heat=fminf(5,g.heat+.25f);g.hitCD=.7f;
+   }
+   a->speed=0;b->speed=0;
+  }
+  if(!changed)break;
+ }
+ if(g.car>=0){g.x=g.cars[g.car].x;g.y=g.cars[g.car].y;}
+}
 static int district(float x,float y){if(x<640&&y<1000)return 0;if(x<960&&y<1550)return 1;if(x<1100)return 2;if(y<630)return 3;if(x>1760&&y>1380)return 4;if(x>1600)return 5;return 6;}
 static const char *districts[]={"COMUNA 13","LAURELES / ESTADIO","BELEN","NORTE / ARANJUEZ","EL POBLADO","LADERA ORIENTAL","CENTRO / RIO"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
@@ -118,7 +172,7 @@ static void advance(void){
  if(g.step>=missions[g.mission].count){g.cash+=missions[g.mission].reward;g.reputation+=3;dialog("MISION COMPLETADA",missions[g.mission].outro,2);}else{notice("Objetivo completado. Consulta la nueva marca amarilla.");game_save();}
 }
 static void end_dialog(void){int a=g.dialogAction;g.screen=WORLD;if(a==1)advance();if(a==2){g.mission++;g.step=0;game_save();if(g.mission<36)start_mission();else{g.heat=0;dialog("NARCADE / FIN DE LA HISTORIA",g.ending==1?"Vera entrega el expediente a la justicia. Los vecinos conservan sus datos. Sara vuelve a casa. La historia termina, pero la ciudad sigue abierta: encuentra los 24 vinilos, realiza encargos y recorre Medellin. made by Naresz.":"Mara publica las pruebas sin exponer los datos privados. Los barrios guardan copias y vigilan su ciudad. Sara vuelve a casa. La historia termina, pero puedes seguir explorando, reunir los 24 vinilos y realizar encargos. made by Naresz.",0);}}}
-void game_init(void){memset(&g,0,sizeof(g));g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;strcpy(g.savepath,"NARCADE.SAV");world_init();}
+void game_init(void){memset(&g,0,sizeof(g));g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");world_init();}
 
 /* Mini-games: all are real state machines and require player input. */
 static const char *puzzleNames[]={"","","PC / CLAVE DE CUATRO DIGITOS","PC / CIRCUITO AISLADO","PC / MEMORIA DEL REGISTRO","RADIO / SINTONIA FINA","CONSOLA / SESION DE RITMO","ESTUCHE / CIERRE MECANICO","ACCESO / PATIO VIGILADO"};
@@ -201,11 +255,21 @@ static void enter_exit(void){
  }else notice("Acercate a un carro. TRIANGULO para tomarlo.");
 }
 static void world_tick(float ax,float ay,float dt){
- if(pressed(B_START)){g.screen=PAUSE;g.menu=0;return;}if(pressed(B_SELECT)){g.screen=MAP;g.mapSel=g.mission<36?step_now()->loc:0;return;}
+ if(pressed(B_SELECT)){g.screen=MAP;g.mapSel=g.mission<36?step_now()->loc:0;return;}
  if(pressed(B_TRI))enter_exit();
+#ifdef NARCADE_3D
+ if(g.car<0)g.viewYaw+=(held(B_R)-held(B_L))*dt*1.8f;
+ else {float d=g.cars[g.car].a-g.viewYaw;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;g.viewYaw+=d*fminf(1,dt*3.5f);}
+ if(g.car>=0){if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;}
+#else
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
+#endif
  if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
- if(g.car<0){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));float n=sqrtf(dx*dx+dy*dy);if(n>.1f){dx/=fmaxf(1,n);dy/=fmaxf(1,n);g.a=atan2f(dy,dx);float speed=held(B_CROSS)?111:72;
+ if(g.car<0){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
+#ifdef NARCADE_3D
+  float sx=dx,sy=dy;dx=-sinf(g.viewYaw)*sx-cosf(g.viewYaw)*sy;dy=cosf(g.viewYaw)*sx-sinf(g.viewYaw)*sy;
+#endif
+  float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;if(n>.1f){dx/=fmaxf(1,n);dy/=fmaxf(1,n);g.a=atan2f(dy,dx);float speed=held(B_CROSS)?111:72;
   if(free_at(g.x+dx*speed*dt,g.y,5))g.x+=dx*speed*dt;if(free_at(g.x,g.y+dy*speed*dt,5))g.y+=dy*speed*dt;}
  }else{
   Car *c=&g.cars[g.car];float steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
@@ -213,8 +277,7 @@ static void world_tick(float ax,float ay,float dt){
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
   c->a+=steer*dt*(1.4f+fabsf(c->speed)/130)*(c->speed<0?-1:1)*clampf(fabsf(c->speed)/25,0,1);
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
-  if(free_at(xx,yy,10)){c->x=xx;c->y=yy;}else{c->hp-=fabsf(c->speed)*.025f;c->speed*=-.24f;g.hitCD=.12f;}
-  for(int i=0;i<CAR_COUNT;i++)if(i!=g.car&&dist(c->x,c->y,g.cars[i].x,g.cars[i].y)<21&&g.hitCD<=0){float impact=fabsf(c->speed);c->hp-=impact*.035f;c->speed*=-.3f;g.hitCD=.7f;g.heat=fminf(5,g.heat+.4f);}
+  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->hp-=fabsf(c->speed)*.025f;c->speed*=-.24f;g.hitCD=.12f;}
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
@@ -235,8 +298,9 @@ static void world_tick(float ax,float ay,float dt){
    if(fabsf(lx-42)<2&&fabsf(ly-42)<2&&((int)(g.clock*10)+i)%4==0)c->a+=PI*.5f;
   }
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
-  if(free_at(xx,yy,9)){c->x=xx;c->y=yy;}else c->a+=PI*.5f;
+  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a+=PI*.5f;}
  }
+ separate_cars();
  for(int i=0;i<42;i++){Ped *p=&g.peds[i];p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;}
  if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
@@ -251,6 +315,9 @@ static void world_tick(float ax,float ay,float dt){
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
+ if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
+  g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
+ }
  if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
  else if(g.screen==WORLD){g.playtime+=dt;world_tick(ax,ay,dt);}
@@ -258,9 +325,18 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
  else if(g.screen==PAUSE){
-  if(pressed(B_UP))g.menu=wrapi(g.menu-1,5);if(pressed(B_DOWN))g.menu=(g.menu+1)%5;
-  if(pressed(B_START)||pressed(B_CIRCLE))g.screen=WORLD;
-  if(pressed(B_CROSS)){switch(g.menu){case 0:g.screen=WORLD;break;case 1:notice(game_save()?"Partida guardada.":"No se pudo guardar. Revisa la Memory Stick.");g.screen=WORLD;break;case 2:g.car=-1;g.x=62;g.y=1022;g.health=100;g.heat=0;g.raceTime=0;g.side=0;g.missionTimer=0;g.screen=WORLD;notice("De vuelta en el refugio. Conservas el progreso.");break;case 3:g.screen=JOURNAL;g.journalPage=2;break;case 4:if(game_save())g.screen=TITLE;else notice("No se pudo guardar. Elige volver si deseas continuar.");break;}}
+  if(pressed(B_START)||pressed(B_CIRCLE)){g.screen=g.pauseBack;return;}
+  if(pressed(B_L)||pressed(B_LEFT)){g.pauseTab=wrapi(g.pauseTab-1,4);g.menu=0;}
+  if(pressed(B_R)||pressed(B_RIGHT)){g.pauseTab=(g.pauseTab+1)%4;g.menu=0;}
+  int delta=pressed(B_DOWN)-pressed(B_UP);
+  if(g.pauseTab==0)g.mapSel=wrapi(g.mapSel+delta,30);
+  else if(g.pauseTab==1)g.journalPage=wrapi(g.journalPage+delta,3);
+  else if(g.pauseTab==2)g.menu=wrapi(g.menu+delta,2);
+  if(pressed(B_CROSS)){
+   if(g.pauseTab==2&&g.menu==0)notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");
+   else if(g.pauseTab==2&&g.menu==1)g.screen=g.pauseBack;
+   else if(g.pauseTab==3){if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
+  }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
  int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE)||rhythm;
  if(rhythm)audioPos=(unsigned)(g.p.t*44100)%(track_length[3]*2);
@@ -337,7 +413,13 @@ static void hud(void){char b[180];rect(0,0,W,31,INK);text(11,7,"NARCADE",LIME,1)
  else text(11,222,"Explora. Reune vinilos. Encargos en el mercado.",LIME,1);
  if(g.noticeT>0)textwrap(11,237,460,g.notice,WHITE);
  else if(g.car>=0){text(11,237,"X gas  [] freno  TRI salir  ARRIBA interactuar",WHITE,1);text(11,252,g.station<4?track_names[g.station]:"RADIO APAGADA / L-R cambiar",MUTED,1);}
- else{text(11,237,"[] interactuar  TRI tomar carro  X correr",WHITE,1);text(11,252,"SELECT mapa   O cuaderno   START pausa",MUTED,1);}
+ else{text(11,237,"[] interactuar  TRI tomar carro  X correr",WHITE,1);
+#ifdef NARCADE_3D
+ text(11,252,"L/R camara  SELECT mapa  O cuaderno  START pausa",MUTED,1);
+#else
+ text(11,252,"SELECT mapa   O cuaderno   START pausa",MUTED,1);
+#endif
+ }
 }
 
 static void signature(int x,int y){for(int yy=0;yy<74;yy++)for(int xx=0;xx<180;xx++){int a=signature_data[yy*180+xx];if(a>60)rect(x+xx,y+yy,1,1,a>160?LIME:MUTED);}}
@@ -348,7 +430,7 @@ static void title_draw(void){
  line(0,79,480,142,RGB(95,125,124));for(int i=0;i<3;i++){int x=75+i*164+(int)(g.clock*5)%164;int y=79+x*63/480;rect(x,y,1,8,MUTED);rect(x-7,y+8,15,11,TEAL);rect(x-5,y+10,4,4,INK);rect(x+1,y+10,4,4,INK);}
  label(24,16,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
  text(22,36,"NARCADE",INK,6);text(18,31,"NARCADE",WHITE,6);
- rect(21,98,249,3,LIME);label(23,110,"CIUDAD ABIERTA / PSP / v1.0",WHITE);
+ rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.1",WHITE);
  rect(14,169,222,76,INK);text(28,181,g.menu==0?"> CONTINUAR / EMPEZAR":"  CONTINUAR / EMPEZAR",g.menu==0?LIME:MUTED,1);text(28,204,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(28,226,"X confirmar",TEAL,1);
  rect(288,165,178,80,INK);text(312,176,"made by",WHITE,1);signature(287,184);
  footer("36 misiones  /  7 minijuegos  /  radio original");
@@ -412,16 +494,65 @@ static void journal_draw(void){
   snprintf(b,sizeof(b),"HISTORIA %d/36   VINILOS %d/24",g.mission,cachecount());text(21,62,b,LIME,1);snprintf(b,sizeof(b),"REPUTACION %d   ENCARGOS %d   TIEMPO %dh %02dm",g.reputation,g.jobs,(int)g.playtime/3600,((int)g.playtime/60)%60);text(21,82,b,MUTED,1);
   const char *lines[]={"Nico / Mensajero. Una firma falsa cambio su vida.","Sara / Hermana de Nico. Investiga a Prisma.","Vera / Periodista. Sigue los documentos.","Luna / Mecanica. Conoce cada ruta de la ciudad.","Mara / DJ de Radio Ladera. Escucha lo oculto.","Tiza / Artista. Las paredes guardan sus pistas."};for(int i=0;i<6;i++)text(21,115+i*20,lines[i],WHITE,1);
  }else{
-  const char *lines[]={"A PIE: analogico/cruceta mover. X correr.","TRIANGULO: entrar o salir de un carro cercano.","[]: interactuar a pie. ARRIBA: desde el carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","L/R: emisora. Hay cuatro, mas radio apagada.","O: cuaderno. SELECT: mapa. START: pausa.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: [] recoger.","Guardado por objetivo. Pausa permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
+  const char *lines[]={"A PIE: analogico/cruceta mover. X correr.","TRIANGULO: entrar o salir de un carro cercano.","[]: interactuar a pie. ARRIBA: desde el carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","L/R: camara a pie; emisora dentro del carro.","O: mensajes. SELECT: mapa. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: [] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
  }
  footer("L/R paginas  O volver");
 }
-void game_draw(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
- if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}
- world_draw();hud();
+static void pause_draw(void){
+ const char *tabs[]={"MAPA","MENSAJES","PARTIDA","SALIR"};char b[100];
+ if(g.pauseTab==0)map_draw();
+ else if(g.pauseTab==1)journal_draw();
+ else{
+  rect(0,0,W,H,INK);rect(18,70,444,161,PANEL);
+  if(g.pauseTab==2){
+   text(34,84,"TU PARTIDA",TEAL,2);
+   snprintf(b,sizeof(b),"Historia %d/36   Dinero $%d",g.mission,g.cash);text(34,117,b,MUTED,1);
+   const char *actions[]={"GUARDAR PARTIDA","VOLVER AL JUEGO"};
+   for(int i=0;i<2;i++){if(g.menu==i)rect(28,143+i*34,424,29,RGB(43,62,64));text(39,151+i*34,actions[i],g.menu==i?LIME:WHITE,1);}
+  }else{
+   text(34,83,"MENU PRINCIPAL",TEAL,2);
+   textwrap(34,120,395,"Se guardara tu progreso antes de volver al titulo de Narcade. Podras continuar desde el ultimo objetivo guardado.",MUTED);
+   rect(28,179,424,32,RGB(43,62,64));text(40,189,"X  GUARDAR Y VOLVER AL TITULO",LIME,1);
+  }
+ }
+ rect(0,0,W,54,INK);text(15,8,"NARCADE",WHITE,2);text(300,15,"JUEGO EN PAUSA",MUTED,1);
+ for(int i=0;i<4;i++){int x=12+i*117;rect(x,34,111,19,i==g.pauseTab?LIME:PANEL);text(x+9,38,tabs[i],i==g.pauseTab?INK:MUTED,1);}
+ if(g.noticeT>0&&g.pauseTab>=2){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
+ footer(g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
+}
+static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
+ if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
+#ifdef NARCADE_3D
+ R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
+ scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=scene.driving?95:65;
+ /* Keep the camera on the player's side of walls; do not cross a building. */
+ for(float d=8;d<scene.cameraDistance;d+=4)if(solid(g.x-cosf(g.viewYaw)*d,g.y-sinf(g.viewYaw)*d)){scene.cameraDistance=fmaxf(10,d-5);break;}
+ scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
+ for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police};
+ for(int i=0;i<42;i++)scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,g.peds[i].v>0?PI*.5f:-PI*.5f,i};
+ for(int i=0;i<30;i++){scene.hubs[i][0]=locations[i].x;scene.hubs[i][1]=locations[i].y;}
+ scene.target=g.raceTime>0?g.route[g.checkpoint]:g.mission<36?step_now()->loc:-1;
+ if(scene.target>=0){scene.targetX=locations[scene.target].x;scene.targetZ=locations[scene.target].y;}
+ r3_draw(renderTarget,&scene);
+#else
+ world_draw();
+#endif
+ hud();
  if(g.screen==DIALOG){rect(16,70,448,144,INK);outline(16,70,448,144,RGB(67,92,93));rect(16,70,4,144,LIME);text(31,83,g.speaker,TEAL,1);textwrap(31,106,416,g.dialog,WHITE);text(31,196,g.dialogAction==3?"X empezar de nuevo  O cancelar":"X continuar",LIME,1);}
- if(g.screen==PAUSE){rect(99,56,282,179,INK);text(119,69,"NARCADE / PAUSA",TEAL,1);const char *items[]={"Volver a la ciudad","Guardar partida","Volver al refugio","Ver controles","Guardar y volver al titulo"};for(int i=0;i<5;i++){if(i==g.menu)rect(111,96+i*26,258,23,PANEL);text(121,102+i*26,items[i],i==g.menu?LIME:MUTED,1);}}
  if(g.screen==CHOICE){rect(16,62,448,173,INK);text(30,76,"TU DECISION / EL FUTURO DEL EXPEDIENTE",TEAL,1);textwrap(30,98,412,"Las dos opciones protegen los datos privados. Elige quien llevara las pruebas a la ciudad.",MUTED);const char *items[]={"VERA: entregar el expediente a la justicia","MARA: publicar tambien una memoria vecinal"};for(int i=0;i<2;i++){rect(25,146+i*35,429,28,i==g.menu?PANEL:INK);text(31,154+i*35,items[i],i==g.menu?LIME:WHITE,1);}text(31,219,"ARRIBA/ABAJO elegir  X confirmar",MUTED,1);}
+}
+void game_draw(uint32_t *pixels,int stride){
+#ifdef NARCADE_3D
+ renderTarget=pixels;
+#ifndef R3_HOST
+ static uint32_t __attribute__((aligned(16))) overlay[512*512];
+ memset(overlay,0,512*272*sizeof(uint32_t));draw_frame(overlay,512);r3_overlay(pixels,overlay);
+#else
+ draw_frame(pixels,stride);
+#endif
+#else
+ draw_frame(pixels,stride);
+#endif
 }
 void game_audio(short *stereo,unsigned frames){
  int station=audioStation;if(station>3)station=0;if(station!=audioLast){audioPos=0;audioLast=station;}

@@ -1,0 +1,32 @@
+newmtl sidewalk
+Kd 1 1 1
+map_Kd textures3d/sidewalk.png
+
+newmtl jacket
+Kd 1 1 1
+map_Kd textures3d/jacket.png
+
+newmtl jeans
+Kd 1 1 1
+map_Kd textures3d/jeans.png
+
+newmtl face
+Kd 1 1 1
+map_Kd textures3d/face.png
+
+newmtl jacket-back
+Kd 1 1 1
+map_Kd textures3d/jacket-back.png
+
+newmtl sleeve
+Kd 1 1 1
+map_Kd textures3d/sleeve.png
+
+newmtl skin
+Kd 1 1 1
+map_Kd textures3d/skin.png
+
+newmtl hair
+Kd 1 1 1
+map_Kd textures3d/hair.png
+

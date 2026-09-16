@@ -1,6 +1,10 @@
 /* Integration checks. These helpers are not compiled into the PSP game. */
 #include <assert.h>
 #include "../src/game.c"
+#ifdef _WIN32
+#undef assert
+#define assert(x) do { if(!(x)){fprintf(stderr,"FAIL: %s at %s:%d\n",#x,__FILE__,__LINE__);exit(1);} } while(0)
+#endif
 static uint32_t frame[W*H];
 static void snap(const char *name){game_draw(frame,W);char path[256];snprintf(path,sizeof(path),"build/%s.ppm",name);FILE *f=fopen(path,"wb");assert(f);fprintf(f,"P6\n480 272\n255\n");for(int i=0;i<W*H;i++){unsigned char rgb[3]={frame[i]&255,(frame[i]>>8)&255,(frame[i]>>16)&255};fwrite(rgb,1,3,f);}fclose(f);}
 static void tick(unsigned b){game_tick(b,0,0,1.0f/60);}
@@ -39,11 +43,11 @@ int main(void){
    interact();miniCounts[kind]++;
    if(kind>=K_CODE&&kind<=K_STEALTH){assert(g.screen==MINI);if(miniCounts[kind]==1){char name[40];snprintf(name,sizeof(name),"mini-%d",kind);snap(name);}solve();finishdialog();}
    else if(kind==K_RACE){assert(g.raceTime>0);for(int i=0;i<6;i++){int l=g.route[g.checkpoint];g.x=g.cars[1].x=locations[l].x;g.y=g.cars[1].y=locations[l].y;tick(0);}assert(g.raceTime==0);}
-   else if(kind==K_CHASE){assert(g.missionTimer>0);g.heat=0;g.missionTimer=st->par+1;tick(0);}
+   else if(kind==K_CHASE){assert(g.missionTimer>0);g.heat=0;g.hitCD=1;g.missionTimer=st->par+1;tick(0);}
    else if(kind==K_CHOICE){assert(g.screen==CHOICE);tap(B_DOWN);tap(B_CROSS);assert(g.ending==2);}
    else if(kind==K_TALK||kind==K_ENDING)finishdialog();
    total++;
-   if(s==missions[m].count-1){assert(g.screen==DIALOG&&g.dialogAction==2);assert(game_save());assert(load_game());assert(g.mission==m+1&&g.step==0);g.screen=WORLD;}else assert(g.step==s+1);
+   if(s==missions[m].count-1){assert(g.screen==DIALOG&&g.dialogAction==2);assert(game_save());assert(load_game());assert(g.mission==m+1&&g.step==0);g.screen=WORLD;}else {if(g.step!=s+1)fprintf(stderr,"mission=%d step=%d kind=%d actual=%d car=%d pos=%f,%f\n",m,s,kind,g.step,g.car,g.x,g.y);assert(g.step==s+1);}
   }
  }
  assert(total==146&&g.mission==36);printf("PASS: 36 missions, %d objectives; all seven puzzle families solved through input.\n",total);
@@ -53,5 +57,5 @@ int main(void){
  printf("PASS: native simulation, saves, corrupted-save recovery, car controls, side job and PCM audio.\n");
  // Random input with ASan/UBSan enabled catches indexing and render bounds issues.
  for(int i=0;i<12000;i++){unsigned keys[]={0,B_START,B_SELECT,B_CIRCLE,B_TRI,B_CROSS,B_SQUARE,B_UP,B_DOWN,B_LEFT,B_RIGHT,B_L,B_R};game_tick(keys[random_u()%13],(int)(random_u()%3)-1,(int)(random_u()%3)-1,1.0f/30);if(i%13==0)game_draw(frame,W);}
- puts("PASS: 12,000 randomized input frames under sanitizers.");return 0;
+ puts("PASS: 12,000 randomized input frames (sanitizers when enabled by the compiler).");return 0;
 }

@@ -1,11 +1,11 @@
-"""Build a genuine ISO-9660 PSP disc image from the native PRX executable."""
+"""Build a genuine ISO-9660 PSP disc image from the static ELF executable."""
 import pathlib, subprocess, shutil, io, hashlib
 import pycdlib
 root=pathlib.Path(__file__).resolve().parents[1]
 stage=root/'build/umd';stage.mkdir(parents=True,exist_ok=True)
 (stage/'PSP_GAME/SYSDIR').mkdir(parents=True,exist_ok=True)
 (stage/'PSP_GAME/USRDIR').mkdir(exist_ok=True)
-subprocess.run(['mksfoex','-s','CATEGORY=UG','-s','DISC_ID=NARC00001','-s','DISC_VERSION=1.00','-s','PSP_SYSTEM_VER=6.00','-d','BOOTABLE=1','-d','PARENTAL_LEVEL=5','-d','REGION=32768','Narcade',str(stage/'PSP_GAME/PARAM.SFO')],check=True)
+subprocess.run(['mksfoex','-s','CATEGORY=UG','-s','DISC_ID=NARC00001','-s','DISC_VERSION=2.10','-s','PSP_SYSTEM_VER=6.00','-d','BOOTABLE=1','-d','PARENTAL_LEVEL=5','-d','REGION=32768','Narcade 3D',str(stage/'PSP_GAME/PARAM.SFO')],check=True)
 # v1.2: el cargador de disco del CFW solo admite, ademas de ejecutables de UMD firmados, ELFs
 # ESTATICOS (asi funcionan los EBOOT.BIN "descifrados"). Se usa narcade_static.elf (make -f Makefile.iso).
 shutil.copy(root/'narcade_static.elf',stage/'PSP_GAME/SYSDIR/EBOOT.BIN')
@@ -13,7 +13,7 @@ shutil.copy(root/'narcade_static.elf',stage/'PSP_GAME/SYSDIR/BOOT.BIN')
 shutil.copy(root/'assets/ICON0.png',stage/'PSP_GAME/ICON0.PNG')
 shutil.copy(root/'assets/PIC1.png',stage/'PSP_GAME/PIC1.PNG')
 (stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
-(stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 1.0 - made by Naresz. Original homebrew. Assets embedded in executable.\n')
+(stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 3D 2.1 streetwear - made by Naresz. Original homebrew. Assets embedded in executable.\n')
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:
  shutil.copy(root/source,stage/'PSP_GAME/USRDIR'/dest)
 iso=pycdlib.PyCdlib();iso.new(interchange_level=1,vol_ident='NARCADE',sys_ident='PSP GAME',pub_ident_str='NARESZ')
