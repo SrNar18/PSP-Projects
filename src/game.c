@@ -47,6 +47,7 @@ static struct {
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
  float viewYaw,walking;
  int pauseTab,pauseBack;
+ int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
  Car cars[CAR_COUNT]; Ped peds[42]; Puzzle p;
 } g;
@@ -200,7 +201,7 @@ static void advance(void){
  if(g.step>=missions[g.mission].count){g.cash+=missions[g.mission].reward;g.reputation+=3;dialog("MISION COMPLETADA",missions[g.mission].outro,2);}else{notice("Objetivo completado. Consulta la nueva marca amarilla.");game_save();}
 }
 static void end_dialog(void){int a=g.dialogAction;g.screen=WORLD;if(a==1)advance();if(a==2){g.mission++;g.step=0;game_save();if(g.mission<36)start_mission();else{g.heat=0;dialog("NARCADE / FIN DE LA HISTORIA",g.ending==1?"Vera entrega el expediente a la justicia. Los vecinos conservan sus datos. Sara vuelve a casa. La historia termina, pero la ciudad sigue abierta: encuentra los 24 vinilos, realiza encargos y recorre Medellin. made by Naresz.":"Mara publica las pruebas sin exponer los datos privados. Los barrios guardan copias y vigilan su ciudad. Sara vuelve a casa. La historia termina, pero puedes seguir explorando, reunir los 24 vinilos y realizar encargos. made by Naresz.",0);}}}
-void game_init(void){memset(&g,0,sizeof(g));g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");world_init();}
+void game_init(void){memset(&g,0,sizeof(g));g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");world_init();}
 
 /* Mini-games: all are real state machines and require player input. */
 static const char *puzzleNames[]={"","","PC / CLAVE DE CUATRO DIGITOS","PC / CIRCUITO AISLADO","PC / MEMORIA DEL REGISTRO","RADIO / SINTONIA FINA","CONSOLA / SESION DE RITMO","ESTUCHE / CIERRE MECANICO","ACCESO / PATIO VIGILADO"};
@@ -341,7 +342,7 @@ static void world_tick(float ax,float ay,float dt){
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
- dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);g.hitCD=fmaxf(0,g.hitCD-dt);
+ dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
@@ -428,29 +429,59 @@ static void world_draw(void){
 }
 static int cachecount(void){int n=0;for(int i=0;i<24;i++)if(g.caches&(1u<<i))n++;return n;}
 int cachecount_public(void){return cachecount();}
-static void hud(void){char b[180];rect(0,0,W,31,INK);text(11,7,"NARCADE",LIME,1);snprintf(b,sizeof(b),"$%d",g.cash);text(82,7,b,WHITE,1);
- text(178,7,districts[district(g.x,g.y)],MUTED,1);for(int i=0;i<5;i++)rect(396+i*15,8,10,10,g.heat>i?CORAL:RGB(47,62,66));
- rect(10,24,110,3,RGB(66,67,65));rect(10,24,(int)(g.health*1.1f),3,TEAL);
- if(g.car>=0){rect(123,24,100,3,RGB(66,67,65));rect(123,24,g.cars[g.car].hp,3,GOLD);}
- if(g.mission<36){snprintf(b,sizeof(b),"%02d/36  %s",g.mission+1,missions[g.mission].title);label(12,37,b,WHITE);
-  const Step *s=step_now();if(dist(g.x,g.y,locations[s->loc].x,locations[s->loc].y)<58){const char *act=s->kind==K_DRIVE?"ENTREGAR":s->kind==K_RACE?"INICIAR RUTA":s->kind==K_CHASE?"INICIAR HUIDA":s->kind==K_TALK||s->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"[]",act);label(152,200,b,LIME);}}
- else label(12,37,"HISTORIA COMPLETA / CIUDAD ABIERTA",LIME);
- if(g.raceTime>0){snprintf(b,sizeof(b),"RUTA %d/6   %ds",g.checkpoint+1,(int)g.raceTime);label(290,57,b,GOLD);}
- else if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){snprintf(b,sizeof(b),"ALEJATE Y PIERDE LA BUSQUEDA / %ds",(int)fmaxf(0,step_now()->par-g.missionTimer));label(12,57,b,CORAL);}
- rect(0,218,W,54,INK);
- if(g.mission<36){const Step *s=step_now();int target=g.raceTime>0?g.route[g.checkpoint]:s->loc;snprintf(b,sizeof(b),"%s / %dm",locations[target].name,(int)dist(g.x,g.y,locations[target].x,locations[target].y));text(11,222,b,LIME,1);}
- else text(11,222,"Explora. Reune vinilos. Encargos en el mercado.",LIME,1);
- if(g.noticeT>0)textwrap(11,237,460,g.notice,WHITE);
- else if(g.car>=0){text(11,237,"X gas  [] freno  TRI salir  ARRIBA interactuar",WHITE,1);text(11,252,g.station<4?track_names[g.station]:"RADIO APAGADA / L-R cambiar",MUTED,1);}
- else{text(11,237,"[] interactuar  TRI tomar carro  X correr",WHITE,1);
-#ifdef NARCADE_3D
- text(11,252,"L/R camara  SELECT mapa  O cuaderno  START pausa",MUTED,1);
-#else
- text(11,252,"SELECT mapa   O cuaderno   START pausa",MUTED,1);
-#endif
+/* v2.3 (Claude): HUD minimo. Sin barra superior ni franja inferior permanentes.
+   - Esquina superior derecha: barra de vida (y del carro), dinero y busqueda.
+   - Arriba al centro: nombre del barrio, solo unos segundos al entrar en uno nuevo.
+   - Abajo al centro: la frase del objetivo, solo al empezar cada objetivo (se relee en START > cuaderno/mapa),
+     los avisos del juego y la accion contextual al llegar al objetivo.
+   - Abajo a la izquierda: minimapa circular con calles, rio, objetivo y posicion. */
+static void text_center(int cx,int y,const char *s,uint32_t c,int scale){text(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
+static void box_center(int cx,int y,int w,int h,uint32_t c){rect(cx-w/2,y,w,h,c);}
+static void minimap(int cx,int cy,int r){
+ const float scale=6.0f; /* unidades de mundo por pixel */
+ circle(cx,cy,r+2,RGB(20,30,34));
+ for(int dy=-r;dy<=r;dy++)for(int dx=-r;dx<=r;dx++){
+  if(dx*dx+dy*dy>r*r)continue;
+  float wx=g.x+dx*scale,wy=g.y+dy*scale;uint32_t c;
+  if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)c=RGB(20,30,34);
+  else if(wx>1396&&wx<1460)c=RGB(34,83,94);
+  else{int lx=(int)wx%320,ly=(int)wy%320,bx=(int)wx/320,by=(int)wy/320;
+   if(lx<86||ly<86)c=RGB(74,82,84);else c=parkblock(bx,by)?RGB(57,91,68):RGB(44,52,54);}
+  px(cx+dx,cy+dy,c);
  }
+ for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||g.heat<=0)continue;int dx=(int)((g.cars[i].x-g.x)/scale),dy=(int)((g.cars[i].y-g.y)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
+ if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float dx=(locations[t].x-g.x)/scale,dy=(locations[t].y-g.y)/scale;float d=sqrtf(dx*dx+dy*dy);
+  if(d>r-4){dx=dx/d*(r-4);dy=dy/d*(r-4);}circle(cx+(int)dx,cy+(int)dy,3,INK);circle(cx+(int)dx,cy+(int)dy,2,LIME);}
+ float a=g.car>=0?g.cars[g.car].a:g.a;circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
+ for(int k=0;k<48;k++){float t=k*PI*2/48;px(cx+(int)(cosf(t)*(r+2)),cy+(int)(sinf(t)*(r+2)),MUTED);}
 }
-
+static void hud(void){char b[180];
+ /* Barrio nuevo: aviso temporal arriba. */
+ int d=district(g.x,g.y);if(g.screen==WORLD&&d!=g.hudDistrict){g.hudDistrict=d;g.hudDistrictT=2.2f;}
+ if(g.hudDistrictT>0){int w=(int)strlen(districts[d])*7+24;box_center(W/2,10,w,19,INK);text_center(W/2,13,districts[d],TEAL,1);}
+ /* Objetivo nuevo: frase temporal abajo. */
+ if(g.screen==WORLD&&g.mission<36){int key=g.mission*8+g.step+1;if(key!=g.hudStepKey){g.hudStepKey=key;g.hudObjectiveT=5.0f;}}
+ /* Esquina superior derecha: vida, carro, dinero, busqueda. */
+ rect(W-122,8,112,5,RGB(40,48,50));rect(W-122,8,(int)(g.health*1.12f),5,g.health>30?TEAL:CORAL);
+ if(g.car>=0){rect(W-122,15,112,3,RGB(40,48,50));rect(W-122,15,(int)(g.cars[g.car].hp*1.12f),3,GOLD);}
+ snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,21,b,WHITE,1);
+ if(g.heat>0)for(int i=0;i<5;i++)rect(W-122+i*10,36,7,4,g.heat>i?CORAL:RGB(40,48,50));
+ /* Cronometros de ruta / huida. */
+ if(g.raceTime>0){snprintf(b,sizeof(b),"RUTA %d/6   %ds",g.checkpoint+1,(int)g.raceTime);box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,GOLD,1);}
+ else if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){snprintf(b,sizeof(b),"ALEJATE Y PIERDE LA BUSQUEDA / %ds",(int)fmaxf(0,step_now()->par-g.missionTimer));box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,CORAL,1);}
+ /* Abajo al centro: aviso > accion contextual > frase del objetivo. */
+ const char *line=NULL;uint32_t col=WHITE;
+ if(g.noticeT>0){line=g.notice;col=WHITE;}
+ else if(g.mission<36){const Step *st=step_now();
+  if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"[]",act);line=b;col=LIME;}
+  else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
+ if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
+  int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
+  box_center(cx,H-14-lines*13,w,lines*13+8,INK);
+  if(lines==1)text_center(cx,H-10-13,line,col,1);else textwrap(cx-w/2+10,H-10-lines*13,w-20,line,col);}
+ /* Minimapa. */
+ minimap(46,H-46,32);
+}
 static void signature(int x,int y){for(int yy=0;yy<74;yy++)for(int xx=0;xx<180;xx++){int a=signature_data[yy*180+xx];if(a>60)rect(x+xx,y+yy,1,1,a>160?LIME:MUTED);}}
 static void title_draw(void){
  rect(0,0,W,H,INK);
@@ -509,11 +540,14 @@ static void map_draw(void){
  for(int by=0;by<7;by++)for(int bx=0;bx<8;bx++){int x=ox+bx*320*sc,y=oy+by*320*sc;rect(x,y,24,24,RGB(54,71,73));rect(x+7,y+7,15,15,parkblock(bx,by)?RGB(67,107,73):RGB(96,108,100));}
  rect(ox+1396*sc,oy,5,177,TEAL);
  for(int i=0;i<30;i++){int x=ox+locations[i].x*sc,y=oy+locations[i].y*sc;circle(x,y,2,MUTED);if(i==g.mapSel)outline(x-4,y-4,9,9,WHITE);}
- if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;circle(ox+locations[l].x*sc,oy+locations[l].y*sc,4,LIME);}
- circle(ox+g.x*sc,oy+g.y*sc,3,CORAL);
+ if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;int mx=ox+(int)(locations[l].x*sc),my=oy+(int)(locations[l].y*sc);
+  /* Icono de objetivo: chincheta amarilla con "!" sobre el punto. */
+  circle(mx,my-9,6,INK);circle(mx,my-9,5,LIME);line(mx-3,my-5,mx,my,INK);line(mx+3,my-5,mx,my,INK);line(mx-2,my-5,mx,my-1,LIME);line(mx+2,my-5,mx,my-1,LIME);rect(mx,my-12,1,4,INK);rect(mx,my-7,1,1,INK);}
+ /* Jugador: flecha coral con su orientacion. */
+ {int pxp=ox+(int)(g.x*sc),pyp=oy+(int)(g.y*sc);float a=g.car>=0?g.cars[g.car].a:g.a;circle(pxp,pyp,3,INK);circle(pxp,pyp,2,CORAL);line(pxp,pyp,pxp+(int)(cosf(a)*6),pyp+(int)(sinf(a)*6),CORAL);}
  text(245,61,"LUGAR SELECCIONADO",TEAL,1);textwrap(245,83,222,locations[g.mapSel].name,WHITE);
  snprintf(b,sizeof(b),"Distancia: %d m",(int)dist(g.x,g.y,locations[g.mapSel].x,locations[g.mapSel].y));text(245,111,b,MUTED,1);
- text(245,139,"AMARILLO: objetivo",LIME,1);text(245,156,"CORAL: tu posicion",CORAL,1);text(245,174,"S: refugio / guardar",MUTED,1);text(245,191,"T: taller / reparar",MUTED,1);text(245,208,"$: encargos / mercado",MUTED,1);
+ text(245,139,"CHINCHETA: objetivo actual",LIME,1);text(245,156,"CORAL: tu posicion",CORAL,1);text(245,174,"S: refugio / guardar",MUTED,1);text(245,191,"T: taller / reparar",MUTED,1);text(245,208,"$: encargos / mercado",MUTED,1);
  footer("CRUCETA recorrer lugares  SELECT u O volver");
 }
 static void journal_draw(void){

@@ -24,3 +24,18 @@ Hechos por Claude tras probar en la consola fisica con CFW PRO 6.60.
 - `PSP/GAME/NARCADE/EBOOT.PBP` -> `ms0:/PSP/GAME/NARCADE/`
 - `Narcade.iso` -> `ms0:/ISO/`; en la XMB mantener SELECT > UMD ISO MODE > Inferno.
 - En E-1000 ejecutar FastRecovery tras un apagado completo.
+
+# v2.2 / v2.3 (Claude, 16-sep-2026) sobre el render 3D de Codex
+- Guardado nativo: START > PARTIDA > Guardar abre el dialogo de la Memory Stick (4 ranuras,
+  ms0:/PSP/SAVEDATA/NARC00001000x, icono de portada, titulo "Mision xx/36 - ..."). CONTINUAR en el
+  titulo abre el dialogo de carga si hay ranuras; si no, sigue el flujo antiguo (PROGRESS.BIN).
+  Implementado en psp_main.c (sceUtilitySavedata) + game_export_save/import en game.c; -lpsputility.
+  Durante el dialogo NO se alternan buffers (el sistema dibuja sobre el visible). Nunca IMMEDIATE.
+- Personaje: person() en render3d.c con proporciones humanas (hombros 8.4, cuello, codos, piernas).
+- Portada ICON0 (assets/icon-source.png -> 144x80) y musica de la XMB SND0.AT3 (tools/make_snd0.py:
+  ffmpeg recorta 0:11-0:31 de assets/xmb-music-source.mp3, atracdenc -> ATRAC3, reempaquetado RIFF).
+- HUD minimo (game.c hud()): sin barra superior ni franja inferior. Vida/dinero arriba a la derecha;
+  barrio arriba 2 s al cambiar; frase de objetivo abajo 5 s al empezar cada objetivo (se relee en
+  START > cuaderno); minimapa circular abajo a la izquierda; chincheta "!" del objetivo en el mapa.
+- Pendiente para Codex: el jugador aparece dentro de la caja del terminal del refugio y atraviesa
+  coches (colision 2D vs escena 3D).
