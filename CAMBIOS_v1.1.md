@@ -41,3 +41,16 @@ Hechos por Claude tras probar en la consola fisica con CFW PRO 6.60.
   coches (colision 2D vs escena 3D).
 - SND0.AT3 (musica XMB): pendiente. La XMB real reproduce SND0 de Sony (ATRAC3plus) en el EBOOT de Narcade,
   pero rechaza todo lo generado con atracdenc (ver tools/make_snd0.py). Requiere at3tool.exe (Sony).
+
+# v2.4 (Claude, 17-sep-2026): optimizacion de rendimiento del render 3D
+Medido con overlay de perfil (NARCADE_PROFILE=1 python tools/build_windows.py) en PPSSPP, que emula los ciclos MIPS:
+- Version de Codex del 17-sep: 138-156 ms/fotograma (6-7 fps). Optimizada: 19-22 ms (45-50 fps).
+Tecnicas (render3d.c, world_geo.h):
+1. Frustum culling por esfera envolvente: manzanas, coches y peatones fuera de la camara no generan geometria.
+2. LOD por distancia (>430): sin marcas viales, pasos de cebra, farolas, murales ni arboles; edificios en un solo bloque.
+   Coches a >300: sin ruedas.
+3. Transformacion geografica rigida cacheada por objeto (antes geo_project+geo_heading con atan2 por VERTICE).
+4. local(): seno/coseno cacheados por angulo. player_pose(): constantes de la marcha una vez por fotograma.
+5. polygon(): aceptacion/rechazo trivial por plano; solo se recorta contra los planos que se cruzan.
+6. Ruta rapida para los 2.344 triangulos del jugador (sin polygon(): sin recorte ni copias).
+7. Tabla de alturas del terreno (rejilla de 80) en vez de 4 evaluaciones de geo_height_raw por consulta.

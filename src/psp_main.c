@@ -75,7 +75,13 @@ int main(void){
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
   int req=game_take_request();if(req){handle_save_request(req,buffers,&index);before=sceKernelGetSystemTimeWide();continue;}
+#ifdef NARCADE_PROFILE
+  uint64_t p0=sceKernelGetSystemTimeWide();
+#endif
   game_draw(buffers[index],512);
+#ifdef NARCADE_PROFILE
+  game_set_profile((sceKernelGetSystemTimeWide()-p0)/1000.0f);
+#endif
   /* v1.2: pedir el cambio de buffer ANTES de esperar el vblank: el cambio ocurre en ese vblank
      y el siguiente fotograma se dibuja en el buffer ya oculto. (v1.0 esperaba primero y pedia
      el cambio despues, asi que redibujaba el buffer aun visible: parpadeo en la parte superior.) */

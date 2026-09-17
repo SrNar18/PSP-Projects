@@ -60,30 +60,51 @@ static float plane_distance(const Vertex *v,int k){return planes[k][0]*v->x+plan
 static Vertex interpolate(Vertex a,Vertex b,float t){
     Vertex v={a.u+(b.u-a.u)*t,a.v+(b.v-a.v)*t,a.color,a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t};return v;
 }
+/* Optimizacion (Claude): en modo rigido todos los vertices de un objeto comparten proyeccion, rumbo y altura;
+   antes se recalculaban (geo_project + geo_heading con atan2, cos, sin) para CADA vertice. Se cachean por objeto. */
+static float rigX=1e30f,rigZ=1e30f,rigYaw=1e30f,rigGX,rigGZ,rigCos,rigSin,rigH;
+static void rigid_cache(void){
+    if(objectX==rigX&&objectZ==rigZ&&objectYaw==rigYaw)return;
+    rigX=objectX;rigZ=objectZ;rigYaw=objectYaw;
+    geo_project(objectX,objectZ,&rigGX,&rigGZ);
+    float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;rigCos=cosf(da);rigSin=sinf(da);
+    rigH=geo_height(objectX,objectZ);
+}
 static void polygon(int mat,Vertex *input,int count){
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     if(geographic)for(int i=0;i<count;i++){
         Vertex *v=&buffers[0][i];float gx,gz;
         if(rigid){
-            geo_project(objectX,objectZ,&gx,&gz);
-            float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;
+            rigid_cache();
             float dx=v->x-objectX,dz=v->z-objectZ;
-            v->x=gx+cosf(da)*dx-sinf(da)*dz;v->z=gz+sinf(da)*dx+cosf(da)*dz;
+            v->x=rigGX+rigCos*dx-rigSin*dz;v->z=rigGZ+rigSin*dx+rigCos*dz;
             if(rigid==2){float lx,lz;geo_unproject(v->x,v->z,&lx,&lz);v->y+=geo_height(lx,lz);}
-            else v->y+=geo_height(objectX,objectZ);
+            else v->y+=rigH;
         }else{geo_project(v->x,v->z,&gx,&gz);v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
     }
     /* PSP rejects large triangles crossing its near/guard planes. Clip in
-       world space before submission, including UV interpolation at cuts. */
-    for(int k=0;clipEnabled&&k<6&&count>=3;k++){
-        int out=0;Vertex a=buffers[src][count-1];float da=plane_distance(&a,k);
-        for(int j=0;j<count;j++){
-            Vertex b=buffers[src][j];float db=plane_distance(&b,k);
-            if((da>=0)!=(db>=0))buffers[src^1][out++]=interpolate(a,b,da/(da-db));
-            if(db>=0)buffers[src^1][out++]=b;
-            a=b;da=db;
+       world space before submission, including UV interpolation at cuts.
+       Optimizacion (Claude): primero una prueba trivial por plano; si todos los vertices quedan fuera de un plano se
+       descarta el poligono entero, y solo se recorta contra los planos que realmente cruza. */
+    if(clipEnabled&&count>=3){
+        unsigned crossing=0;
+        for(int k=0;k<6;k++){
+            int inside=0;
+            for(int j=0;j<count;j++)if(plane_distance(&buffers[0][j],k)>=0)inside++;
+            if(inside==0)return;
+            if(inside<count)crossing|=1u<<k;
         }
-        count=out;src^=1;
+        for(int k=0;crossing&&k<6&&count>=3;k++){
+            if(!(crossing&(1u<<k)))continue;
+            int out=0;Vertex a=buffers[src][count-1];float da=plane_distance(&a,k);
+            for(int j=0;j<count;j++){
+                Vertex b=buffers[src][j];float db=plane_distance(&b,k);
+                if((da>=0)!=(db>=0))buffers[src^1][out++]=interpolate(a,b,da/(da-db));
+                if(db>=0)buffers[src^1][out++]=b;
+                a=b;da=db;
+            }
+            count=out;src^=1;
+        }
     }
     if(count<3)return;
     int needed=(count-2)*3;
@@ -91,12 +112,23 @@ static void polygon(int mat,Vertex *input,int count){
     Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;
     for(int j=1;j<count-1;j++){*p++=buffers[src][0];*p++=buffers[src][j];*p++=buffers[src][j+1];}
 }
+/* Optimizacion (Claude): descarte por esfera envolvente contra el frustum (en coordenadas proyectadas). */
+static int sphere_visible(float x,float z,float radius){
+    float gx,gz;geo_project(x,z,&gx,&gz);float gy=geo_height(x,z)+radius*.4f;
+    for(int k=0;k<6;k++)if(planes[k][0]*gx+planes[k][1]*gy+planes[k][2]*gz+planes[k][3]<-radius)return 0;
+    return 1;
+}
+static float view_distance(float x,float z){float dx=x-view->x,dz=z-view->z;return sqrtf(dx*dx+dz*dz);}
 static void quad(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,float v){
     Vertex p[4]={{0,0,color,a.x,a.y,a.z},{u,0,color,b.x,b.y,b.z},{u,v,color,c.x,c.y,c.z},{0,v,color,d.x,d.y,d.z}};
     polygon(m,p,4);
 }
+/* Optimizacion (Claude): la misma rotacion se repite miles de veces por fotograma (todos los vertices de un
+   objeto comparten angulo). Cachear seno/coseno del ultimo angulo evita dos llamadas trigonometricas por vertice. */
+static float localA=1e30f,localC=1,localS=0;
 static Point local(float x,float y,float z,float cx,float cz,float a){
-    float c=cosf(a),s=sinf(a);return point(cx+x*c-z*s,y,cz+x*s+z*c);
+    if(a!=localA){localA=a;localC=cosf(a);localS=sinf(a);}
+    return point(cx+x*localC-z*localS,y,cz+x*localS+z*localC);
 }
 /* Object forward is +X. Faces have UVs with their top at v=0. */
 static void box(float x,float z,float bottom,float length,float width,float height,float angle,int side,int top,uint32_t color){
@@ -139,36 +171,46 @@ static void city(void){
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
         float x=bx*320,z=bz*320;
         if(!nearby(x+160,z+160,790))continue;
+        /* Optimizacion (Claude): manzana entera fuera del campo de vision -> no se genera nada. */
+        if(!sphere_visible(x+160,z+160,300))continue;
+        /* LOD: a mas de 430 unidades se omiten los detalles pequenos (marcas viales, pasos de cebra, farolas,
+           murales, arboles) que a esa distancia ocupan menos de un pixel y quedan bajo la niebla. */
+        int far=view_distance(x+160,z+160)>430;
         ground(ROAD,x,z,320,320,0,white,12);
         ground(SIDEWALK,x+86,z+86,234,234,1.2f,white,12);
-        for(int k=0;k<320;k+=40){
-            ground(CAR_PAINT,x+k,z+42,19,1.2f,.15f,COLOR(244,208,100),1);
-            ground(CAR_PAINT,x+42,z+k,1.2f,19,.15f,COLOR(244,208,100),1);
-        }
-        for(int k=0;k<5;k++){
-            ground(CAR_PAINT,x+9+k*13,z+75,7,5,.2f,white,1);
-            ground(CAR_PAINT,x+75,z+9+k*13,5,7,.2f,white,1);
+        if(!far){
+            for(int k=0;k<320;k+=40){
+                ground(CAR_PAINT,x+k,z+42,19,1.2f,.15f,COLOR(244,208,100),1);
+                ground(CAR_PAINT,x+42,z+k,1.2f,19,.15f,COLOR(244,208,100),1);
+            }
+            for(int k=0;k<5;k++){
+                ground(CAR_PAINT,x+9+k*13,z+75,7,5,.2f,white,1);
+                ground(CAR_PAINT,x+75,z+9+k*13,5,7,.2f,white,1);
+            }
         }
         if(park(bx,bz)){
             ground(GRASS,x+95,z+95,194,186,.5f,white,8);
             ground(SIDEWALK,x+100,z+173,185,14,.6f,white,6);
             ground(SIDEWALK,x+185,z+99,13,179,.6f,white,6);
-            for(int k=0;k<4;k++)tree(x+112+k%2*157,z+115+k/2*139);
+            if(!far)for(int k=0;k<4;k++)tree(x+112+k%2*157,z+115+k/2*139);
         }else{
             /* A continuous podium matches solid(): no walkable-looking gaps. */
             box(x+191,z+187,0,194,186,6,0,BRICK,ROOF,white);
             for(int k=0;k<4;k++){
                 float xx=x+143+(k%2)*96,zz=z+141+(k/2)*91;
                 int floors=2+(bx*7+bz*3+k)%3,mat=(bx+bz+k)%2?BRICK:STUCCO;
+                if(far){box(xx,zz,6,94,89,floors*24,0,mat,ROOF,white);continue;} /* LOD: un solo bloque por edificio */
                 for(int f=0;f<floors;f++)box(xx,zz,6+f*24,94,89,24,0,f?mat:SHOP,ROOF,white);
                 box(xx,zz,6+floors*24,97,92,3,0,ROOF,ROOF,white);
                 if((bx+bz+k)%3==0)box(xx+19,zz+15,9+floors*24,11,11,12,0,SIDEWALK,SIDEWALK,white);
                 if(bx<2&&k>1)quad(MURAL,point(xx-45,25,zz+44.6f),point(xx+45,25,zz+44.6f),point(xx+45,7,zz+44.6f),point(xx-45,7,zz+44.6f),white,1,1);
             }
-            tree(x+305,z+126);tree(x+305,z+265);
+            if(!far){tree(x+305,z+126);tree(x+305,z+265);}
         }
-        box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));
-        box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
+        if(!far){
+            box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));
+            box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
+        }
     }
     /* River is impassable except at the original street bridges. */
     for(int bz=0;bz<7;bz++)if(nearby(1428,bz*320+160,850)){
@@ -185,6 +227,8 @@ static void city(void){
 }
 static void car(const R3Car *c){
     if(!nearby(c->x,c->z,560))return;
+    if(!sphere_visible(c->x,c->z,30))return;
+    float dist=view_distance(c->x,c->z);
     static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[c->type%6];
     box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);
@@ -195,6 +239,7 @@ static void car(const R3Car *c){
     quad(GLASS,cabin[5],cabin[6],cabin[2],cabin[1],0xffffffffu,1,1);
     quad(GLASS,cabin[7],cabin[4],cabin[0],cabin[3],0xffffffffu,1,1);
     quad(CAR_PAINT,cabin[7],cabin[6],cabin[5],cabin[4],paint,1,1);
+    if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2){
         float u=e*11,v=s*9.3f,rotation=view->time*c->speed*.08f;
         for(int k=0;k<8;k++){
@@ -231,6 +276,7 @@ static void limb(Point a,Point b,float r0,float r1,int mat,uint32_t tint,float x
 }
 static void simple_person(float x,float z,float angle,int style,int walking){
     if(!nearby(x,z,330))return;
+    if(!sphere_visible(x,z,22))return;
     /* Reserve enough space before adding a pedestrian. The protagonist is
        submitted first; dense crowds must not truncate his outfit. Allow
        extra vertices for polygons split by the camera clip planes. */
@@ -302,14 +348,19 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
         polygon(back,v,3);
     }
 }
+/* Optimizacion (Claude): las ~7.000 llamadas por fotograma compartian los mismos senos/cosenos de la marcha;
+   se calculan una vez por fotograma. sin(pi*w) se aproxima con 4w(1-w) (error < 6%, invisible en la rodilla). */
+static float poseTime=-1,poseWave,poseRun,poseMotion,poseBreath,poseBob;
 static Point player_pose(Point p,int bone){
-    float motion=view->motion,wave=sinf(view->gaitPhase),run=geo_clamp(motion-1,0,.6f);
+    if(view->time!=poseTime){poseTime=view->time;poseMotion=view->motion;poseWave=sinf(view->gaitPhase);poseRun=geo_clamp(poseMotion-1,0,.6f);
+        poseBreath=sinf(view->time*2.2f)*.08f*(1-geo_clamp(poseMotion,0,1));poseBob=fabsf(cosf(view->gaitPhase))*.12f*poseMotion;}
+    float motion=poseMotion,wave=poseWave,run=poseRun;
     int side=(bone&1)?-1:1;
     if(bone==1||bone==2){
         float weight=geo_clamp(1-p.y/14.8f,0,1),swing=side*wave;
         float lift=fmaxf(0,swing)*(1.4f+run*1.5f)*motion;
         /* Flexible knee blend preserves a continuous baggy pant surface. */
-        p.x+=swing*3.2f*motion*weight-lift*.3f*sinf(weight*PI);
+        p.x+=swing*3.2f*motion*weight-lift*.3f*(4*weight*(1-weight));
         p.y+=lift*weight;
     }else if(bone>=3){
         float weight=geo_clamp((24-p.y)/12,0,1);
@@ -317,19 +368,31 @@ static Point player_pose(Point p,int bone){
         p.y+=run*weight*1.3f; /* Elbows bend higher while running. */
     }
     float upper=geo_clamp((p.y-13)/12,0,1);
-    p.y+=sinf(view->time*2.2f)*.08f*upper*(1-geo_clamp(motion,0,1));
-    p.y+=fabsf(cosf(view->gaitPhase))*.12f*motion*geo_clamp(p.y/4,0,1);
+    p.y+=poseBreath*upper;
+    p.y+=poseBob*geo_clamp(p.y/4,0,1);
     p.x+=run*.55f*upper;return p;
 }
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
+    /* Optimizacion (Claude): ruta rapida para los ~2.300 triangulos del jugador. Son pequenos y estan siempre
+       delante de la camara, asi que no pasan por polygon() (sin recorte de 6 planos ni copias): se posan, rotan,
+       proyectan con la transformacion rigida cacheada y se escriben directamente en el lote de su material. */
+    if(geographic&&rigid)rigid_cache();
+    if(angle!=localA){localA=angle;localC=cosf(angle);localS=sinf(angle);}
     for(int i=0;i<PLAYER_VERTEX_COUNT;i+=3){
-        Vertex v[3];
+        int mat=player_mesh[i].mat;
+        if(used[mat]+3>MAX_VERTICES){overflow++;continue;}
+        Vertex *out=mesh[mat]+used[mat];
         for(int j=0;j<3;j++){
-            const PlayerVertex *a=&player_mesh[i+j];Point posed=player_pose(point(a->x,a->y,a->z),a->bone);
-            Point p=local(posed.x,posed.y,posed.z,x,z,angle);v[j]=(Vertex){a->u,a->v,a->color,p.x,p.y,p.z};
+            const PlayerVertex *a=&player_mesh[i+j];Point q=player_pose(point(a->x,a->y,a->z),a->bone);
+            float wx=x+q.x*localC-q.z*localS,wz=z+q.x*localS+q.z*localC,wy=q.y;
+            if(geographic){
+                if(rigid){float dx=wx-objectX,dz=wz-objectZ;wx=rigGX+rigCos*dx-rigSin*dz;wz=rigGZ+rigSin*dx+rigCos*dz;wy+=rigH;}
+                else{float gx,gz;geo_project(wx,wz,&gx,&gz);wy+=geo_height(wx,wz);wx=gx;wz=gz;}
+            }
+            out[j]=(Vertex){a->u,a->v,a->color,wx,wy,wz};
         }
-        polygon(player_mesh[i].mat,v,3);
+        used[mat]+=3;
     }
     for(int side=-1;side<=1;side+=2){
         Point foot=player_pose(point(0,0,side*1.65f),side<0?1:2);float step=foot.x,lift=foot.y;

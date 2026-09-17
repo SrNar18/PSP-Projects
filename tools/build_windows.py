@@ -16,6 +16,7 @@ def run(tool,*args):
     subprocess.run([str(sdk/'bin'/f'{tool}.exe'),*map(str,args)],env=env,check=True)
 inc=posix(sdk/'psp/sdk/include');lib=posix(sdk/'psp/sdk/lib')
 flags=['-O2','-G0','-Wall','-Wextra','-Wno-misleading-indentation','-std=gnu99','-DNARCADE_3D','-D_PSP_FW_VERSION=600','-Isrc',f'-I{inc}',f'-I{posix(sdk/"psp/include")}']
+if os.environ.get('NARCADE_PROFILE'): flags.append('-DNARCADE_PROFILE')  # overlay de tiempo por fotograma
 sources=['psp_main.c','game.c','render3d.c','assets.S','textures3d.S','icon0.S']
 objects=[]
 for source in sources:

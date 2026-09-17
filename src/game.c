@@ -518,7 +518,13 @@ static void minimap(int cx,int cy,int r){
  float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
  for(int k=0;k<48;k++){float t=k*PI*2/48;px(cx+(int)(cosf(t)*(r+2)),cy+(int)(sinf(t)*(r+2)),MUTED);}
 }
+#ifdef NARCADE_PROFILE
+static float profileMs=0,profileMax=0;void game_set_profile(float ms){profileMs=ms;if(ms>profileMax)profileMax=ms;if(g.clock<.5f)profileMax=0;}
+#endif
 static void hud(void){char b[180];
+#ifdef NARCADE_PROFILE
+ snprintf(b,sizeof(b),"%.1f ms  (max %.1f)",profileMs,profileMax);rect(4,40,140,14,INK);text(8,42,b,GOLD,1);
+#endif
  /* Barrio nuevo: aviso temporal arriba. */
  int d=district(g.x,g.y);if(g.screen==WORLD&&d!=g.hudDistrict){g.hudDistrict=d;g.hudDistrictT=2.2f;}
  if(g.hudDistrictT>0){int w=(int)strlen(districts[d])*7+24;box_center(W/2,10,w,19,INK);text_center(W/2,13,districts[d],TEAL,1);}

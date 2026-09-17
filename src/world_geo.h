@@ -27,10 +27,33 @@ static inline float geo_height_raw(float x,float z){
     float north=geo_clamp((1050-z)/1050,0,1),south=geo_clamp((z-1200)/1040,0,1);
     return 4+z*.007f+west*west*(190+30*south)+east*east*(220+90*north+25*south);
 }
+/* Optimizacion (Claude): las alturas de los nodos de la rejilla de 80 unidades se calculan una vez y se guardan en
+   una tabla (44 x 40 nodos cubren x en [-320,3120], z en [-320,2800]). geo_height pasa de 4 evaluaciones de la
+   funcion de relieve (con ~20 operaciones y clamps cada una) a 4 lecturas de tabla. Mismo resultado numerico. */
+#define GEO_TAB_X0 (-320)
+#define GEO_TAB_Z0 (-320)
+#define GEO_TAB_NX 44
+#define GEO_TAB_NZ 40
+static float geo_table[GEO_TAB_NZ][GEO_TAB_NX];
+static int geo_table_ready=0;
+static inline void geo_table_build(void){
+    for(int j=0;j<GEO_TAB_NZ;j++)for(int i=0;i<GEO_TAB_NX;i++)geo_table[j][i]=geo_height_raw(GEO_TAB_X0+i*80.0f,GEO_TAB_Z0+j*80.0f);
+    geo_table_ready=1;
+}
+static inline float geo_node(int i,int j){
+    if(i<0)i=0;if(j<0)j=0;if(i>GEO_TAB_NX-1)i=GEO_TAB_NX-1;if(j>GEO_TAB_NZ-1)j=GEO_TAB_NZ-1;
+    return geo_table[j][i];
+}
 static inline float geo_height(float x,float z){
     /* Match the same 80-unit triangular terrain lattice used by ground(). */
-    float bx=floorf(x/80)*80,bz=floorf(z/80)*80,u=(x-bx)/80,v=(z-bz)/80;
-    float a=geo_height_raw(bx,bz),b=geo_height_raw(bx+80,bz),c=geo_height_raw(bx+80,bz+80),d=geo_height_raw(bx,bz+80);
+    if(!geo_table_ready)geo_table_build();
+    float fx=(x-GEO_TAB_X0)/80,fz=(z-GEO_TAB_Z0)/80;int i=(int)floorf(fx),j=(int)floorf(fz);float u=fx-i,v=fz-j;
+    if(i<0||j<0||i>=GEO_TAB_NX-1||j>=GEO_TAB_NZ-1){ /* fuera de la tabla: formula original */
+        float bx=floorf(x/80)*80,bz=floorf(z/80)*80;u=(x-bx)/80;v=(z-bz)/80;
+        float a=geo_height_raw(bx,bz),b=geo_height_raw(bx+80,bz),c=geo_height_raw(bx+80,bz+80),d=geo_height_raw(bx,bz+80);
+        return u>=v?a+(b-a)*u+(c-b)*v:a+(c-d)*u+(d-a)*v;
+    }
+    float a=geo_table[j][i],b=geo_table[j][i+1],c=geo_table[j+1][i+1],d=geo_table[j+1][i];
     return u>=v?a+(b-a)*u+(c-b)*v:a+(c-d)*u+(d-a)*v;
 }
 static inline float geo_heading(float x,float z,float angle){

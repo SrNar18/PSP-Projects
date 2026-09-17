@@ -16,4 +16,5 @@ int game_export_save(void *buf,int cap);
 int game_import_save(const void *buf,int len);
 void game_save_summary(char *title,int titlecap,char *detail,int detailcap);
 void game_continue(void);
+void game_set_profile(float ms);
 #endif
