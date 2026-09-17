@@ -1,0 +1,9 @@
+{
+  "source": "personaje-v3.glb",
+  "source_triangles_without_hair_strands": 136344,
+  "triangles": 2344,
+  "pieces": 47,
+  "height": 29.2,
+  "textures": "streetwear-atlas.png",
+  "animation": "procedural per named limb, no source rig"
+}

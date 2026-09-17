@@ -35,8 +35,10 @@ def main():
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,256,128))
-    assert len(result)==655360
+    white=Image.new('RGB',(128,128),'white');white.save(ROOT/'assets/textures3d/flat.png')
+    result.extend(b'\xff\xff'*(128*128))
+    assert len(result)==688128
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('20 original materials, RGB565, swizzled, 128x128: 655360 bytes')
+    print('21 materials, RGB565, swizzled, 128x128: 688128 bytes')
 
 if __name__=='__main__':main()

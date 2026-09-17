@@ -6,7 +6,7 @@
 typedef struct { float x,z,angle,speed; int type,police; } R3Car;
 typedef struct { float x,z,angle; int style; } R3Person;
 typedef struct {
-    float x,z,angle,yaw,time,cameraDistance;
+    float x,z,angle,yaw,time,cameraDistance,gaitPhase,motion;
     int driving,moving,target,carCount,personCount;
     float targetX,targetZ;
     uint32_t collected;

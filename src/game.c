@@ -11,6 +11,7 @@
 
 #define W 480
 #define H 272
+#include "world_geo.h"
 #define WORLD_W 2560
 #define WORLD_H 2240
 #define CAR_COUNT 64
@@ -45,7 +46,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking;
+ float viewYaw,walking,inputYaw,gaitPhase,motion;int stickActive;
  int pauseTab,pauseBack;
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
@@ -85,11 +86,44 @@ static int solid(float x,float y){
  return !parkblock(bx,by)&&lx>94&&lx<288&&ly>94&&ly<280;
 }
 static int free_at(float x,float y,int radius){return !solid(x-radius,y-radius)&&!solid(x+radius,y-radius)&&!solid(x-radius,y+radius)&&!solid(x+radius,y+radius);}
+static void physics_project(float x,float y,float *a,float *b){
+#ifdef NARCADE_3D
+ geo_project(x,y,a,b);
+#else
+ *a=x;*b=y;
+#endif
+}
+static void physics_unproject(float x,float y,float *a,float *b){
+#ifdef NARCADE_3D
+ geo_unproject(x,y,a,b);
+#else
+ *a=x;*b=y;
+#endif
+}
+static float physics_heading(const Car *c){
+#ifdef NARCADE_3D
+ return geo_heading(c->x,c->y,c->a);
+#else
+ return c->a;
+#endif
+}
+static int foot_free(float x,float y){
+ if(!free_at(x,y,5))return 0;
+ for(int i=0;i<CAR_COUNT;i++){
+  const Car *c=&g.cars[i];float px,py,cx,cy;physics_project(x,y,&px,&py);physics_project(c->x,c->y,&cx,&cy);float dx=px-cx,dy=py-cy;if(fabsf(dx)>27||fabsf(dy)>27)continue;
+  float angle=physics_heading(c),ca=cosf(angle),sa=sinf(angle);if(fabsf(dx*ca+dy*sa)<22&&fabsf(-dx*sa+dy*ca)<13)return 0;
+ }
+ for(int i=0;i<30;i++)if(fabsf(x-(locations[i].x+18))<10&&fabsf(y-locations[i].y)<9)return 0;
+ return 1;
+}
+static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
 /* Four separating axes for two oriented 36x18 car footprints. */
 static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *depth){
- float dx=b->x-a->x,dy=b->y-a->y,best=1e9f;
+ if(fabsf(b->y-a->y)>42)return 0;
+ float ax,ay,bx,by;physics_project(a->x,a->y,&ax,&ay);physics_project(b->x,b->y,&bx,&by);
+ float dx=bx-ax,dy=by-ay,best=1e9f;
  if(fabsf(dx)>42||fabsf(dy)>42)return 0;
- float ac=cosf(a->a),as=sinf(a->a),bc=cosf(b->a),bs=sinf(b->a);
+ float aa=physics_heading(a),ba=physics_heading(b);float ac=cosf(aa),as=sinf(aa),bc=cosf(ba),bs=sinf(ba);
  float axes[4][2]={{ac,as},{-as,ac},{bc,bs},{-bs,bc}};
  for(int k=0;k<4;k++){
   float x=axes[k][0],y=axes[k][1];
@@ -102,11 +136,14 @@ static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *dept
  *depth=best;return 1;
 }
 static int car_free_at(const Car *c,float x,float y){
- float ca=cosf(c->a),sa=sinf(c->a);
- for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++)
-  if(solid(x+ca*i*18-sa*j*9,y+sa*i*18+ca*j*9))return 0;
+ Car test=*c;test.x=x;test.y=y;float angle=physics_heading(&test),ca=cosf(angle),sa=sinf(angle),gx,gy;physics_project(x,y,&gx,&gy);
+ for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){
+  float lx,ly;physics_unproject(gx+ca*i*18-sa*j*9,gy+sa*i*18+ca*j*9,&lx,&ly);
+  if(solid(lx,ly))return 0;
+ }
  return 1;
 }
+static void car_push(const Car *c,float x,float y,float *outX,float *outY){float gx,gy;physics_project(c->x,c->y,&gx,&gy);physics_unproject(gx+x,gy+y,outX,outY);}
 static void separate_cars(void){
  /* Resolve independently of damage cooldown. Several passes settle pile-ups. */
  for(int pass=0;pass<8;pass++){
@@ -114,12 +151,13 @@ static void separate_cars(void){
   for(int i=0;i<CAR_COUNT;i++)for(int j=i+1;j<CAR_COUNT;j++){
    Car *a=&g.cars[i],*b=&g.cars[j];float nx,ny,depth;
    if(!car_overlap(a,b,&nx,&ny,&depth))continue;
-   float push=depth+.06f,ax=a->x-nx*push*.5f,ay=a->y-ny*push*.5f;
-   float bx=b->x+nx*push*.5f,by=b->y+ny*push*.5f;
+   float push=depth+.06f,ax,ay,bx,by,aax,aay,bbx,bby;
+   car_push(a,-nx*push*.5f,-ny*push*.5f,&ax,&ay);car_push(b,nx*push*.5f,ny*push*.5f,&bx,&by);
+   car_push(a,-nx*push,-ny*push,&aax,&aay);car_push(b,nx*push,ny*push,&bbx,&bby);
    int moveA=car_free_at(a,ax,ay),moveB=car_free_at(b,bx,by);
    if(moveA&&moveB){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
-   else if(car_free_at(a,a->x-nx*push,a->y-ny*push)){a->x-=nx*push;a->y-=ny*push;changed=1;}
-   else if(car_free_at(b,b->x+nx*push,b->y+ny*push)){b->x+=nx*push;b->y+=ny*push;changed=1;}
+   else if(car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
+   else if(car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
    /* Stop the closing velocity; parked cars remain stationary afterwards. */
    float impact=fabsf(a->speed)+fabsf(b->speed);
    if(pass==0&&(i==g.car||j==g.car)&&impact>25&&g.hitCD<=0){
@@ -131,8 +169,8 @@ static void separate_cars(void){
  }
  if(g.car>=0){g.x=g.cars[g.car].x;g.y=g.cars[g.car].y;}
 }
-static int district(float x,float y){if(x<640&&y<1000)return 0;if(x<960&&y<1550)return 1;if(x<1100)return 2;if(y<630)return 3;if(x>1760&&y>1380)return 4;if(x>1600)return 5;return 6;}
-static const char *districts[]={"COMUNA 13","LAURELES / ESTADIO","BELEN","NORTE / ARANJUEZ","EL POBLADO","LADERA ORIENTAL","CENTRO / RIO"};
+static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)return 8;if(x<640&&y<1500)return 0;if(x<1100&&y<1450)return 1;if(x<1250)return 2;if(y<650)return 3;if(x>1600&&y>1500)return 4;if(x>1800)return 5;return 6;}
+static const char *districts[]={"SAN JAVIER / COMUNA 13","LAURELES / ESTADIO","BELEN","ARANJUEZ / CASTILLA","EL POBLADO","VILLA HERMOSA / BUENOS AIRES","LA CANDELARIA / RIO","POPULAR / SANTO DOMINGO","ROBLEDO / DOCE DE OCTUBRE"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
 static void world_init(void){
  rng=729;for(int i=0;i<CAR_COUNT;i++){
@@ -144,6 +182,13 @@ static void world_init(void){
  }
  // One car beside every mission hub: progression never depends on a random spawn.
  for(int i=0;i<30;i++){g.cars[i].x=locations[i].x+54;g.cars[i].y=locations[i].y-31;g.cars[i].a=0;g.cars[i].parked=1;}
+ for(int i=0;i<CAR_COUNT;i++)if(!car_free_at(&g.cars[i],g.cars[i].x,g.cars[i].y)){
+  Car *c=&g.cars[i];float bx=floorf(c->x/320)*320,by=floorf(c->y/320)*320;int found=0;
+  for(int k=0;k<10&&!found;k++){
+   float xx=bx+52+k*22,yy=by+42;c->a=0;
+   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;found=1;}
+  }
+ }
  g.cars[1].type=0;
  for(int i=0;i<42;i++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
 }
@@ -287,8 +332,7 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_SELECT)){g.screen=MAP;g.mapSel=g.mission<36?step_now()->loc:0;return;}
  if(pressed(B_TRI))enter_exit();
 #ifdef NARCADE_3D
- if(g.car<0)g.viewYaw+=(held(B_R)-held(B_L))*dt*1.8f;
- else {float d=g.cars[g.car].a-g.viewYaw;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;g.viewYaw+=d*fminf(1,dt*3.5f);}
+ if(g.car>=0){g.viewYaw+=angle_delta(g.cars[g.car].a,g.viewYaw)*(1-expf(-dt*3.5f));g.stickActive=0;}
  if(g.car>=0){if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;}
 #else
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
@@ -296,10 +340,20 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
  if(g.car<0){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
 #ifdef NARCADE_3D
-  float sx=dx,sy=dy;dx=-sinf(g.viewYaw)*sx-cosf(g.viewYaw)*sy;dy=cosf(g.viewYaw)*sx-sinf(g.viewYaw)*sy;
+  /* Anchor input direction for this stick gesture. Following the camera with
+     an unanchored lateral input would turn a held direction into endless circles. */
+  float sx=dx,sy=dy;
+  if(sx*sx+sy*sy>.04f){if(!g.stickActive){g.inputYaw=g.viewYaw;g.stickActive=1;}}
+  else{g.stickActive=0;sx=sy=0;}
+  dx=-sinf(g.inputYaw)*sx-cosf(g.inputYaw)*sy;dy=cosf(g.inputYaw)*sx-sinf(g.inputYaw)*sy;
 #endif
   float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;if(n>.1f){dx/=fmaxf(1,n);dy/=fmaxf(1,n);g.a=atan2f(dy,dx);float speed=held(B_CROSS)?111:72;
-  if(free_at(g.x+dx*speed*dt,g.y,5))g.x+=dx*speed*dt;if(free_at(g.x,g.y+dy*speed*dt,5))g.y+=dy*speed*dt;}
+  float grade=(geo_height(g.x+dx*4,g.y+dy*4)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+grade*grade);
+  if(foot_free(g.x+dx*speed*dt,g.y))g.x+=dx*speed*dt;if(foot_free(g.x,g.y+dy*speed*dt))g.y+=dy*speed*dt;
+#ifdef NARCADE_3D
+  g.viewYaw+=angle_delta(g.a,g.viewYaw)*(1-expf(-dt*3.2f));
+#endif
+  }
  }else{
   Car *c=&g.cars[g.car];float steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
@@ -338,12 +392,15 @@ static void world_tick(float ax,float ay,float dt){
  }
  if(g.health<=0){g.health=100;g.heat=0;g.car=-1;g.x=locations[14].x;g.y=locations[14].y;g.cash=g.cash>100?g.cash-100:0;g.raceTime=0;g.side=0;g.missionTimer=0;notice("HOSPITAL: te recuperaste. El objetivo sigue disponible.");game_save();}
  if(pressed(B_SQUARE)&&g.car<0)interact();
+ float motionTarget=g.car<0&&g.walking?(held(B_CROSS)?1.6f:1.f):0;
+ g.motion+=(motionTarget-g.motion)*(1-expf(-dt*12));g.gaitPhase+=dt*8.5f*g.motion;
  if(pressed(B_UP)&&g.car>=0)interact();
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
+ if(g.screen!=WORLD)g.stickActive=0;
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
@@ -437,22 +494,28 @@ int cachecount_public(void){return cachecount();}
    - Abajo a la izquierda: minimapa circular con calles, rio, objetivo y posicion. */
 static void text_center(int cx,int y,const char *s,uint32_t c,int scale){text(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
 static void box_center(int cx,int y,int w,int h,uint32_t c){rect(cx-w/2,y,w,h,c);}
+static uint32_t map_ground(float gx,float gz){
+ float wx,wy;geo_unproject(gx,gz,&wx,&wy);
+ if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)return RGB(20,30,34);
+ int lx=(int)wx%320,ly=(int)wy%320,bx=(int)wx/320,by=(int)wy/320;
+ if(wx>1396&&wx<1460&&ly>86)return RGB(39,127,147);
+ if(lx<86||ly<86)return RGB(119,128,123);
+ int h=(int)geo_clamp(geo_height(wx,wy)*.14f,0,40);
+ return parkblock(bx,by)?RGB(57+h,91+h,68):RGB(51+h,67+h,54);
+}
+static void map_point(float x,float y,float sc,int ox,int oy,int *mx,int *my){float gx,gz;geo_project(x,y,&gx,&gz);*mx=ox+(int)(gx*sc);*my=oy+(int)(gz*sc);}
 static void minimap(int cx,int cy,int r){
  const float scale=6.0f; /* unidades de mundo por pixel */
+ float gx,gz;geo_project(g.x,g.y,&gx,&gz);
  circle(cx,cy,r+2,RGB(20,30,34));
  for(int dy=-r;dy<=r;dy++)for(int dx=-r;dx<=r;dx++){
   if(dx*dx+dy*dy>r*r)continue;
-  float wx=g.x+dx*scale,wy=g.y+dy*scale;uint32_t c;
-  if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)c=RGB(20,30,34);
-  else if(wx>1396&&wx<1460)c=RGB(34,83,94);
-  else{int lx=(int)wx%320,ly=(int)wy%320,bx=(int)wx/320,by=(int)wy/320;
-   if(lx<86||ly<86)c=RGB(74,82,84);else c=parkblock(bx,by)?RGB(57,91,68):RGB(44,52,54);}
-  px(cx+dx,cy+dy,c);
+  px(cx+dx,cy+dy,map_ground(gx+dx*scale,gz+dy*scale));
  }
- for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||g.heat<=0)continue;int dx=(int)((g.cars[i].x-g.x)/scale),dy=(int)((g.cars[i].y-g.y)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
- if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float dx=(locations[t].x-g.x)/scale,dy=(locations[t].y-g.y)/scale;float d=sqrtf(dx*dx+dy*dy);
+ for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||g.heat<=0)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
+ if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float pxp,pyp;geo_project(locations[t].x,locations[t].y,&pxp,&pyp);float dx=(pxp-gx)/scale,dy=(pyp-gz)/scale;float d=sqrtf(dx*dx+dy*dy);
   if(d>r-4){dx=dx/d*(r-4);dy=dy/d*(r-4);}circle(cx+(int)dx,cy+(int)dy,3,INK);circle(cx+(int)dx,cy+(int)dy,2,LIME);}
- float a=g.car>=0?g.cars[g.car].a:g.a;circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
+ float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
  for(int k=0;k<48;k++){float t=k*PI*2/48;px(cx+(int)(cosf(t)*(r+2)),cy+(int)(sinf(t)*(r+2)),MUTED);}
 }
 static void hud(void){char b[180];
@@ -490,7 +553,7 @@ static void title_draw(void){
  line(0,79,480,142,RGB(95,125,124));for(int i=0;i<3;i++){int x=75+i*164+(int)(g.clock*5)%164;int y=79+x*63/480;rect(x,y,1,8,MUTED);rect(x-7,y+8,15,11,TEAL);rect(x-5,y+10,4,4,INK);rect(x+1,y+10,4,4,INK);}
  label(24,16,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
  text(22,36,"NARCADE",INK,6);text(18,31,"NARCADE",WHITE,6);
- rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.1",WHITE);
+ rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.4",WHITE);
  rect(14,169,222,76,INK);text(28,181,g.menu==0?"> CONTINUAR / EMPEZAR":"  CONTINUAR / EMPEZAR",g.menu==0?LIME:MUTED,1);text(28,204,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(28,226,"X confirmar",TEAL,1);
  rect(288,165,178,80,INK);text(312,176,"made by",WHITE,1);signature(287,184);
  footer("36 misiones  /  7 minijuegos  /  radio original");
@@ -535,19 +598,22 @@ static void mini_draw(void){
  if(g.noticeT>0){rect(10,234,460,16,INK);text(15,236,g.notice,MUTED,1);}
 }
 static void map_draw(void){
- char b[180];rect(0,0,W,H,INK);header("MEDELLIN / MAPA DE LA CIUDAD","Una interpretacion ficticia, sin escala geografica real");
- float sc=.079f;int ox=20,oy=62;
- for(int by=0;by<7;by++)for(int bx=0;bx<8;bx++){int x=ox+bx*320*sc,y=oy+by*320*sc;rect(x,y,24,24,RGB(54,71,73));rect(x+7,y+7,15,15,parkblock(bx,by)?RGB(67,107,73):RGB(96,108,100));}
- rect(ox+1396*sc,oy,5,177,TEAL);
- for(int i=0;i<30;i++){int x=ox+locations[i].x*sc,y=oy+locations[i].y*sc;circle(x,y,2,MUTED);if(i==g.mapSel)outline(x-4,y-4,9,9,WHITE);}
- if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;int mx=ox+(int)(locations[l].x*sc),my=oy+(int)(locations[l].y*sc);
+ char b[180];rect(0,0,W,H,INK);header("MEDELLIN / VALLE Y LADERAS","Contorno urbano real; calles y relieve simplificados");
+ float sc=.055f;int ox=42,oy=59;
+ for(int py=0;py<185;py++)for(int pxp=0;pxp<180;pxp++)px(ox+pxp,oy+py,map_ground(pxp/sc,py/sc));
+ text(23,61,"N",WHITE,1);line(26,91,26,77,WHITE);line(26,77,23,82,WHITE);line(26,77,29,82,WHITE);
+ for(int i=0;i<30;i++){int x,y;map_point(locations[i].x,locations[i].y,sc,ox,oy,&x,&y);circle(x,y,2,MUTED);if(i==g.mapSel)outline(x-4,y-4,9,9,WHITE);}
+ if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;int mx,my;map_point(locations[l].x,locations[l].y,sc,ox,oy,&mx,&my);
   /* Icono de objetivo: chincheta amarilla con "!" sobre el punto. */
   circle(mx,my-9,6,INK);circle(mx,my-9,5,LIME);line(mx-3,my-5,mx,my,INK);line(mx+3,my-5,mx,my,INK);line(mx-2,my-5,mx,my-1,LIME);line(mx+2,my-5,mx,my-1,LIME);rect(mx,my-12,1,4,INK);rect(mx,my-7,1,1,INK);}
  /* Jugador: flecha coral con su orientacion. */
- {int pxp=ox+(int)(g.x*sc),pyp=oy+(int)(g.y*sc);float a=g.car>=0?g.cars[g.car].a:g.a;circle(pxp,pyp,3,INK);circle(pxp,pyp,2,CORAL);line(pxp,pyp,pxp+(int)(cosf(a)*6),pyp+(int)(sinf(a)*6),CORAL);}
+ {int pxp,pyp;map_point(g.x,g.y,sc,ox,oy,&pxp,&pyp);float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(pxp,pyp,3,INK);circle(pxp,pyp,2,CORAL);line(pxp,pyp,pxp+(int)(cosf(a)*6),pyp+(int)(sinf(a)*6),CORAL);}
  text(245,61,"LUGAR SELECCIONADO",TEAL,1);textwrap(245,83,222,locations[g.mapSel].name,WHITE);
  snprintf(b,sizeof(b),"Distancia: %d m",(int)dist(g.x,g.y,locations[g.mapSel].x,locations[g.mapSel].y));text(245,111,b,MUTED,1);
- text(245,139,"CHINCHETA: objetivo actual",LIME,1);text(245,156,"CORAL: tu posicion",CORAL,1);text(245,174,"S: refugio / guardar",MUTED,1);text(245,191,"T: taller / reparar",MUTED,1);text(245,208,"$: encargos / mercado",MUTED,1);
+ text(245,134,"CHINCHETA: objetivo actual",LIME,1);text(245,150,"CORAL: tu posicion",CORAL,1);
+ textwrap(245,170,220,districts[district(locations[g.mapSel].x,locations[g.mapSel].y)],TEAL);
+ snprintf(b,sizeof(b),"Relieve: +%d unidades",(int)geo_height(locations[g.mapSel].x,locations[g.mapSel].y));text(245,204,b,MUTED,1);
+ text(245,222,"Claro: ladera / azul: rio",MUTED,1);
  footer("CRUCETA recorrer lugares  SELECT u O volver");
 }
 static void journal_draw(void){
@@ -557,7 +623,7 @@ static void journal_draw(void){
   snprintf(b,sizeof(b),"HISTORIA %d/36   VINILOS %d/24",g.mission,cachecount());text(21,62,b,LIME,1);snprintf(b,sizeof(b),"REPUTACION %d   ENCARGOS %d   TIEMPO %dh %02dm",g.reputation,g.jobs,(int)g.playtime/3600,((int)g.playtime/60)%60);text(21,82,b,MUTED,1);
   const char *lines[]={"Nico / Mensajero. Una firma falsa cambio su vida.","Sara / Hermana de Nico. Investiga a Prisma.","Vera / Periodista. Sigue los documentos.","Luna / Mecanica. Conoce cada ruta de la ciudad.","Mara / DJ de Radio Ladera. Escucha lo oculto.","Tiza / Artista. Las paredes guardan sus pistas."};for(int i=0;i<6;i++)text(21,115+i*20,lines[i],WHITE,1);
  }else{
-  const char *lines[]={"A PIE: analogico/cruceta mover. X correr.","TRIANGULO: entrar o salir de un carro cercano.","[]: interactuar a pie. ARRIBA: desde el carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","L/R: camara a pie; emisora dentro del carro.","O: mensajes. SELECT: mapa. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: [] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
+  const char *lines[]={"A PIE: analogico/cruceta mover. X correr.","TRIANGULO: entrar o salir de un carro cercano.","[]: interactuar a pie. ARRIBA: desde el carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","Camara automatica al mover el joystick.","O: mensajes. SELECT: mapa. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: [] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
  }
  footer("L/R paginas  O volver");
 }
@@ -588,6 +654,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=scene.driving?95:65;
+ scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;
  /* Keep the camera on the player's side of walls; do not cross a building. */
  for(float d=8;d<scene.cameraDistance;d+=4)if(solid(g.x-cosf(g.viewYaw)*d,g.y-sinf(g.viewYaw)*d)){scene.cameraDistance=fmaxf(10,d-5);break;}
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;

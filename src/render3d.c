@@ -2,6 +2,7 @@
  * No allocation in the frame loop. Texture/vertex memory stays bounded.
  */
 #include "render3d.h"
+#include "world_geo.h"
 #include <math.h>
 #include <string.h>
 #ifndef R3_HOST
@@ -12,8 +13,9 @@
 #endif
 
 #define PI 3.14159265358979323846f
-#define MAT_COUNT 20
-#define MAX_VERTICES 4092
+#define MAT_COUNT 21
+#define MAX_VERTICES 8190
+#include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
 enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,CAR_SIDE,CAR_PAINT,GLASS,MURAL,JACKET_BACK,SLEEVE,SKIN,HAIR };
 typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;
@@ -30,12 +32,18 @@ static float planes[6][4];
 static Point eye,target;
 static int overflow;
 static int clipEnabled=1;
+static int geographic=0,rigid=0;
+static float objectX,objectZ,objectYaw;
+static float fixedGround=-1000000;
 
 static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
 static void camera(const R3Scene *s){
-    eye=point(s->x-cosf(s->yaw)*s->cameraDistance,s->driving?54:43,s->z-sinf(s->yaw)*s->cameraDistance);
-    target=point(s->x+cosf(s->yaw)*25,s->driving?10:14,s->z+sinf(s->yaw)*25);
+    float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=geo_heading(s->x,s->z,s->yaw);
+    float h=geo_height(s->x,s->z);
+    eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->driving?54:43),pz-sinf(yaw)*s->cameraDistance);
+    float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
+    target=point(px+cosf(yaw)*25,h+(s->driving?10:14),pz+sinf(yaw)*25);
     float fx=target.x-eye.x,fy=target.y-eye.y,fz=target.z-eye.z;
     float n=sqrtf(fx*fx+fy*fy+fz*fz);fx/=n;fy/=n;fz/=n;
     float rx=-fz,rz=fx,rn=sqrtf(rx*rx+rz*rz);rx/=rn;rz/=rn;
@@ -54,6 +62,17 @@ static Vertex interpolate(Vertex a,Vertex b,float t){
 }
 static void polygon(int mat,Vertex *input,int count){
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
+    if(geographic)for(int i=0;i<count;i++){
+        Vertex *v=&buffers[0][i];float gx,gz;
+        if(rigid){
+            geo_project(objectX,objectZ,&gx,&gz);
+            float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;
+            float dx=v->x-objectX,dz=v->z-objectZ;
+            v->x=gx+cosf(da)*dx-sinf(da)*dz;v->z=gz+sinf(da)*dx+cosf(da)*dz;
+            if(rigid==2){float lx,lz;geo_unproject(v->x,v->z,&lx,&lz);v->y+=geo_height(lx,lz);}
+            else v->y+=geo_height(objectX,objectZ);
+        }else{geo_project(v->x,v->z,&gx,&gz);v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
+    }
     /* PSP rejects large triangles crossing its near/guard planes. Clip in
        world space before submission, including UV interpolation at cuts. */
     for(int k=0;clipEnabled&&k<6&&count>=3;k++){
@@ -82,6 +101,13 @@ static Point local(float x,float y,float z,float cx,float cz,float a){
 /* Object forward is +X. Faces have UVs with their top at v=0. */
 static void box(float x,float z,float bottom,float length,float width,float height,float angle,int side,int top,uint32_t color){
     float l=length*.5f,w=width*.5f,h=bottom+height;
+    float savedGround=fixedGround;
+    if(geographic&&!rigid){
+        float low=geo_height(x,z),high=low;
+        for(int a=-1;a<=1;a+=2)for(int b=-1;b<=1;b+=2){Point p=local(a*l,0,b*w,x,z,angle);float hh=geo_height(p.x,p.z);low=fminf(low,hh);high=fmaxf(high,hh);}
+        fixedGround=high;
+        if(bottom==0)bottom=low-high-1; /* Foundation reaches the downhill ground. */
+    }
     Point p[8]={local(-l,bottom,-w,x,z,angle),local(l,bottom,-w,x,z,angle),local(l,bottom,w,x,z,angle),local(-l,bottom,w,x,z,angle),
         local(-l,h,-w,x,z,angle),local(l,h,-w,x,z,angle),local(l,h,w,x,z,angle),local(-l,h,w,x,z,angle)};
     quad(side,p[4],p[5],p[1],p[0],shade(color,.82f),1,1);
@@ -89,9 +115,17 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     quad(side,p[5],p[6],p[2],p[1],shade(color,.94f),1,1);
     quad(side,p[7],p[4],p[0],p[3],shade(color,.72f),1,1);
     quad(top,p[7],p[6],p[5],p[4],color,1,1);
+    fixedGround=savedGround;
 }
 static void ground(int mat,float x,float z,float w,float d,float y,uint32_t color,float repeat){
-    quad(mat,point(x,y,z),point(x+w,y,z),point(x+w,y,z+d),point(x,y,z+d),color,repeat,repeat);
+    /* Subdivide at terrain lattice boundaries: roads genuinely climb hills. */
+    for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,(floorf(zz/80)+1)*80);if(endz<=zz+.001f)endz=fminf(z+d,zz+80);
+        for(float xx=x;xx<x+w-.001f;){float endx=fminf(x+w,(floorf(xx/80)+1)*80);if(endx<=xx+.001f)endx=fminf(x+w,xx+80);
+            Vertex v[4]={{(xx-x)/w*repeat,(zz-z)/d*repeat,color,xx,y,zz},{(endx-x)/w*repeat,(zz-z)/d*repeat,color,endx,y,zz},
+                         {(endx-x)/w*repeat,(endz-z)/d*repeat,color,endx,y,endz},{(xx-x)/w*repeat,(endz-z)/d*repeat,color,xx,y,endz}};
+            polygon(mat,v,4);xx=endx;
+        }zz=endz;
+    }
 }
 static int nearby(float x,float z,float range){float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
 static int park(int x,int z){return (x==2&&z==3)||(x==2&&z==1)||(x==0&&z==2)||(x==4&&z==5)||(x==4&&z==6);}
@@ -106,7 +140,7 @@ static void city(void){
         float x=bx*320,z=bz*320;
         if(!nearby(x+160,z+160,790))continue;
         ground(ROAD,x,z,320,320,0,white,12);
-        ground(SIDEWALK,x+86,z+86,234,234,.35f,white,12);
+        ground(SIDEWALK,x+86,z+86,234,234,1.2f,white,12);
         for(int k=0;k<320;k+=40){
             ground(CAR_PAINT,x+k,z+42,19,1.2f,.15f,COLOR(244,208,100),1);
             ground(CAR_PAINT,x+42,z+k,1.2f,19,.15f,COLOR(244,208,100),1);
@@ -138,15 +172,15 @@ static void city(void){
     }
     /* River is impassable except at the original street bridges. */
     for(int bz=0;bz<7;bz++)if(nearby(1428,bz*320+160,850)){
-        ground(WATER,1396,bz*320+86,64,234,.8f,white,7);
+        ground(WATER,1396,bz*320+86,64,234,1.4f,white,7);
         ground(ROAD,1392,bz*320,72,86,1,white,4);
         box(1395,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
         box(1461,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
     }
-    /* Hills beyond the edge of the playable city. */
-    for(int i=0;i<14;i++){
-        float x=-400+i*270,z=-130,peak=140+(i%4)*65;
-        quad(GRASS,point(x,0,z),point(x+150,peak,z-230),point(x+280,0,z),point(x,0,z),COLOR(104,154,127),2,2);
+    /* Continuous mountain shoulders to the east and west of the urban valley. */
+    for(int side=0;side<2;side++)for(int row=0;row<28;row++){
+        float x=side?2560:-320,z=row*80;
+        if(nearby(x,z,1000))ground(GRASS,x,z,320,80,0,COLOR(125,167,132),5);
     }
 }
 static void car(const R3Car *c){
@@ -268,65 +302,47 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
         polygon(back,v,3);
     }
 }
+static Point player_pose(Point p,int bone){
+    float motion=view->motion,wave=sinf(view->gaitPhase),run=geo_clamp(motion-1,0,.6f);
+    int side=(bone&1)?-1:1;
+    if(bone==1||bone==2){
+        float weight=geo_clamp(1-p.y/14.8f,0,1),swing=side*wave;
+        float lift=fmaxf(0,swing)*(1.4f+run*1.5f)*motion;
+        /* Flexible knee blend preserves a continuous baggy pant surface. */
+        p.x+=swing*3.2f*motion*weight-lift*.3f*sinf(weight*PI);
+        p.y+=lift*weight;
+    }else if(bone>=3){
+        float weight=geo_clamp((24-p.y)/12,0,1);
+        p.x-=side*wave*1.8f*motion*weight;
+        p.y+=run*weight*1.3f; /* Elbows bend higher while running. */
+    }
+    float upper=geo_clamp((p.y-13)/12,0,1);
+    p.y+=sinf(view->time*2.2f)*.08f*upper*(1-geo_clamp(motion,0,1));
+    p.y+=fabsf(cosf(view->gaitPhase))*.12f*motion*geo_clamp(p.y/4,0,1);
+    p.x+=run*.55f*upper;return p;
+}
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
-    /* v2.2 (Claude): proporciones humanas. Altura 29.2 = ~7 cabezas; hombros 8.4 de ancho (antes 11.3),
-       torso 4.8 de fondo (antes 7.2), cuello visible, brazos con codo y manos, piernas separadas con rodilla.
-       Se conservan materiales, UVs y la animacion de andar (step/lift/bob). */
-    float phase=view->time*8.5f,swing=walking?sinf(phase):0;
-    float bob=walking?fabsf(cosf(phase))*.22f:0;
-    for(int side=-1;side<=1;side+=2){
-        float step=side*swing*3.0f,lift=walking?fmaxf(0,side*swing)*1.4f:0;
-        float lz=side*1.85f;
-        /* Pantalon: bajo, pantorrilla, rodilla, muslo, cadera. */
-        BodyRing pants[]={
-            {step,1.7f+lift,lz,1.55f,1.50f},
-            {step*.9f,3.6f+lift,lz,1.42f,1.38f},
-            {step*.65f,7.0f+lift*.7f,lz,1.55f,1.50f},
-            {step*.3f,10.5f+bob,lz,1.80f,1.70f},
-            {step*.1f,12.6f+bob,lz,2.00f,1.85f},
-            {0,13.8f+bob,lz,2.10f,1.90f}};
-        cloth(pants,6,JEANS,JEANS,0xffffffffu,x,z,angle);
-        /* Zapatilla: suela de goma y empeine redondeado. */
-        BodyRing sole[]={{step+.55f,.15f+lift,lz,2.45f,1.20f},{step+.55f,.60f+lift,lz,2.50f,1.25f}};
-        cloth(sole,2,SIDEWALK,SIDEWALK,COLOR(238,234,219),x,z,angle);
-        BodyRing shoe[]={{step+.55f,.60f+lift,lz,2.40f,1.18f},{step+.45f,1.25f+lift,lz,2.15f,1.10f},{step-.05f,2.15f+lift,lz,1.35f,.95f}};
-        cloth(shoe,3,SLEEVE,SLEEVE,0xffffffffu,x,z,angle);
-        /* Brazo: manga corta desde el hombro, antebrazo con ligera flexion de codo y mano. */
-        float arm=-step*.45f,az=side*5.15f;
-        BodyRing sleeve[]={{arm*.9f,17.4f+bob,az,1.05f,1.00f},{arm*.6f,19.6f+bob,az,1.15f,1.10f},{arm*.2f,21.4f+bob,az-side*.15f,1.25f,1.18f},{0,22.35f+bob,az-side*.6f,.85f,.75f},{0,22.6f+bob,az-side*.9f,.2f,.2f}};
-        cloth(sleeve,5,SLEEVE,SLEEVE,0xffffffffu,x,z,angle);
-        BodyRing forearm[]={{arm+.9f,13.5f+bob,az+side*.1f,.80f,.76f},{arm+.55f,15.5f+bob,az+side*.05f,.90f,.85f},{arm*.9f,17.6f+bob,az,.98f,.94f}};
-        cloth(forearm,3,SKIN,SKIN,0xffffffffu,x,z,angle);
-        BodyRing hand[]={{arm+1.05f,11.6f+bob,az+side*.1f,.55f,.48f},{arm+1.1f,12.4f+bob,az+side*.1f,.80f,.62f},{arm+.95f,13.7f+bob,az+side*.1f,.72f,.62f}};
-        cloth(hand,3,SKIN,SKIN,0xffffffffu,x,z,angle);
-    }
-    /* Camiseta: bajo, cintura, pecho, hombros, cuello. */
-    BodyRing shirt[]={{0,12.4f+bob,0,2.35f,3.70f},{0,13.0f+bob,0,2.40f,3.75f},{0,16.5f+bob,0,2.35f,3.55f},{0,20.0f+bob,0,2.50f,3.95f},{0,21.9f+bob,0,2.20f,4.20f},{0,22.75f+bob,0,1.35f,1.55f}};
-    cloth(shirt,6,JACKET,JACKET_BACK,0xffffffffu,x,z,angle);
-    BodyRing neck[]={{0,22.5f+bob,0,.95f,.90f},{.15f,24.5f+bob,0,.92f,.88f}};
-    cloth(neck,2,SKIN,SKIN,0xffffffffu,x,z,angle);
-    /* Cabeza: menton, mandibula, pomulos, craneo redondeado. */
-    BodyRing head[]={{.35f,24.1f+bob,0,.85f,.85f},{.30f,24.8f+bob,0,1.50f,1.32f},{.12f,25.9f+bob,0,1.85f,1.65f},{0,27.3f+bob,0,1.90f,1.70f},{-.1f,28.5f+bob,0,1.55f,1.45f},{-.1f,29.05f+bob,0,.65f,.7f},{-.1f,29.2f+bob,0,.02f,.02f}};
-    for(int j=0;j<6;j++)for(int k=0;k<12;k++){
-        int front=k<3||k>=9;
-        int mat=front?(j>=4?HAIR:FACE):(j>=2?HAIR:SKIN);
-        float vt=1-(head[j+1].y-24.1f-bob)/5.1f,vb=1-(head[j].y-24.1f-bob)/5.1f;
-        Vertex v[4]={body_vertex(head[j+1],k,vt,0xffffffffu,x,z,angle),body_vertex(head[j+1],k+1,vt,0xffffffffu,x,z,angle),body_vertex(head[j],k+1,vb,0xffffffffu,x,z,angle),body_vertex(head[j],k,vb,0xffffffffu,x,z,angle)};
-        polygon(mat,v,4);
+    for(int i=0;i<PLAYER_VERTEX_COUNT;i+=3){
+        Vertex v[3];
+        for(int j=0;j<3;j++){
+            const PlayerVertex *a=&player_mesh[i+j];Point posed=player_pose(point(a->x,a->y,a->z),a->bone);
+            Point p=local(posed.x,posed.y,posed.z,x,z,angle);v[j]=(Vertex){a->u,a->v,a->color,p.x,p.y,p.z};
+        }
+        polygon(player_mesh[i].mat,v,3);
     }
     for(int side=-1;side<=1;side+=2){
-        BodyRing ear[]={{0,25.5f+bob,side*1.62f,.18f,.16f},{0,26.1f+bob,side*1.78f,.34f,.22f},{-.1f,26.7f+bob,side*1.66f,.18f,.14f}};
-        cloth(ear,3,SKIN,SKIN,0xffffffffu,x,z,angle);
+        Point foot=player_pose(point(0,0,side*1.65f),side<0?1:2);float step=foot.x,lift=foot.y;
+        float lateral=side*1.65f;
+        BodyRing sole[]={{step+.4f,.12f+lift,lateral,2.65f,1.27f},{step+.4f,.55f+lift,lateral,2.7f,1.3f}};
+        cloth(sole,2,20,20,COLOR(217,213,198),x,z,angle);
+        BodyRing shoe[]={{step+.4f,.55f+lift,lateral,2.60f,1.25f},{step+.3f,1.05f+lift,lateral,2.45f,1.20f},{step-.3f,1.85f+lift,lateral,1.35f,1.02f}};
+        cloth(shoe,3,20,20,COLOR(237,232,217),x,z,angle);
     }
-    Point nose=local(2.30f,26.2f+bob,0,x,z,angle);
-    Point a=local(1.80f,26.95f+bob,0,x,z,angle),b=local(1.80f,25.95f+bob,-.32f,x,z,angle),c=local(1.80f,25.95f+bob,.32f,x,z,angle);
-    Vertex nv[3]={{.5f,.5f,0xffffffffu,nose.x,nose.y,nose.z},{.5f,.5f,0xffffffffu,a.x,a.y,a.z},{.5f,.5f,0xffffffffu,b.x,b.y,b.z}};
-    polygon(SKIN,nv,3);nv[1]=(Vertex){.5f,.5f,0xffffffffu,c.x,c.y,c.z};polygon(SKIN,nv,3);
 }
 static void landmarks(void){
     for(int i=0;i<30;i++){
-        float x=view->hubs[i][0],z=view->hubs[i][1];if(!nearby(x,z,400))continue;
+        float x=view->hubs[i][0]+18,z=view->hubs[i][1];if(!nearby(x,z,400))continue;
         /* An actual textured computer terminal at each interaction point. */
         box(x,z,0,10,8,10,0,SIDEWALK,SIDEWALK,0xffffffffu);
         box(x,z,10,2,10,8,0,GLASS,CAR_PAINT,COLOR(111,249,210));
@@ -344,7 +360,7 @@ static void landmarks(void){
 }
 void r3_init(void){
 #ifndef R3_HOST
-    /* 2 x 8888 frame + depth + 20 x 128-square 565 textures = 2,048,000 bytes. */
+    /* 2 x 8888 frame + depth + 21 x 128-square 565 textures = 2,080,768 bytes. */
     textureBase=(void*)((uintptr_t)sceGeEdramGetAddr()+512*272*10);
     memcpy((void*)((uintptr_t)textureBase|0x40000000),textures3d_data,MAT_COUNT*128*128*2);
     sceKernelDcacheWritebackAll();
@@ -360,11 +376,16 @@ void r3_init(void){
 #endif
 }
 void r3_draw(uint32_t *fb,const R3Scene *s){
-    view=s;overflow=0;memset(used,0,sizeof(used));camera(s);city();
-    for(int i=0;i<s->carCount;i++)car(&s->cars[i]);
+    view=s;overflow=0;memset(used,0,sizeof(used));geographic=1;rigid=0;camera(s);city();
+    rigid=2;
+    for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
+    rigid=1;
+    objectX=s->x;objectZ=s->z;objectYaw=s->angle;
     if(!s->driving)person(s->x,s->z,s->angle,-1,s->moving);
-    for(int i=0;i<s->personCount;i++)person(s->people[i].x,s->people[i].z,s->people[i].angle,s->people[i].style,1);
+    for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
+    rigid=0;
     landmarks();
+    geographic=0;
 #ifndef R3_HOST
     sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);

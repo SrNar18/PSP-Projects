@@ -2,7 +2,7 @@
 No Blender dependency. The PSP still renders with its own GE backend.
 """
 from pathlib import Path
-import math
+import math,sys,struct
 import numpy as np
 from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,7 +22,8 @@ def render(angle):
     right=np.array([-math.sin(angle),0,math.cos(angle)])
     up=np.cross(right,look)
     v=verts[:,:3]-[0,14.5,0]
-    projected=np.column_stack((W/2+v@right*14,H/2-v@up*14,v@look))
+    scale=min(W/28,H/35)
+    projected=np.column_stack((W/2+v@right*scale,H/2-v@up*scale,v@look))
     output=np.zeros((H,W,3),dtype=np.uint8);output[:]=[30,36,44]
     depth=np.full((H,W),-np.inf)
     for mat,inds in faces:
@@ -49,3 +50,14 @@ for i,(angle,label) in enumerate([(0,'FRENTE'),(.8,'TRES CUARTOS'),(math.pi,'ESP
     sheet.paste(render(angle),(i*W,40));draw.text((i*W+155,20),label,fill=(235,240,248))
 draw.text((30,H+43),'NARCADE - Malla y texturas del juego. Vista de estudio; no es una captura de PSP.',fill=(185,199,212))
 out=ROOT/'assets/nico-streetwear-preview.png';sheet.save(out);print(out)
+if '--animate' in sys.argv:
+    raw=(ROOT/'build/player-animation.bin').read_bytes();nf,nv=struct.unpack_from('<II',raw)
+    poses=np.frombuffer(raw[8:],dtype='<f4').reshape(nf,nv,3);assert nv==len(verts)
+    W,H=240,360
+    for name,start,duration in [('walk',0,46),('run',16,29)]:
+        frames=[]
+        for pose in poses[start:start+16]:
+            verts[:,:3]=pose
+            # Same rasterizer and actual runtime deformations; no artistic interpolation.
+            pic=render(.8);ImageDraw.Draw(pic).text((12,12),'NARCADE / '+name.upper(),fill=(240,245,250));frames.append(pic)
+        path=ROOT/f'assets/nico-{name}.gif';frames[0].save(path,save_all=True,append_images=frames[1:],duration=duration,loop=0);print(path)

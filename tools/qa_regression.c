@@ -9,7 +9,9 @@ static void isolated_cars(void){
 }
 static void require_separated(void){
  float nx,ny,d;
+ if(car_overlap(&g.cars[0],&g.cars[1],&nx,&ny,&d)&&d>=.01f)fprintf(stderr,"Overlap %.3f at (%.2f %.2f) (%.2f %.2f), free %d %d\n",d,g.cars[0].x,g.cars[0].y,g.cars[1].x,g.cars[1].y,car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y),car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y));
  assert(!car_overlap(&g.cars[0],&g.cars[1],&nx,&ny,&d)||d<.01f);
+ if(!car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y))fprintf(stderr,"Blocked test car at %.2f %.2f angle %.2f\n",g.cars[0].x,g.cars[0].y,g.cars[0].a);
  assert(car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y));
  assert(car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y));
 }
@@ -35,6 +37,13 @@ int main(void){
  g.cars[0].x=g.cars[1].x=200;g.cars[0].y=g.cars[1].y=42;separate_cars();require_separated();
  /* One car pinned against the building: all separation goes to free car. */
  g.cars[0]=(Car){70,145,PI*.5f,0,100,0,1,0};g.cars[1]=(Car){85,145,PI*.5f,0,100,0,1,0};
+#ifdef NARCADE_3D
+ /* Fit the pinned fixture to the projected street's width, not the old grid. */
+ g.cars[0].y=g.cars[1].y=1105;g.cars[1].x=90;
+ while(!car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y))g.cars[1].x-=.5f;
+ g.cars[0].x=g.cars[1].x-15;
+ assert(car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y));
+#endif
  separate_cars();require_separated();
  for(int i=0;i<32;i++){
   g.cars[0]=(Car){160,42,i*PI/16,100,100,0,0,0};
