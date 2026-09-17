@@ -132,3 +132,15 @@ lo rechaza la XMB incluso con `fact` correcto, y que Media Go 3.x no sirve para 
 ### 8.4 Binarios listos para instalar
 `Descargas/Narcade_v2.4_listo/EBOOT.PBP` y `Narcade.iso` (compilados 17-sep 15:2x). Instalación: `ms0:/PSP/GAME/NARCADE/`
 y `ms0:/ISO/`.
+
+## 9. Actualización 17-sep (noche)
+- **v2.4 instalada en la PSP** (EBOOT e ISO, 18:32). Pendiente de que el usuario reporte: fluidez, música XMB, guardado.
+- Aclaración al usuario: un juego de PS2 no se puede convertir a ISO de PSP (otra arquitectura); PS1 sí (PSX2PSP/POPS).
+- Incidente de red del PC (sin relación con el juego): YouTube sin miniaturas. Diagnóstico: el proveedor perdía la ruta
+  hacia la red de Google (tracert moría tras 185.1.119.28; Cloudflare OK; ping a Google 100 % perdido). Se descartaron
+  PC, Wi-Fi, DNS, 360 Total Security y Razer Cortex. Se resolvió solo (proveedor). Análisis de malware independiente
+  (Microsoft Safety Scanner) NO ejecutado aún: Defender está desactivado por 360; nada sospechoso en procesos, drivers,
+  arranque, hosts ni proxy.
+- Herramienta AT3: ya no hace falta `at3tool` si el SND0 con la regla del `fact` suena en la consola (§8.3). Si no
+  sonara, el siguiente candidato abierto es github.com/liangchunn/atrac (codificadores RE en Rust).
+- GTA San Andreas PSP (Sandstone): sigue sin publicarse (17-sep). El único repo que dice serlo está vacío.
