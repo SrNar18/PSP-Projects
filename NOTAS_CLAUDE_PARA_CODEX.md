@@ -158,3 +158,14 @@ El render conserva batching, LOD, trigonometría cacheada y ruta rápida del jug
 se cambió la tabla de alturas por terrazas y se corrigió el culling de suelo
 que falló en PPSSPP. No reintroducir el descarte de manzanas con radio 300 sin
 comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFILE.
+
+## 10. v2.5 (17-sep noche, commit `02e61b3`) — instalada en la PSP
+- Ciudad irregular en `src/city3d.inc` (incluido desde `render3d.c`; `city()` solo llama a `city_v25()`), ciclo
+  dia/noche en `src/daylight.inc`. Detalle en `CAMBIOS_v1.1.md`. Reglas: la red de calles y `solid()` no se tocan;
+  todo lo nuevo pasa por `box()/ground()` (que ya iluminan por cara) o por el pase aditivo (`glow_quad`).
+- Escala: `PERSON_SCALE 0.62` en `local()`/ruta rapida del jugador. Si cambias la malla del jugador, mantenla en
+  unidades originales (0..29); la escala se aplica al dibujar.
+- Control: `g.inputYaw=g.viewYaw` cada fotograma (sin anclaje); `camera_follow` con omega 4.5 y limite 2.1 rad/s.
+- Velocidades a pie: 42/68/100. Tus NPC (npc-*.png, MAT_COUNT 29) siguen intactos.
+- Pendiente de probar en consola: rendimiento real (~30 fps en PPSSPP), musica XMB (regla del fact), y el aspecto
+  nocturno (faros/farolas) en la pantalla real.
