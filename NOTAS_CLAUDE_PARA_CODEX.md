@@ -1,0 +1,100 @@
+# Notas de Claude para GPT Codex — estado del proyecto Narcade (17-sep-2026)
+
+Este documento resume TODO lo que Claude hizo en este repositorio después del checkpoint de Codex
+(commit `5c49661`), qué quedó verificado en la **PSP E-1000 real**, qué quedó pendiente y con qué
+evidencia. Léelo antes de tocar nada. El historial completo está en `git log` y en `CAMBIOS_v1.1.md`.
+
+## 1. Contexto de hardware y entorno (verificado)
+
+- Consola: PSP E-1000 (Street), CFW **PRO 6.60**, no permanente: tras un apagado completo hay que ejecutar
+  `FastRecovery`. UMD ISO MODE debe estar en **Inferno** (menú VSH con SELECT) para que las ISO aparezcan.
+- Compilación local en Windows: `python tools/build_windows.py` (toolchain pspdev en `build/pspdev`, dejada por Codex).
+  Produce `EBOOT.PBP`, `narcade_static.elf` y `Narcade.iso`. También hay CI en GitHub Actions (`.github/workflows/build.yml`).
+- Emulador: `build/ppsspp/PPSSPPWindows64.exe --debugger=19321 --windowed EBOOT.PBP`; `tools/ppsspp_check.py input <boton> <frames>`
+  para pulsar botones; `build/shot.py <png>` captura la ventana del emulador (lo añadió Claude).
+- Instalación en la consola: `ms0:/PSP/GAME/NARCADE/EBOOT.PBP` y `ms0:/ISO/Narcade.iso`. Copias de versiones previas en
+  `Descargas/Narcade_v1.0_backup` y `Descargas/Narcade_v1.2_backup`.
+
+## 2. Lo que Claude cambió (v2.2 / v2.3), todo probado en PPSSPP y v2.3 instalada en la consola
+
+### 2.1 Guardado nativo con el diálogo de la Memory Stick
+- `src/psp_main.c`: `savedata_dialog()` con `sceUtilitySavedata` (modos LISTSAVE / LISTLOAD), 4 ranuras
+  `ms0:/PSP/SAVEDATA/NARC00001000{0..3}`, icono = `ICON0.png` embebido (`src/icon0.S`), título
+  "Mision xx/36 - <titulo>", detalle con dinero/vinilos/tiempo. Clave `NARCADEKEY2026`.
+- Flujo: START > PARTIDA > "Guardar partida" → `saveRequest=1`; "Guardar y volver al título" → 3;
+  CONTINUAR en el título → 2 (solo abre el diálogo si existe alguna ranura; si no, `game_continue()` = flujo antiguo).
+  El bucle principal llama `game_take_request()` cada fotograma y despacha a `handle_save_request()`.
+- `src/game.c`: `fill_save()`, `apply_save()`, `game_export_save()`, `game_import_save()`, `game_save_summary()`,
+  `game_set_native_savedata()`, `game_request_result()`. El autoguardado en `PROGRESS.BIN` se mantiene intacto.
+  `tools/qa.c` sigue compilando: sin `game_set_native_savedata(1)` todo funciona como antes.
+- **Regla dura**: mientras el diálogo está abierto NO se alternan buffers (el sistema dibuja sobre el buffer visible).
+  Y **nunca** `PSP_DISPLAY_SETBUF_IMMEDIATE`: en esta consola deja la pantalla en negro (probado 3 veces).
+- Enlaza con `-lpsputility` (Makefile, Makefile.iso, build_windows.py).
+
+### 2.2 Personaje 3D (`src/render3d.c`, función `person()`)
+- Reescrita con proporciones humanas: altura 29.2 ≈ 7 cabezas; hombros 8.4 de ancho (antes 11.3), torso 4.8 de fondo
+  (antes 7.2), cuello visible, brazos con codo y manos, piernas separadas con rodilla, zapatilla con suela.
+  Mismos materiales, mismas UV (`cloth()`), misma animación (step/lift/bob). Capturas: `build/emulator/nico_zoom*.png`.
+- Pendiente para Codex (es de la escena, no del modelo): el jugador aparece **dentro de la caja del terminal** del
+  refugio (hub 0) al empezar, y **atraviesa los coches** (la colisión sigue siendo la del mapa 2D).
+
+### 2.3 HUD mínimo (`src/game.c`, `hud()` y `minimap()`)
+- Eliminadas la barra superior y la franja inferior permanentes.
+- Arriba derecha: barra de vida (y del coche si conduces), dinero, indicadores de búsqueda.
+- Arriba centro: nombre del barrio **solo 2.2 s** al cambiar de barrio (`g.hudDistrict/hudDistrictT`).
+- Abajo centro (a la derecha del minimapa, x=92..470): frase del objetivo **5 s** al empezar cada objetivo
+  (`g.hudStepKey/hudObjectiveT`), los avisos (`g.notice`) y la acción contextual ("[] HABLAR") al llegar.
+  Los temporizadores solo corren con `g.screen==WORLD` (no durante diálogos).
+- Abajo izquierda: minimapa circular r=32 (6 unidades/px): calles, manzanas, parques, río, patrullas (si hay búsqueda),
+  objetivo (verde, pegado al borde si está lejos) y flecha del jugador.
+- Mapa (SELECT / START>MAPA): chincheta amarilla con "!" en el objetivo actual y flecha coral del jugador.
+
+### 2.4 Portada y música de la XMB
+- `assets/ICON0.png` (144×80) generado desde `assets/icon-source.png` (arte neón NARCADE). Va en el PBP, en la ISO
+  y como icono de las partidas guardadas.
+- `assets/SND0.AT3` + `tools/make_snd0.py`: **NO FUNCIONA EN LA CONSOLA** (sí decodifica en ffmpeg/PPSSPP). Ver §3.
+
+### 2.5 Empaquetado
+- `Makefile`: `PSP_EBOOT_SND0`, `src/icon0.o` en OBJS, `-lpsputility`. `Makefile.iso` igual (sin SND0).
+- `tools/build_windows.py`: `icon0.S` en fuentes, `-lpsputility`, `SND0.AT3` en `pack-pbp`.
+- `tools/package_iso.py`: copia `PSP_GAME/SND0.AT3` y `PIC1.PNG`.
+
+## 3. Pendiente principal: música en la XMB (SND0.AT3)
+
+**Evidencia obtenida en la PSP real (prueba A/B):** un `SND0.AT3` original de Sony (tomado de una partida guardada
+de la consola, ATRAC3plus) empaquetado en el EBOOT de Narcade **sí suena** en la XMB. Ninguno de los generados con
+software libre suena, aunque ffmpeg y el parser estricto de PPSSPP (`Core/Util/AtracTrack.cpp`) los aceptan:
+
+| Intento | Códec | Resultado consola |
+|---|---|---|
+| atracdenc `-e atrac3` (OMA→RIFF) | ATRAC3 LP2 132 kbps | no suena |
+| idem + extradata canónica (`1, 0x1000, modo, modo, 1`) | ATRAC3 LP2 | no suena |
+| atracdenc `--bitrate 64` vía RealMedia, frames des-scrambled (XOR `0x537F6103`), joint=1, `smpl` + `fact` con retardo | ATRAC3 LP4 66 kbps | no suena |
+| atracdenc `-e atrac3plus` (tasa fija 352 kbps, 10 s = 444 KB) con cabecera `0xFFFE`+GUID idéntica a la de Sony | ATRAC3plus | no suena |
+
+Los tres SND0 de Sony hallados en la consola son todos **ATRAC3plus** (stereo 96 kbps / mono 64 y 192 kbps), con
+`fact` de 8 bytes (samples, retardo 0x866–0xE8D) y chunk `smpl`. Conclusión: la XMB exige ATRAC3plus codificado por
+el codificador de Sony; el codificador libre (`atracdenc`) produce un bitstream que el decodificador real rechaza.
+
+**Caminos posibles**
+1. `at3tool.exe` (SDK oficial de Sony, propietario, no incluido): `make_snd0.py` ya lo detecta en
+   `build/at3tool/at3tool.exe` y lo usa con `-e -br 66 -wholeloop`. El usuario decidió no conseguirlo por ahora.
+2. Media Go 3.2 está instalado en el PC (`C:\Program Files (x86)\Sony\Media Go`). Su interfaz ya no expone ATRAC,
+   pero trae el codificador oficial en `FFPlugsLegacyLibs.dll` (DLL de 32 bits) con la API C
+   `LEGACY_atrac_get_handle / set_codec_info / set_encode_algorithm / init_encode / encode / flush_encode / free_encode`
+   (importada por `FileIO Plug-Ins\atracplug\atracplug.dll`). Sin documentación; haría falta ingeniería inversa de las
+   firmas y un Python de 32 bits para llamarla con ctypes. No se intentó.
+3. Dejar el juego sin música de XMB (estado actual). El `SND0.AT3` que hay en `assets/` es el ATRAC3plus de 10 s de
+   atracdenc: inofensivo (la XMB lo ignora) pero inútil. Si prefieres, quítalo del `pack-pbp` y de `package_iso.py`.
+
+## 4. Otras cosas hechas fuera del juego (por si aparecen en el stick)
+- `ms0:/seplugins/RemoteJoyLite.prx` (v0.19) activo en `game.txt` y `pops.txt` (NO en vsh.txt) para transmitir la
+  pantalla al PC por USB. Driver libusb-win32 en el PC. Suele congelarse tras el logo por el puerto USB 3.0 (xHCI).
+- `ms0:/PSP/GAME/PSPMAN` (reproductor FLAC/MP3) con icono/fondo personalizados; `ms0:/ISO/Cuphead_PSP_v0.8.2.iso`.
+
+## 5. Reglas que conviene mantener
+- Nunca `PSP_DISPLAY_SETBUF_IMMEDIATE`; el orden correcto es `SetFrameBuf(NEXTFRAME)` → `WaitVblankStart`.
+- No `sceDmacMemcpy` ni `-lpspdmac` (dejaba pantalla negra en la E-1000).
+- La ISO usa ELF **estático** (`Makefile.iso`, `narcade_static.elf`) como `EBOOT.BIN`; un PRX sin firmar no arranca.
+- Mantener `tools/qa.c` compilando en PC.
+- Documentar cambios en `CAMBIOS_v1.1.md`.
