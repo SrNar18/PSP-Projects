@@ -12,6 +12,7 @@
 static void prism(const CmParcel *p,float bottom,float height,int side,int top,uint32_t color){
     if(p->n<3)return;
     float savedGround=fixedGround;float cx,cz;parcel_centroid(p,&cx,&cz);float h=bottom+height;
+    {float rr=0;for(int i=0;i<p->n;i++){float dx=p->x[i]-cx,dz=p->z[i]-cz,d=dx*dx+dz*dz;if(d>rr)rr=d;}if(geographic&&!rigid&&!sphere_visible(cx,cz,sqrtf(rr)+height*.5f+4))return;}
     if(geographic&&!rigid&&fixedGround>-999999){if(bottom==0)bottom=-1;} /* nivel de parcela ya impuesto */
     else if(geographic&&!rigid){
         float low=geo_height(cx,cz),high=low;
@@ -32,6 +33,23 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
     Vertex tv[8];uint32_t tc=lit_color(color,0,1,0);
     for(int i=0;i<p->n;i++){Vertex vv={(p->x[i]-cx)/90,(p->z[i]-cz)/90,tc,p->x[i],h,p->z[i]};tv[i]=vv;}
     polygon(top,tv,p->n);
+    litAlready=0;fixedGround=savedGround;
+}
+/* Losa transitable que SIGUE el terreno (parques y plazas poligonales): abanico desde el centroide subdividido en 4,
+   con faldon perimetral. Sin fixedGround: cada vertice toma su altura de terreno, como ground(). */
+static void slab_draped(const CmParcel *p,float y,int mat,uint32_t color){
+    if(p->n<3)return;float cx,cz;parcel_centroid(p,&cx,&cz);
+    float savedGround=fixedGround;fixedGround=-1000000;
+    litAlready=1;uint32_t tc=lit_color(color,0,1,0),sc=lit_color(color,0,0,1);
+    for(int i=0;i<p->n;i++){int j=(i+1)%p->n;
+        float ax=p->x[i],az=p->z[i],bx=p->x[j],bz=p->z[j];
+        float m1x=(cx+ax)*.5f,m1z=(cz+az)*.5f,m2x=(ax+bx)*.5f,m2z=(az+bz)*.5f,m3x=(cx+bx)*.5f,m3z=(cz+bz)*.5f;
+        #define SV(X,Z) {((X)-cx)/60,((Z)-cz)/60,tc,X,y,Z}
+        Vertex t1[3]={SV(cx,cz),SV(m1x,m1z),SV(m3x,m3z)},t2[3]={SV(m1x,m1z),SV(ax,az),SV(m2x,m2z)},t3[3]={SV(m3x,m3z),SV(m2x,m2z),SV(bx,bz)},t4[3]={SV(m1x,m1z),SV(m2x,m2z),SV(m3x,m3z)};
+        #undef SV
+        polygon(mat,t1,3);polygon(mat,t2,3);polygon(mat,t3,3);polygon(mat,t4,3);
+        Vertex sk[4]={{0,0,sc,ax,y,az},{1,0,sc,bx,y,bz},{1,1,sc,bx,-3,bz},{0,1,sc,ax,-3,az}};polygon(mat,sk,4);
+    }
     litAlready=0;fixedGround=savedGround;
 }
 /* Caja con altura ABSOLUTA (no relativa al terreno): cabinas y colgadores del Metrocable. */
@@ -92,7 +110,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         box(ax,cz,42,aw+3,ad+3,2,0,ROOF,ROOF,COLOR(120,110,100));box(bxx,bzz,42,bwid+3,bd+3,2,0,ROOF,ROOF,COLOR(120,110,100));
         rooftop(ax,cz,44,h);rooftop(bxx,bzz,44,h>>4);
         for(int k=0;k<4;k++)box(x0+14+k*(aw-20)/4,z0,18,(aw-28)/4,10,.8f,-.3f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>(k*2))&7]);
-        float px0=x0+aw+8,pz0=z0+bd+14,pw=x1-px0-4,pd=z1-pz0-4;if(pw>20&&pd>20){ground(ROAD,px0,pz0,pw,pd,6.3f,COLOR(150,150,150),3);for(int k=1;k<pd/30;k++)ground(CAR_PAINT,px0,pz0+k*30,pw,1.2f,6.5f,0xffffffffu,1);}
+        float px0=x0+aw+8,pz0=z0+bd+14,pw=x1-px0-4,pd=z1-pz0-4;if(pw>20&&pd>20){ground(ROAD,px0,pz0,pw,pd,6.3f,COLOR(150,150,150),3);for(int k=1;k<pd/30;k++)ground(CAR_PAINT,px0,pz0+k*30,pw,1.2f,6.9f,0xffffffffu,1);}
         box(bxx,z1-4,6,bwid*.5f,3,1.5f,0,CAR_PAINT,CAR_PAINT,COLOR(230,60,50));
         break;}
     case CB_CHURCH:{float nw=w*.42f,nd=d*.62f;float zz=cz+d*.08f;
@@ -137,7 +155,7 @@ static void fill_poly(const CmParcel *p,int bx,int bz,int far,unsigned h){
 }
 /* Parque en parcela (rectangular o no): cesped, senderos, arboles, jardines, fuente. */
 static void fill_park(const CmParcel *p,int far,unsigned h){
-    CmParcel g;parcel_shrunk(p,3,&g);prism(&g,1.2f,.6f,GRASS,GRASS,0xffffffffu);
+    CmParcel g;parcel_shrunk(p,3,&g);if(cm_is_rect(p))ground(GRASS,g.x[0],g.z[0],g.x[1]-g.x[0],g.z[2]-g.z[0],1.8f,0xffffffffu,6);else slab_draped(&g,1.8f,GRASS,0xffffffffu);
     float cx,cz;parcel_centroid(p,&cx,&cz);
     if(cm_is_rect(p)){float x0=p->x[0],z0=p->z[0],x1=p->x[1],z1=p->z[2],w=x1-x0,d=z1-z0;
         ground(SIDEWALK,x0+6,cz-7,w-12,14,2,0xffffffffu,6);ground(SIDEWALK,cx-6,z0+6,13,d-12,2,0xffffffffu,6);
@@ -152,7 +170,7 @@ static void fill_park(const CmParcel *p,int far,unsigned h){
 /* Plaza Botero: plaza dura con esculturas de bronce sobre pedestales, palmas y fuente. */
 static void fill_plaza(const CmParcel *p,int far,unsigned h){
     float cx,cz;parcel_centroid(p,&cx,&cz);
-    CmParcel s;parcel_shrunk(p,2,&s);prism(&s,1.2f,.4f,SIDEWALK,SIDEWALK,COLOR(226,222,214));
+    CmParcel s;parcel_shrunk(p,2,&s);slab_draped(&s,1.7f,SIDEWALK,COLOR(226,222,214));
     if(far)return;
     CmParcel g;parcel_shrunk(p,22,&g);
     for(int i=0;i<g.n;i++){float sx=(g.x[i]+cx)*.5f,sz=(g.z[i]+cz)*.5f;
@@ -181,7 +199,7 @@ static void fill_pueblito(const CmParcel *p,int far,unsigned h){
 static void fill_stadium(const CmParcel *p,int far,unsigned h){
     float cx,cz;parcel_centroid(p,&cx,&cz);float A=(p->x[1]-p->x[0])*.5f-18,B=(p->z[2]-p->z[0])*.5f-12;
     ground(GRASS,cx-80,cz-46,160,92,6.5f,COLOR(120,200,110),4);
-    if(!far){for(int k=0;k<5;k++)ground(CAR_PAINT,cx-80+k*40,cz-46,1.2f,92,6.7f,0xffffffffu,1);}
+    if(!far){for(int k=0;k<5;k++)ground(CAR_PAINT,cx-80+k*40,cz-46,1.2f,92,7.1f,0xffffffffu,1);}
     int segs=far?14:26;
     for(int k=0;k<segs;k++){float t=k*2*PI/segs,t2=(k+1)*2*PI/segs;float x=cx+cosf(t)*A,z=cz+sinf(t)*B;float x2=cx+cosf(t2)*A,z2=cz+sinf(t2)*B;
         float ang=atan2f(z2-z,x2-x);float len=sqrtf((x2-x)*(x2-x)+(z2-z)*(z2-z))*1.08f;x=(x+x2)*.5f;z=(z+z2)*.5f;
@@ -291,13 +309,13 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         int lane=(h>>8)&3;
         if(lane<3)for(int k=0;k<320;k+=lane==1?320:40){
             uint32_t lc=lane==2?white:COLOR(244,208,100);float len=lane==1?318:19;
-            if(!northMerged)ground(CAR_PAINT,x+k+1,z+42,len,1.2f,.15f,lc,1);
-            if(!westMerged)ground(CAR_PAINT,x+42,z+k+1,1.2f,len,.15f,lc,1);
-            if(lane==1){if(!northMerged)ground(CAR_PAINT,x+1,z+45,318,1.2f,.15f,lc,1);if(!westMerged)ground(CAR_PAINT,x+45,z+1,1.2f,318,.15f,lc,1);}
+            if(!northMerged)ground(CAR_PAINT,x+k+1,z+42,len,1.2f,.5f,lc,1);
+            if(!westMerged)ground(CAR_PAINT,x+42,z+k+1,1.2f,len,.5f,lc,1);
+            if(lane==1){if(!northMerged)ground(CAR_PAINT,x+1,z+45,318,1.2f,.5f,lc,1);if(!westMerged)ground(CAR_PAINT,x+45,z+1,1.2f,318,.5f,lc,1);}
         }
-        if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+189.4f,z+k,1.2f,19,.15f,white,1);
-        if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.15f,white,1);
-        if(h&128)for(int k=0;k<5;k++){ground(CAR_PAINT,x+9+k*13,z+75,7,5,.2f,white,1);ground(CAR_PAINT,x+75,z+9+k*13,5,7,.2f,white,1);}
+        if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+189.4f,z+k,1.2f,19,.5f,white,1);
+        if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.5f,white,1);
+        if(h&128)for(int k=0;k<5;k++){ground(CAR_PAINT,x+9+k*13,z+75,7,5,.6f,white,1);ground(CAR_PAINT,x+75,z+9+k*13,5,7,.6f,white,1);}
         if(!cityMid){if(h&256)traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
         box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
     }
@@ -306,8 +324,10 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         const CmParcel *p=&ps[i];uint32_t swc=((f&CM_PLAZA)||type==CB_TOWER)?COLOR(226,222,214):white;
         /* acera: sigue el terreno (ground) en parcelas rectangulares; prisma en las poligonales */
         if(cm_is_rect(p))ground(SIDEWALK,p->x[0]-8,p->z[0]-8,p->x[1]-p->x[0]+16,p->z[2]-p->z[0]+16,1.2f,swc,8);
-        else{CmParcel sw;parcel_shrunk(p,-8,&sw);prism(&sw,0,1.2f,SIDEWALK,SIDEWALK,swc);}
-        float savedLevel=fixedGround;fixedGround=parcel_level(p); /* todo lo de la parcela comparte nivel: sin z-fighting en ladera */
+        else{CmParcel sw;parcel_shrunk(p,-8,&sw);if(p->kind==1)slab_draped(&sw,1.2f,SIDEWALK,swc);else prism(&sw,0,1.2f,SIDEWALK,SIDEWALK,swc);}
+        /* parcelas edificadas: todo comparte el nivel del podio (sin z-fighting en ladera). Las transitables (parques,
+           plazas) siguen el terreno, porque el jugador camina sobre ellas a la altura del terreno. */
+        float savedLevel=fixedGround;if(p->kind==0)fixedGround=parcel_level(p);
         if(f&CM_PLAZA)fill_plaza(p,far,h);
         else if(p->kind==1)fill_park(p,far,h);
         else if(f&CM_PUEBLITO)fill_pueblito(p,far,h);
@@ -331,9 +351,9 @@ static void city_v26(void){
     const uint32_t white=0xffffffffu;
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
         float x=bx*320,z=bz*320;
-        if(!nearby(x+160,z+160,790))continue;
+        if(!nearby(x+160,z+160,720))continue;
         if(!nearby(x+160,z+160,400)&&!sphere_visible(x+160,z+160,460))continue;
-        float dist=view_distance(x+160,z+160);int far=dist>430;cityMid=dist>260;
+        float dist=view_distance(x+160,z+160);int far=dist>380;cityMid=dist>230;
         city_cell_v26(bx,bz,far,white);cityMid=0;
     }
     diagonal_avenue();

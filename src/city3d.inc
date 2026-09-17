@@ -13,7 +13,7 @@
 static unsigned city_hash(int bx,int bz,int salt){unsigned h=(unsigned)bx*73856093u^(unsigned)bz*19349663u^(unsigned)salt*83492791u;h^=h>>13;h*=0x5bd1e995u;h^=h>>15;return h;}
 static float city_rand(int bx,int bz,int salt){return (city_hash(bx,bz,salt)&1023)/1023.0f;}
 static int city_district(float x,float z){if(x<640&&z<1000)return 0;if(x<960&&z<1550)return 1;if(x<1100)return 2;if(z<630)return 3;if(x>1760&&z>1380)return 4;if(x>1600)return 5;return 6;}
-static int cityMid=0; /* LOD intermedio (>260): sin flores, tanques, semaforos ni balcones */
+/* cityMid (LOD intermedio) esta declarado en render3d.c antes de tree(): sin flores, tanques, semaforos ni balcones */
 enum {CB_CLASSIC,CB_COMUNA,CB_COLONIAL,CB_TOWER,CB_COMMERCIAL,CB_CHURCH,CB_MARKET};
 static int city_block_type(int bx,int bz){
     int d=city_district(bx*320+160,bz*320+160);unsigned h=city_hash(bx,bz,1)%100;
@@ -179,7 +179,7 @@ static void city_block(int bx,int bz,int far,uint32_t white){
         rooftop(x+150,z+187,44,h);rooftop(x+235,z+120,44,h>>4);
         for(int k=0;k<4;k++)box(x+108+k*26,z+94,18,22,10,.8f,-.3f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>(k*2))&7]); /* toldos */
         ground(ROAD,x+206,z+150,80,132,6.3f,COLOR(150,150,150),3);
-        for(int k=0;k<5;k++)ground(CAR_PAINT,x+206,z+152+k*30,80,1.2f,6.5f,white,1);
+        for(int k=0;k<5;k++)ground(CAR_PAINT,x+206,z+152+k*30,80,1.2f,6.9f,white,1);
         box(x+240,z+270,6,40,3,1.5f,0,CAR_PAINT,CAR_PAINT,COLOR(230,60,50)); /* cartel */
         break;}
     case CB_CHURCH:{ /* iglesia con torre campanario y plaza */

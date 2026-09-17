@@ -67,7 +67,7 @@ static void camera(const R3Scene *s){
         memcpy(planes[k],normals[k],3*sizeof(float));
         planes[k][3]=-normals[k][0]*eye.x-normals[k][1]*eye.y-normals[k][2]*eye.z;
     }
-    planes[0][3]-=2.1f;planes[1][3]+=750;
+    planes[0][3]-=5.1f;planes[1][3]+=710; /* v2.6: acorde con sceGumPerspective(...,5,720) */
     /* Sphere distances require unit normals, including the side planes. */
     for(int k=0;k<6;k++){
         float length=sqrtf(planes[k][0]*planes[k][0]+planes[k][1]*planes[k][1]+planes[k][2]*planes[k][2]);
@@ -197,6 +197,14 @@ static void box(float x,float z,float bottom,float length,float width,float heig
         if(bottom==0)bottom=low-high-1; /* Foundation reaches the downhill ground. */
         }
     }
+    /* v2.6: descarte por esfera de la caja entera antes de generar 5 poligonos (la mitad de una celda visible queda
+       fuera del encuadre). Texturas: repeticion segun la proporcion de la cara para no estirar postes, tableros, vias. */
+    if(geographic&&!rigid&&!sphere_visible(x,z,sqrtf(l*l+w*w)+height*.5f+4)){fixedGround=savedGround;return;}
+    float ul=1,uw=1,vl=1,vw=1;
+    if(length>height*2.2f)ul=length/(height>8?height:8)*.5f;if(height>length*2.2f)vl=height/(length>3?length:3)*.5f;
+    if(width>height*2.2f)uw=width/(height>8?height:8)*.5f;if(height>width*2.2f)vw=height/(width>3?width:3)*.5f;
+    if(ul>8)ul=8;if(uw>8)uw=8;if(vl>8)vl=8;if(vw>8)vw=8;float ut=1,vt=1;
+    if(length>width*2.2f)ut=length/(width>4?width:4)*.5f;if(width>length*2.2f)vt=width/(length>4?length:4)*.5f;if(ut>8)ut=8;if(vt>8)vt=8;
     Point p[8]={local(-l,bottom,-w,x,z,angle),local(l,bottom,-w,x,z,angle),local(l,bottom,w,x,z,angle),local(-l,bottom,w,x,z,angle),
         local(-l,h,-w,x,z,angle),local(l,h,-w,x,z,angle),local(l,h,w,x,z,angle),local(-l,h,w,x,z,angle)};
     /* v2.5: cada cara segun su orientacion respecto al sol (angle rota las normales locales). */
@@ -204,11 +212,11 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     litAlready=1;
     int ao=height>14&&bottom<=6.5f;  /* degradado solo en volumenes que arrancan del suelo/podio */
     void (*q)(int,Point,Point,Point,Point,uint32_t,float,float)=ao?quad2:quad;
-    q(side,p[4],p[5],p[1],p[0],lit_color(sc,sa,0,-ca),1,1);   /* cara -z */
-    q(side,p[6],p[7],p[3],p[2],lit_color(sc,-sa,0,ca),1,1);   /* cara +z */
-    q(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),1,1);    /* cara +x */
-    q(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),1,1);  /* cara -x */
-    quad(top,p[7],p[6],p[5],p[4],lit_color(color,0,1,0),1,1);
+    q(side,p[4],p[5],p[1],p[0],lit_color(sc,sa,0,-ca),ul,vl);   /* cara -z */
+    q(side,p[6],p[7],p[3],p[2],lit_color(sc,-sa,0,ca),ul,vl);   /* cara +z */
+    q(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),uw,vw);    /* cara +x */
+    q(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),uw,vw);  /* cara -x */
+    quad(top,p[7],p[6],p[5],p[4],lit_color(color,0,1,0),ut,vt);
     litAlready=0;
     fixedGround=savedGround;
 }
@@ -225,10 +233,11 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
 }
 static int nearby(float x,float z,float range){float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
 static int park(int x,int z){return cm_park(x,z);}
+static int cityMid; /* LOD intermedio (definido en city3d.inc) */
 static void tree(float x,float z){
     box(x,z,0,3,3,25,0,ROOF,ROOF,COLOR(104,85,61));
     box(x,z,19,20,20,13,.35f,GRASS,GRASS,COLOR(190,220,155));
-    box(x,z,30,13,13,10,-.2f,GRASS,GRASS,COLOR(216,239,176));
+    if(!cityMid)box(x,z,30,13,13,10,-.2f,GRASS,GRASS,COLOR(216,239,176)); /* v2.6: copa superior solo de cerca */
 }
 #include "city3d.inc"
 #include "city26.inc"
@@ -446,6 +455,25 @@ static Point player_pose(Point p,int bone){
     /* Inclinacion hacia delante proporcional a la velocidad. */
     p.x+=(run*1.65f+geo_clamp(motion,0,1)*.25f)*upper;return p;
 }
+/* Tabla de vertices distintos del jugador (posicion, uv, color, hueso). Se construye una vez (tabla hash). */
+#define PLAYER_UNIQUE_MAX 2048
+static unsigned short playerUnique[PLAYER_UNIQUE_MAX],playerIndex[PLAYER_VERTEX_COUNT];static int playerUniqueCount=-1;
+static void player_index_build(void){
+    if(playerUniqueCount>=0)return;
+    static short table[8192];for(int i=0;i<8192;i++)table[i]=-1;
+    playerUniqueCount=0;
+    for(int i=0;i<PLAYER_VERTEX_COUNT;i++){
+        const PlayerVertex *a=&player_mesh[i];
+        unsigned h=(unsigned)(a->x*73.f)*2654435761u^(unsigned)(a->y*151.f)*40503u^(unsigned)(a->z*97.f)*2246822519u^a->bone*97u^a->color;
+        h=(h^(h>>13))&8191;int found=-1;
+        for(int k=0;k<8192;k++){int slot=(h+k)&8191;int u=table[slot];
+            if(u<0){if(playerUniqueCount<PLAYER_UNIQUE_MAX){table[slot]=(short)playerUniqueCount;playerUnique[playerUniqueCount]=(unsigned short)i;found=playerUniqueCount++;}else found=0;break;}
+            const PlayerVertex *b=&player_mesh[playerUnique[u]];
+            if(a->x==b->x&&a->y==b->y&&a->z==b->z&&a->u==b->u&&a->v==b->v&&a->color==b->color&&a->bone==b->bone){found=u;break;}
+        }
+        playerIndex[i]=(unsigned short)found;
+    }
+}
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
     pose_prepare();
@@ -454,20 +482,25 @@ static void person(float x,float z,float angle,int style,int walking){
        proyectan con la transformacion rigida cacheada y se escriben directamente en el lote de su material. */
     if(geographic&&rigid)rigid_cache();
     if(angle!=localA){localA=angle;localC=cosf(angle);localS=sinf(angle);}
+    /* v2.6 (Claude): la malla viene sin indices (7.032 vertices) pero solo tiene ~1.400 distintos. Se posan y
+       transforman una vez los distintos y los triangulos se copian por indice: 5x menos trabajo (13 ms -> ~3 ms). */
+    player_index_build();
+    static Vertex posed[PLAYER_UNIQUE_MAX];
+    for(int u=0;u<playerUniqueCount;u++){
+        const PlayerVertex *a=&player_mesh[playerUnique[u]];Point q=player_pose(point(a->x,a->y,a->z),a->bone);
+        q.x*=PERSON_SCALE;q.y*=PERSON_SCALE;q.z*=PERSON_SCALE;
+        float wx=x+q.x*localC-q.z*localS,wz=z+q.x*localS+q.z*localC,wy=q.y;
+        if(geographic){
+            if(rigid){float dx=wx-objectX,dz=wz-objectZ;wx=rigGX+rigCos*dx-rigSin*dz;wz=rigGZ+rigSin*dx+rigCos*dz;wy+=rigH;}
+            else{float gx,gz;geo_project(wx,wz,&gx,&gz);wy+=geo_height(wx,wz);wx=gx;wz=gz;}
+        }
+        posed[u]=(Vertex){a->u,a->v,day_scale(a->color),wx,wy,wz};
+    }
     for(int i=0;i<PLAYER_VERTEX_COUNT;i+=3){
         int mat=player_mesh[i].mat;
         if(used[mat]+3>MAX_VERTICES){overflow++;continue;}
         Vertex *out=mesh[mat]+used[mat];
-        for(int j=0;j<3;j++){
-            const PlayerVertex *a=&player_mesh[i+j];Point q=player_pose(point(a->x,a->y,a->z),a->bone);
-            q.x*=PERSON_SCALE;q.y*=PERSON_SCALE;q.z*=PERSON_SCALE;
-            float wx=x+q.x*localC-q.z*localS,wz=z+q.x*localS+q.z*localC,wy=q.y;
-            if(geographic){
-                if(rigid){float dx=wx-objectX,dz=wz-objectZ;wx=rigGX+rigCos*dx-rigSin*dz;wz=rigGZ+rigSin*dx+rigCos*dz;wy+=rigH;}
-                else{float gx,gz;geo_project(wx,wz,&gx,&gz);wy+=geo_height(wx,wz);wx=gx;wz=gz;}
-            }
-            out[j]=(Vertex){a->u,a->v,day_scale(a->color),wx,wy,wz};
-        }
+        out[0]=posed[playerIndex[i]];out[1]=posed[playerIndex[i+1]];out[2]=posed[playerIndex[i+2]];
         used[mat]+=3;
     }
     localScale=PERSON_SCALE;
@@ -527,21 +560,32 @@ void r3_init(void){
 #endif
 }
 void r3_draw(uint32_t *fb,const R3Scene *s){
-    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;camera(s);city();
+    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;camera(s);
+#ifndef AB_NOCITY
+    city();
+#endif
     rigid=2;
+#ifndef AB_NOCARS
     for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
+#endif
     rigid=1;
     objectX=s->x;objectZ=s->z;objectYaw=s->angle;playerLift=s->lift;rigX=-1e9f; /* invalidar cache */
+#ifndef AB_NOPLAYER
     if(!s->driving&&!s->inMetro)person(s->x,s->z,s->angle,-1,s->moving);
+#endif
     playerLift=0;rigX=-1e9f;
+#ifndef AB_NOPEOPLE
     for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
+#endif
     rigid=0;
     landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
     if(!s->driving&&!s->inMetro&&s->lift<1)cast_shadow(s->x,s->z,3,17);
     for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
+#ifndef AB_NOFX
     street_lamps_glow();clouds(s->time);
+#endif
     geographic=0;
 #ifndef R3_HOST
     sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
@@ -551,7 +595,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     sceGuEnable(GU_TEXTURE_2D);sceGuTexMode(GU_PSM_5650,0,0,1);
     sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);sceGuTexFilter(GU_LINEAR,GU_LINEAR);
     sceGuTexWrap(GU_REPEAT,GU_REPEAT);sceGuTexScale(1,1);sceGuTexOffset(0,0);sceGuShadeModel(GU_SMOOTH);
-    sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,2,760);
+    sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,5,720); /* v2.6: plano cercano 5 (antes 2): 2.5x mas precision de profundidad, menos parpadeo (z-fighting) */
     ScePspFVector3 e={eye.x,eye.y,eye.z},t={target.x,target.y,target.z};
     ScePspFVector3 up={0,1,0};sceGumMatrixMode(GU_VIEW);sceGumLoadIdentity();sceGumLookAt(&e,&t,&up);
     sceGumMatrixMode(GU_MODEL);sceGumLoadIdentity();
@@ -571,13 +615,15 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
         sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
     }
 #ifndef NARCADE_TOPVIEW
-    sceGuEnable(GU_FOG);sceGuFog(300,690,horizonColor);
+    sceGuEnable(GU_FOG);sceGuFog(280,640,horizonColor);
 #endif
+#ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
         if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
         else sceGuTexImage(0,64,64,64,textures3d_data+VRAM_MATERIALS*128*128*2+(m-VRAM_MATERIALS)*64*64*2);
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,used[m],0,mesh[m]);
     }
+#endif
     /* v2.5: pase de sombras (oscurece) y pase aditivo (luces, nubes, sol). Sin textura ni niebla. */
     sceGuDisable(GU_FOG);sceGuDisable(GU_TEXTURE_2D);sceGuEnable(GU_BLEND);sceGuDepthMask(GU_TRUE);
     if(shadowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,shadowUsed,0,shadowMesh);}

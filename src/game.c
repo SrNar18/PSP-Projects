@@ -628,7 +628,8 @@ static void map_grid_build(void){
   float wx=i*MG_STEP+MG_STEP*.5f,wy=j*MG_STEP+MG_STEP*.5f;int ly=(int)wy%320;unsigned char c;
   if(wx>1396&&wx<1460&&ly>86)c=1;
   else{int kind=cm_parcel_at(wx,wy);if(kind<0)c=cm_on_road(wx,wy)?2:3;else c=kind==1?4:5;}
-  mapGrid[j][i]=c;
+  int h=(int)geo_clamp(geo_height(wx,wy)*.14f,0,40); /* sombreado por altura precalculado (bits 3..7) */
+  mapGrid[j][i]=(unsigned char)(c|((h/2)<<3));
  }
  mapGridBuilt=1;
 }
@@ -636,9 +637,8 @@ static uint32_t map_ground(float gx,float gz){
  float wx,wy;geo_unproject(gx,gz,&wx,&wy);
  if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)return RGB(20,30,34);
  if(!mapGridBuilt)map_grid_build();
- unsigned char c=mapGrid[(int)wy/MG_STEP][(int)wx/MG_STEP];
+ unsigned char v=mapGrid[(int)wy/MG_STEP][(int)wx/MG_STEP],c=v&7;int h=(v>>3)*2;
  if(c==1)return RGB(39,127,147);if(c==2)return RGB(119,128,123);if(c==3)return RGB(150,152,140);
- int h=(int)geo_clamp(geo_height(wx,wy)*.14f,0,40);
  return c==4?RGB(57+h,91+h,68):RGB(51+h,67+h,54);
 }
 static void map_point(float x,float y,float sc,int ox,int oy,int *mx,int *my){float gx,gz;geo_project(x,y,&gx,&gz);*mx=ox+(int)(gx*sc);*my=oy+(int)(gz*sc);}
@@ -646,9 +646,10 @@ static void minimap(int cx,int cy,int r){
  const float scale=6.0f; /* unidades de mundo por pixel */
  float gx,gz;geo_project(g.x,g.y,&gx,&gz);
  circle(cx,cy,r+2,RGB(20,30,34));
- for(int dy=-r;dy<=r;dy++)for(int dx=-r;dx<=r;dx++){
+ for(int dy=-r;dy<=r;dy+=2)for(int dx=-r;dx<=r;dx+=2){ /* v2.6: bloques 2x2 (4x menos muestras; costaba 5 ms) */
   if(dx*dx+dy*dy>r*r)continue;
-  px(cx+dx,cy+dy,map_ground(gx+dx*scale,gz+dy*scale));
+  uint32_t c=map_ground(gx+dx*scale,gz+dy*scale);
+  px(cx+dx,cy+dy,c);px(cx+dx+1,cy+dy,c);px(cx+dx,cy+dy+1,c);px(cx+dx+1,cy+dy+1,c);
  }
  for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||g.heat<=0)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
  if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float pxp,pyp;geo_project(locations[t].x,locations[t].y,&pxp,&pyp);float dx=(pxp-gx)/scale,dy=(pyp-gz)/scale;float d=sqrtf(dx*dx+dy*dy);
@@ -693,7 +694,9 @@ static void hud(void){
   box_center(cx,H-14-lines*13,w,lines*13+8,INK);
   if(lines==1)text_center(cx,H-10-13,line,col,1);else textwrap(cx-w/2+10,H-10-lines*13,w-20,line,col);}
  /* Minimapa. */
+#ifndef AB_NOMINIMAP
  minimap(46,H-46,32);
+#endif
 }
 static void signature(int x,int y){for(int yy=0;yy<74;yy++)for(int xx=0;xx<180;xx++){int a=signature_data[yy*180+xx];if(a>60)rect(x+xx,y+yy,1,1,a>160?LIME:MUTED);}}
 static void title_draw(void){
