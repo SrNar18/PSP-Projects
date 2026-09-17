@@ -76,3 +76,15 @@ Tecnicas (render3d.c, world_geo.h):
   Exportación actual: 2.692 triángulos, OBJ/MTL y GIF de las poses reales del motor.
 - Entrega: release/Narcade_v2.5_PSP.zip, ISO y PBP. Detalles en VALIDACION_v2.5.md.
   Probado en PPSSPP y pruebas nativas; pendiente de probar esta versión en PSP real.
+
+# v2.5 (Claude, 17-sep-2026 noche)
+- Ciudad irregular (src/city3d.inc): 7 tipos de manzana por barrio (comuna, colonial, torre, comercial en L, iglesia,
+  mercado, clasico), aceras de ancho variable, marcas viales distintas, puentes con barandillas/arcos/farolas sobre el
+  rio, pasarelas cubiertas entre manzanas, zonas verdes (arbustos, flores, setos, fuentes), semaforos, paradas de bus,
+  toldos, balcones, azoteas. La red de calles y solid() NO cambian. LOD: 'far' (>430) y 'cityMid' (>260).
+- Dia/noche (src/daylight.inc): dia de 8 min (DAY_SECONDS), sol con azimut/elevacion, iluminacion por cara en box()
+  y ground() (lit_color), cielo/niebla por hora, nubes, sol/luna, sombras proyectadas (jugador, coches, peatones),
+  farolas y ventanas encendidas de noche, faros de los coches con cono de luz. Pase aditivo tras la geometria.
+- Escala humana: PERSON_SCALE 0.62 (jugador y NPCs); velocidades a pie 42/68/100 (antes 72/111/150).
+- Control: direccion siempre relativa a la camara actual (sin anclaje); camara con seguimiento suave (omega 4.5).
+- Coste: ~28-34 ms/fotograma en PPSSPP (30 fps) con todo lo anterior.

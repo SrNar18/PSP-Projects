@@ -121,10 +121,10 @@ static int foot_free(float x,float y){
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
 static void camera_follow(float target,float dt){
  /* Critically damped heading in rendered world space, bounded turn speed. */
- float d=angle_delta(g.viewYaw,target),omega=8,decay=expf(-omega*dt),v=g.cameraVelocity;
+ float d=angle_delta(g.viewYaw,target),omega=4.5f,decay=expf(-omega*dt),v=g.cameraVelocity; /* v2.5: seguimiento suave (antes 8) */
  float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
  g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
- float limit=2.4f*dt;
+ float limit=2.1f*dt;
  if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
  g.viewYaw+=change;
 }
@@ -383,7 +383,7 @@ static void foot_pace(int moving,float dt){
   if(g.runTaps>=3)g.sprintTime=.45f;
  }
  if(g.tapAge>.45f)g.runTaps=0;
- float wanted=g.sprintTime>0?150.f:held(B_CROSS)?111.f:72.f;
+ float wanted=g.sprintTime>0?100.f:held(B_CROSS)?68.f:42.f; /* v2.5 (Claude): escala humana; antes 150/111/72 */
  g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
 }
 static void world_tick(float ax,float ay,float dt){
@@ -404,7 +404,7 @@ static void world_tick(float ax,float ay,float dt){
   float sx=dx,sy=dy;
   if(sx*sx+sy*sy>.04f){
    float intent=atan2f(sx,-sy);
-   if(!g.stickActive||fabsf(angle_delta(intent,g.stickAngle))>.65f){g.inputYaw=g.viewYaw;g.stickAngle=intent;g.stickActive=1;}
+   g.inputYaw=g.viewYaw;g.stickAngle=intent;g.stickActive=1; /* v2.5 (Claude): siempre relativo a la camara actual; la camara sigue despacio (camera_follow) */
   }
   else{g.stickActive=0;sx=sy=0;}
   dx=-sinf(g.inputYaw)*sx-cosf(g.inputYaw)*sy;dy=cosf(g.inputYaw)*sx-sinf(g.inputYaw)*sy;

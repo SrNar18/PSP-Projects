@@ -44,7 +44,7 @@ static void camera(const R3Scene *s){
     float h=geo_height(s->x,s->z);
     eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->driving?54:43),pz-sinf(yaw)*s->cameraDistance);
     float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
-    target=point(px+cosf(yaw)*25,h+(s->driving?10:14),pz+sinf(yaw)*25);
+    target=point(px+cosf(yaw)*25,h+(s->driving?10:11),pz+sinf(yaw)*25);
     float fx=target.x-eye.x,fy=target.y-eye.y,fz=target.z-eye.z;
     float n=sqrtf(fx*fx+fy*fy+fz*fz);fx/=n;fy/=n;fz/=n;
     float rx=-fz,rz=fx,rn=sqrtf(rx*rx+rz*rz);rx/=rn;rz/=rn;
@@ -157,8 +157,11 @@ static void quad(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,fl
 /* Optimizacion (Claude): la misma rotacion se repite miles de veces por fotograma (todos los vertices de un
    objeto comparten angulo). Cachear seno/coseno del ultimo angulo evita dos llamadas trigonometricas por vertice. */
 static float localA=1e30f,localC=1,localS=0;
+#define PERSON_SCALE 0.62f /* v2.5 (Claude): personas a escala de la ciudad (un piso = 1.35 personas, coche = 2 personas) */
+static float localScale=1; /* factor aplicado a las coordenadas locales (personas) */
 static Point local(float x,float y,float z,float cx,float cz,float a){
     if(a!=localA){localA=a;localC=cosf(a);localS=sinf(a);}
+    x*=localScale;y*=localScale;z*=localScale;
     return point(cx+x*localC-z*localS,y,cz+x*localS+z*localC);
 }
 /* Object forward is +X. Faces have UVs with their top at v=0. */
@@ -254,9 +257,13 @@ static void limb(Point a,Point b,float r0,float r1,int mat,uint32_t tint,float x
         quad(mat,p,q,r,s,shade(tint,.78f+.2f*fabsf(ringC[k])),1,1);
     }
 }
+static void simple_person_body(float x,float z,float angle,int style,int walking);
 static void simple_person(float x,float z,float angle,int style,int walking){
     if(!nearby(x,z,330))return;
     if(!sphere_visible(x,z,22))return;
+    localScale=PERSON_SCALE;simple_person_body(x,z,angle,style,walking);localScale=1;
+}
+static void simple_person_body(float x,float z,float angle,int style,int walking){
     /* Reserve enough space before adding a pedestrian. The protagonist is
        submitted first; dense crowds must not truncate his outfit. Allow
        extra vertices for polygons split by the camera clip planes. */
@@ -427,6 +434,7 @@ static void person(float x,float z,float angle,int style,int walking){
         Vertex *out=mesh[mat]+used[mat];
         for(int j=0;j<3;j++){
             const PlayerVertex *a=&player_mesh[i+j];Point q=player_pose(point(a->x,a->y,a->z),a->bone);
+            q.x*=PERSON_SCALE;q.y*=PERSON_SCALE;q.z*=PERSON_SCALE;
             float wx=x+q.x*localC-q.z*localS,wz=z+q.x*localS+q.z*localC,wy=q.y;
             if(geographic){
                 if(rigid){float dx=wx-objectX,dz=wz-objectZ;wx=rigGX+rigCos*dx-rigSin*dz;wz=rigGZ+rigSin*dx+rigCos*dz;wy+=rigH;}
@@ -436,6 +444,7 @@ static void person(float x,float z,float angle,int style,int walking){
         }
         used[mat]+=3;
     }
+    localScale=PERSON_SCALE;
     for(int side=-1;side<=1;side+=2){
         Point foot=player_pose(point(0,0,side*1.65f),side<0?1:2);float step=foot.x,lift=foot.y;
         float lateral=side*1.65f;
@@ -452,6 +461,7 @@ static void person(float x,float z,float angle,int style,int walking){
                     local(xx+.12f,yy,lateral+.66f,x,z,angle),local(xx,yy,lateral+.66f,x,z,angle),COLOR(80,84,83),1,1);
         }
     }
+    localScale=1;
 }
 static void landmarks(void){
     for(int i=0;i<30;i++){
@@ -500,8 +510,8 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
-    if(!s->driving)cast_shadow(s->x,s->z,4,26);
-    for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,3,24);
+    if(!s->driving)cast_shadow(s->x,s->z,3,17);
+    for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
     street_lamps_glow();clouds(s->time);
     geographic=0;
 #ifndef R3_HOST
