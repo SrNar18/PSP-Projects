@@ -1,4 +1,4 @@
-# Notas de Claude para GPT Codex — estado del proyecto Narcade (17-sep-2026)
+# Notas de Claude para GPT Codex — estado del proyecto Narcade (17-sep-2026, actualizado 15:30)
 
 Este documento resume TODO lo que Claude hizo en este repositorio después del checkpoint de Codex
 (commit `5c49661`), qué quedó verificado en la **PSP E-1000 real**, qué quedó pendiente y con qué
@@ -98,3 +98,37 @@ el codificador de Sony; el codificador libre (`atracdenc`) produce un bitstream 
 - La ISO usa ELF **estático** (`Makefile.iso`, `narcade_static.elf`) como `EBOOT.BIN`; un PRX sin firmar no arranca.
 - Mantener `tools/qa.c` compilando en PC.
 - Documentar cambios en `CAMBIOS_v1.1.md`.
+
+## 8. Actualización 17-sep (tarde): v2.4
+
+### 8.1 Rendimiento (commit `4d9d733`) — medido con `NARCADE_PROFILE=1 python tools/build_windows.py`
+Tu versión del 17-sep tardaba **138–156 ms por fotograma** (6–7 fps) en PPSSPP (que emula ciclos MIPS). Causas:
+la malla del jugador (7.032 vértices) pasaba cada uno por `player_pose` (5 trig), `local()` (2 trig), la proyección
+geográfica rígida (`geo_project` + `geo_heading` con `atan2`, `cos`, `sin` **por vértice**) y un recorte contra 6
+planos con copias; y la ciudad se regeneraba entera sin descartar lo que queda fuera de cámara.
+Ahora: **19–22 ms (45–50 fps)**. Cambios en `render3d.c` y `world_geo.h` (todos comentados con "Optimizacion (Claude)"):
+- `sphere_visible()`: frustum culling por manzana (r=300), coche (r=30) y peatón (r=22).
+- LOD: manzanas a >430 sin marcas viales/cebras/farolas/murales/árboles y un solo bloque por edificio; coches a >300 sin ruedas.
+- `rigid_cache()`: proyección/rumbo/altura por objeto, no por vértice. `local()` cachea seno/coseno por ángulo.
+- `polygon()`: rechazo/aceptación trivial por plano; solo recorta contra planos cruzados.
+- Ruta rápida del jugador dentro de `person()` (sin `polygon()`).
+- `geo_height()`: tabla de nodos de la rejilla de 80 (44×40) construida perezosamente; mismo resultado numérico.
+- `player_pose()`: constantes de la marcha una vez por fotograma; `sin(pi*w)` ≈ `4w(1-w)`.
+Nada de esto cambia el aspecto de cerca. Si añades geometría nueva, pásala por `sphere_visible()` y usa `far` para LOD.
+
+### 8.2 Animación (commit `d810d76`)
+`player_pose()`: brazos con balanceo opuesto y codo (más amplio al correr), contragiro hombros/cadera (torsión
+`tw=-wave*.10*motion*upper`), arco del pie, inclinación proporcional a la velocidad. La forma y texturas del
+personaje vienen del GLB del usuario (`personaje-v3.glb` via `tools/import_character.py`); no las toqué.
+
+### 8.3 SND0.AT3 — CAUSA ENCONTRADA (commit `046008f`)
+Todos mis intentos del 16-sep fallaban por una regla no documentada que otro proyecto verificó en hardware
+(github.com/TotalKommando/psp-media-toolkit, FINDINGS.md §2.3): **`fact.samples + delay + 368 <= frames*1024`**.
+Yo declaraba `frames*1024`. `tools/make_snd0.py` ya recorta el `fact` (delay 1024). El `assets/SND0.AT3` actual es
+ATRAC3 LP4 66 kbps (192 B/frame, joint stereo, `smpl` de bucle) del clip 0:11–0:31. **Pendiente de confirmar en la
+E-1000** (el usuario se llevó la consola). Ese proyecto también confirma que el ATRAC3plus de atracdenc (352 kbps)
+lo rechaza la XMB incluso con `fact` correcto, y que Media Go 3.x no sirve para codificar ATRAC.
+
+### 8.4 Binarios listos para instalar
+`Descargas/Narcade_v2.4_listo/EBOOT.PBP` y `Narcade.iso` (compilados 17-sep 15:2x). Instalación: `ms0:/PSP/GAME/NARCADE/`
+y `ms0:/ISO/`.
