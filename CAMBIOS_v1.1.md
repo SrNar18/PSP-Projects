@@ -54,3 +54,5 @@ Tecnicas (render3d.c, world_geo.h):
 5. polygon(): aceptacion/rechazo trivial por plano; solo se recorta contra los planos que se cruzan.
 6. Ruta rapida para los 2.344 triangulos del jugador (sin polygon(): sin recorte ni copias).
 7. Tabla de alturas del terreno (rejilla de 80) en vez de 4 evaluaciones de geo_height_raw por consulta.
+- Animacion procedural del jugador (player_pose): balanceo de brazos con codo (mas amplio al correr), contragiro
+  hombros/cadera, arco del pie, inclinacion al correr. Sin coste medible.

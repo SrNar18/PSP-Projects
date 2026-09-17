@@ -350,27 +350,40 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
 }
 /* Optimizacion (Claude): las ~7.000 llamadas por fotograma compartian los mismos senos/cosenos de la marcha;
    se calculan una vez por fotograma. sin(pi*w) se aproxima con 4w(1-w) (error < 6%, invisible en la rodilla). */
-static float poseTime=-1,poseWave,poseRun,poseMotion,poseBreath,poseBob;
+static float poseTime=-1,poseWave,poseRun,poseMotion,poseBreath,poseBob,poseCosW;
 static Point player_pose(Point p,int bone){
     if(view->time!=poseTime){poseTime=view->time;poseMotion=view->motion;poseWave=sinf(view->gaitPhase);poseRun=geo_clamp(poseMotion-1,0,.6f);
-        poseBreath=sinf(view->time*2.2f)*.08f*(1-geo_clamp(poseMotion,0,1));poseBob=fabsf(cosf(view->gaitPhase))*.12f*poseMotion;}
+        poseBreath=sinf(view->time*2.2f)*.08f*(1-geo_clamp(poseMotion,0,1));poseBob=fabsf(cosf(view->gaitPhase))*.12f*poseMotion;
+        poseCosW=cosf(view->gaitPhase*2);}
     float motion=poseMotion,wave=poseWave,run=poseRun;
     int side=(bone&1)?-1:1;
+    /* Animacion procedural (Claude v2.4): ademas del paso, contragiro de hombros y cadera, brazos con codo,
+       inclinacion hacia delante al correr y arco del pie. Todo en funcion de la fase de marcha ya existente. */
     if(bone==1||bone==2){
         float weight=geo_clamp(1-p.y/14.8f,0,1),swing=side*wave;
         float lift=fmaxf(0,swing)*(1.4f+run*1.5f)*motion;
         /* Flexible knee blend preserves a continuous baggy pant surface. */
         p.x+=swing*3.2f*motion*weight-lift*.3f*(4*weight*(1-weight));
         p.y+=lift*weight;
+        /* Arco del pie: el pie que avanza se eleva mas en mitad del paso (pierna casi recta al apoyar). */
+        p.y+=fmaxf(0,-poseCosW)*.6f*motion*weight*weight;
+        /* La cadera gira ligeramente con la pierna que avanza. */
+        float hip=geo_clamp((p.y-6)/8,0,1)*wave*.06f*motion;p.z+=p.x*hip;
     }else if(bone>=3){
         float weight=geo_clamp((24-p.y)/12,0,1);
-        p.x-=side*wave*1.8f*motion*weight;
-        p.y+=run*weight*1.3f; /* Elbows bend higher while running. */
+        /* Brazo: balanceo opuesto a la pierna, mas amplio al correr; el codo se dobla y sube (antebrazo adelantado). */
+        float swing=-side*wave*(2.2f+run*2.5f)*motion;
+        p.x+=swing*weight;
+        p.y+=run*weight*1.6f+fmaxf(0,swing)*.35f*weight*weight;
+        p.z-=side*weight*run*.8f; /* los brazos se cierran hacia el cuerpo al correr */
     }
     float upper=geo_clamp((p.y-13)/12,0,1);
+    /* Contragiro de hombros respecto a la cadera (torsion del torso). */
+    if(bone==0||bone>=3){float tw=-wave*.10f*motion*upper;float nx=p.x-p.z*tw,nz=p.z+p.x*tw;p.x=nx;p.z=nz;}
     p.y+=poseBreath*upper;
     p.y+=poseBob*geo_clamp(p.y/4,0,1);
-    p.x+=run*.55f*upper;return p;
+    /* Inclinacion hacia delante proporcional a la velocidad. */
+    p.x+=(run*.55f+geo_clamp(motion,0,1)*.35f)*upper;return p;
 }
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
