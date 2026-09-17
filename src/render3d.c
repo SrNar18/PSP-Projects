@@ -227,9 +227,9 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
     /* Subdivide at terrain lattice boundaries: roads genuinely climb hills. */
     for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,geo_next_z(zz));if(endz<=zz+.001f)endz=fminf(z+d,zz+.01f);
         for(float xx=x;xx<x+w-.001f;){float endx=fminf(x+w,(floorf(xx/80)+1)*80);if(endx<=xx+.001f)endx=fminf(x+w,xx+80);
-            uint32_t lc=lit_color(color,0,1,0);
-            Vertex v[4]={{(xx-x)/w*repeat,(zz-z)/d*repeat,lc,xx,y,zz},{(endx-x)/w*repeat,(zz-z)/d*repeat,lc,endx,y,zz},
-                         {(endx-x)/w*repeat,(endz-z)/d*repeat,lc,endx,y,endz},{(xx-x)/w*repeat,(endz-z)/d*repeat,lc,xx,y,endz}};
+            uint32_t lc=lit_color(color,0,1,0);float ou=0,ov=0;if(mat==WATER){ou=view->time*.045f;ov=view->time*.11f;} /* v2.7: el agua fluye */
+            Vertex v[4]={{(xx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,xx,y,zz},{(endx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,endx,y,zz},
+                         {(endx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,endx,y,endz},{(xx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,xx,y,endz}};
             litAlready=1;polygon(mat,v,4);litAlready=0;xx=endx;
         }zz=endz;
     }
@@ -554,8 +554,10 @@ static void landmarks(void){
     for(int i=0;i<30;i++){
         float x=view->hubs[i][0]+18,z=view->hubs[i][1];if(!nearby(x,z,400))continue;
         /* An actual textured computer terminal at each interaction point. */
-        box(x,z,0,10,8,10,0,SIDEWALK,SIDEWALK,0xffffffffu);
-        box(x,z,10,2,10,8,0,GLASS,CAR_PAINT,COLOR(111,249,210));
+        /* v2.7: terminal de barrio: pedestal hexagonal, pantalla inclinada y visera */
+        cylinder(x,z,0,5.5f,9,6,0,CONCRETE,METAL,0xffffffffu);
+        box(x,z,9,2.4f,9,7,0,GLASS,METAL,COLOR(111,249,210));
+        frustum(x,z,16,6,2,3,6,0,METAL,COLOR(80,84,90));
         if(i<24&&!(view->collected&(1u<<i)))box(x+15,z+38,5+sinf(view->time*2),1,7,7,view->time,WHEEL,WHEEL,0xffffffffu);
     }
     if(view->target>=0){
