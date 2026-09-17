@@ -13,7 +13,7 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
     if(p->n<3)return;
     float savedGround=fixedGround;float cx,cz;parcel_centroid(p,&cx,&cz);float h=bottom+height;
     {float rr=0;for(int i=0;i<p->n;i++){float dx=p->x[i]-cx,dz=p->z[i]-cz,d=dx*dx+dz*dz;if(d>rr)rr=d;}if(geographic&&!rigid&&!sphere_visible(cx,cz,sqrtf(rr)+height*.5f+4))return;}
-    if(geographic&&!rigid&&fixedGround>-999999){if(bottom==0)bottom=-1;} /* nivel de parcela ya impuesto */
+    if(geographic&&!rigid&&fixedGround>-999999){if(bottom==0){float low=geo_height(cx,cz);for(int i=0;i<p->n;i++){float hh=geo_height(p->x[i],p->z[i]);if(hh<low)low=hh;}bottom=low-fixedGround-1;}} /* nivel impuesto; cimiento hasta el terreno mas bajo */
     else if(geographic&&!rigid){
         float low=geo_height(cx,cz),high=low;
         for(int i=0;i<p->n;i++){float hh=geo_height(p->x[i],p->z[i]);if(hh<low)low=hh;if(hh>high)high=hh;}

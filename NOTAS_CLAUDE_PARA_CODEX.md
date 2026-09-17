@@ -197,3 +197,13 @@ comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFIL
 - Pendiente de confirmar en consola: rendimiento real, subir al Metro, musica XMB.
 - Peticion del usuario (17-sep): extraer modelos de GTA LCS/VCS con BLeeds/MDL viewer. **No se hizo**: son assets con
   copyright de Rockstar; usar solo modelos propios o CC0 (Kenney, Quaternius) via `tools/import_character.py`.
+
+### 11.2 v2.6.2 (17-sep, noche) — instalada en la PSP
+- **Guardar/cargar ya no usa el dialogo de lista de Sony** (LISTSAVE/LISTLOAD: lento y con restos de dibujo en la
+  consola). Menu propio `SLOTS` en game.c (4 ranuras con titulo/detalle leidos de `PARAM.SFO` por `slot_info()` en
+  psp_main.c) y el sistema solo hace **AUTOSAVE/AUTOLOAD** en silencio con `saveName` de la ranura elegida
+  (`game_request_slot()`). Titulo > CONTINUAR abre el menu solo si hay alguna ranura; si no, historia nueva.
+- **SELECT = zoom de camara** en 4 niveles (`g.zoom`, tablas `camFootDist/Eye`, `camCarDist/Eye`; por defecto 1 =
+  normal 50/34; 0 lejana 65/43; 2 cercana; 3 muy cercana). `R3Scene.eyeHeight`. El mapa sigue en PAUSA > MAPA.
+- **Edificios flotando**: con `fixedGround` impuesto (nivel de parcela), `box()`/`prism()` ahora bajan el cimiento
+  hasta el terreno mas bajo de su huella (antes solo 1 unidad: en ladera se veia el hueco).

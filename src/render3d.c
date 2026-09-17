@@ -43,7 +43,7 @@ static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((
 static void camera(const R3Scene *s){
     float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=s->yaw;
     float h=geo_height(s->x,s->z)+s->lift; /* v2.6: anden del Metro */
-    eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->driving?54:43),pz-sinf(yaw)*s->cameraDistance);
+    eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->eyeHeight>0?s->eyeHeight:(s->driving?54:43)),pz-sinf(yaw)*s->cameraDistance);
     float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
     target=point(px+cosf(yaw)*25,h+(s->driving?10:11),pz+sinf(yaw)*25);
     if(s->inMetro){ /* v2.6: camara dentro del coche del Metro, mirando en el sentido de la marcha */
@@ -189,7 +189,9 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     float l=length*.5f,w=width*.5f,h=bottom+height;
     float savedGround=fixedGround;
     if(geographic&&!rigid){
-        if(fixedGround>-999999){if(bottom==0)bottom=-1;} /* v2.6: nivel de parcela impuesto desde fuera (podio) */
+        if(fixedGround>-999999){ /* v2.6: nivel de parcela impuesto desde fuera (podio) */
+            if(bottom==0){float low=geo_height(x,z);for(int a=-1;a<=1;a+=2)for(int b=-1;b<=1;b+=2){Point p=local(a*l,0,b*w,x,z,angle);float hh=geo_height(p.x,p.z);if(hh<low)low=hh;}bottom=low-fixedGround-1;} /* cimiento hasta el terreno mas bajo: nada flota */
+        }
         else{
         float low=geo_height(x,z),high=low;
         for(int a=-1;a<=1;a+=2)for(int b=-1;b<=1;b+=2){Point p=local(a*l,0,b*w,x,z,angle);float hh=geo_height(p.x,p.z);low=fminf(low,hh);high=fmaxf(high,hh);}

@@ -30,13 +30,29 @@ static int any_slot_exists(void){
  return 0;}
 /* mode 0 = LISTSAVE, 1 = LISTLOAD. Devuelve 1 si termino bien, 0 si cancelado/error.
    Mientras el dialogo esta abierto seguimos dibujando el juego debajo con el mismo doble buffer. */
+/* v2.6.2: resumen de una ranura leyendo su PARAM.SFO (SAVEDATA_TITLE / SAVEDATA_DETAIL). Devuelve 1 si existe. */
+static int slot_info(int slot,char *title,int titlecap,char *detail,int detailcap){
+ char path[96];snprintf(path,sizeof(path),"ms0:/PSP/SAVEDATA/" SAVE_GAME "%s/PARAM.SFO",saveNames[slot]);
+ SceUID f=sceIoOpen(path,PSP_O_RDONLY,0);if(f<0)return 0;
+ static unsigned char sfo[4096];int n=sceIoRead(f,sfo,sizeof(sfo));sceIoClose(f);
+ title[0]=0;detail[0]=0;if(n<20||sfo[1]!='P'||sfo[2]!='S'||sfo[3]!='F'){snprintf(title,titlecap,"Partida guardada");return 1;}
+ unsigned keys=*(unsigned*)(sfo+8),data=*(unsigned*)(sfo+12),count=*(unsigned*)(sfo+16);
+ for(unsigned i=0;i<count&&i<32;i++){unsigned char *e=sfo+20+i*16;unsigned ko=*(unsigned short*)e,len=*(unsigned*)(e+4),doff=*(unsigned*)(e+12);
+  if(keys+ko>=(unsigned)n||data+doff>=(unsigned)n)continue;const char *key=(const char*)sfo+keys+ko;const char *val=(const char*)sfo+data+doff;
+  if(!strcmp(key,"SAVEDATA_TITLE"))snprintf(title,titlecap,"%.*s",(int)(len<(unsigned)titlecap?len:(unsigned)titlecap-1),val);
+  else if(!strcmp(key,"SAVEDATA_DETAIL"))snprintf(detail,detailcap,"%.*s",(int)(len<(unsigned)detailcap?len:(unsigned)detailcap-1),val);
+ }
+ for(char *c=detail;*c;c++)if(*c=='\n')*c=' ';
+ if(!title[0])snprintf(title,titlecap,"Partida guardada");return 1;
+}
 static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memset(&sd,0,sizeof(sd));sd.base.size=sizeof(sd);
  sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_LANGUAGE,&sd.base.language);
  sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_UNKNOWN,&sd.base.buttonSwap);
  sd.base.graphicsThread=0x11;sd.base.accessThread=0x13;sd.base.fontThread=0x12;sd.base.soundThread=0x10;
- sd.mode=mode?PSP_UTILITY_SAVEDATA_LISTLOAD:PSP_UTILITY_SAVEDATA_LISTSAVE;sd.overwrite=1;sd.focus=PSP_UTILITY_SAVEDATA_FOCUS_LATEST;
- strcpy(sd.key,"NARCADEKEY2026");strcpy(sd.gameName,SAVE_GAME);strcpy(sd.saveName,"0000");sd.saveNameList=saveNames;strcpy(sd.fileName,"DATA.BIN");
+ /* v2.6.2: la ranura ya la eligio el jugador en el menu propio; el sistema solo lee/escribe (sin lista: mucho mas rapido) */
+ sd.mode=mode?PSP_UTILITY_SAVEDATA_AUTOLOAD:PSP_UTILITY_SAVEDATA_AUTOSAVE;sd.overwrite=1;sd.focus=PSP_UTILITY_SAVEDATA_FOCUS_LATEST;
+ strcpy(sd.key,"NARCADEKEY2026");strcpy(sd.gameName,SAVE_GAME);strcpy(sd.saveName,saveNames[game_request_slot()&3]);sd.saveNameList=0;strcpy(sd.fileName,"DATA.BIN");
  sd.dataBuf=saveBuf;sd.dataBufSize=sizeof(saveBuf);sd.dataSize=0;
  if(!mode){int n=game_export_save(saveBuf,sizeof(saveBuf));if(n<=0)return 0;sd.dataSize=n;
   strcpy(sd.sfoParam.title,"Narcade");game_save_summary(sd.sfoParam.savedataTitle,sizeof(sd.sfoParam.savedataTitle),sd.sfoParam.detail,sizeof(sd.sfoParam.detail));sd.sfoParam.parentalLevel=1;
@@ -64,8 +80,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  return 1;
 }
 static void handle_save_request(int req,uint32_t **buffers,int *index){
- if(req==2){ /* CONTINUAR: solo abrir el dialogo si hay alguna partida guardada */
-  if(!any_slot_exists()){game_continue();return;}
+ if(req==2){
   game_request_result(2,savedata_dialog(1,buffers,index));
  }else game_request_result(req,savedata_dialog(0,buffers,index));
 }
@@ -75,7 +90,7 @@ int main(void){
  sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
  sceDisplaySetMode(0,480,272);
  uint32_t *buffers[2];buffers[0]=(uint32_t*)((uintptr_t)sceGeEdramGetAddr()|0x40000000);buffers[1]=buffers[0]+512*272;
- r3_init();game_init();game_set_native_savedata(1);sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
+ r3_init();game_init();game_set_native_savedata(1);game_set_slot_reader(slot_info);sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
  pspAudioInit();pspAudioSetChannelCallback(0,audio_cb,0);
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
