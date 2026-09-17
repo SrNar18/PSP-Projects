@@ -45,12 +45,19 @@ def rm_frames(rm: bytes):
         data[i] ^= key[0]; data[i + 1] ^= key[1]; data[i + 2] ^= key[2]; data[i + 3] ^= key[3]
     return frame, bytes(data)
 
-def frames_to_at3(frame: int, data: bytes, joint: int) -> bytes:
-    srate = 44100; nframes = len(data) // frame; samples = nframes * 1024
+AT3_END_PAD = 368  # margen de cola que deja at3tool
+
+def frames_to_at3(frame: int, data: bytes, joint: int, pcm_samples: int = 0) -> bytes:
+    srate = 44100; nframes = len(data) // frame
     fmt = struct.pack('<HHIIHHH', 0x0270, 2, srate, frame * srate // 1024, frame, 0, 14)
     # extradata canonica (validada por el parser del firmware): 1, 0x1000, modo, modo(igual), 1
     fmt += struct.pack('<HIHHI', 1, 0x1000, joint, joint, 1)
-    delay = 0x400  # retardo del codificador ATRAC3 (primer sample util)
+    delay = 1024  # retardo del codificador ATRAC3 (primer sample util)
+    # REGLA CLAVE (verificada en hardware por psp-media-toolkit, github.com/TotalKommando): el fact NO puede
+    # declarar mas muestras de las que los frames decodifican: samples + delay + 368 <= frames*1024.
+    # Si se excede aunque sea por unos cientos, la XMB no reproduce NADA. Por eso fallaron los intentos previos.
+    cap = nframes * 1024 - delay - AT3_END_PAD
+    samples = min(pcm_samples or cap, cap)
     fact = struct.pack('<II', samples, delay)
     # chunk smpl con un bucle sobre todo el archivo, como los SND0.AT3 de Sony (at3tool -wholeloop)
     smpl = struct.pack('<9I', 0, 0, 22676, 60, 0, 0, 0, 1, 24) + struct.pack('<6I', 0, 0, delay, samples - 1, 0, 0)
@@ -114,7 +121,9 @@ def main():
             rm = pathlib.Path(td) / 'clip.rm'
             subprocess.run([a.atracdenc, '-e', 'atrac3', '--bitrate', '64', '-i', str(wav), '-o', str(rm)], check=True, stdout=subprocess.DEVNULL)
             frame, data = rm_frames(rm.read_bytes()); assert frame == 192, frame
-            at3 = frames_to_at3(frame, data, 1)
+            import wave
+            with wave.open(str(wav)) as w: pcm = w.getnframes()
+            at3 = frames_to_at3(frame, data, 1, pcm)
         else:
             subprocess.run([a.atracdenc, '-e', a.codec, '-i', str(wav), '-o', str(oma)], check=True, stdout=subprocess.DEVNULL)
             at3 = oma_to_at3(oma.read_bytes())

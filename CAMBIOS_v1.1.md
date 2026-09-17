@@ -56,3 +56,7 @@ Tecnicas (render3d.c, world_geo.h):
 7. Tabla de alturas del terreno (rejilla de 80) en vez de 4 evaluaciones de geo_height_raw por consulta.
 - Animacion procedural del jugador (player_pose): balanceo de brazos con codo (mas amplio al correr), contragiro
   hombros/cadera, arco del pie, inclinacion al correr. Sin coste medible.
+- SND0.AT3 (musica XMB): causa real de los fallos del 16-sep encontrada en github.com/TotalKommando/psp-media-toolkit
+  (FINDINGS.md, verificado en hardware): el chunk fact no puede declarar mas muestras de las que decodifican los
+  frames (samples + delay + 368 <= frames*1024). tools/make_snd0.py ya aplica la regla; ATRAC3 LP4 66 kbps de
+  atracdenc deberia sonar. PENDIENTE de confirmar en la E-1000.
