@@ -24,6 +24,8 @@ def main():
     atlases=[Image.open(ROOT/'assets/textures3d-atlas.png').convert('RGB'),
              Image.open(ROOT/'assets/character-atlas.png').convert('RGB')]
     streetwear=Image.open(ROOT/'assets/streetwear-atlas.png').convert('RGB')
+    urban=Image.open(ROOT/'assets/urban-atlas-v28.png').convert('RGB')
+    detail=Image.open(ROOT/'assets/urban-detail-atlas-v28.png').convert('RGB')
     (ROOT/'assets/textures3d').mkdir(exist_ok=True)
     result=bytearray()
     for i,name in enumerate(NAMES):
@@ -33,6 +35,9 @@ def main():
         w,h=atlas.size;x,y=idx%grid,idx//grid
         # Exact integer grid boundaries, with a tiny inset to exclude grid seams.
         tile=atlas.crop((round(x*w/grid)+2,round(y*h/grid)+2,round((x+1)*w/grid)-2,round((y+1)*h/grid)-2))
+        if i<8:
+            w,h=urban.size;x,y=i%4,i//4
+            tile=urban.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
         tile=tile.resize((128,128),Image.Resampling.LANCZOS)
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
@@ -49,7 +54,9 @@ def main():
     assert len(result)==753664
     # v2.7 (Claude): 8 materiales 64px mas en RAM para las formas nuevas (arboles, coches, torres, plazas).
     for i,name in enumerate(EXTRA_NAMES):
-        tile=create_extra(i);tile.save(ROOT/'assets/textures3d'/f'{name}.png')
+        w,h=detail.size;x,y=i%4,i//4
+        tile=detail.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2)).resize((64,64),Image.Resampling.LANCZOS)
+        tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664+8*8192

@@ -83,6 +83,7 @@ static Vertex interpolate(Vertex a,Vertex b,float t){
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz);
 static uint32_t day_scale(uint32_t c);
 static uint32_t emissive_color(int mat,uint32_t c);
+static void facade_lights(Point a,Point b,float height,float nx,float nz,int material);
 static int litAlready=0; /* box()/ground() ya iluminan por cara: polygon() no vuelve a atenuar */
 /* Optimizacion (Claude): en modo rigido todos los vertices de un objeto comparten proyeccion, rumbo y altura;
    antes se recalculaban (geo_project + geo_heading con atan2, cos, sin) para CADA vertice. Se cachean por objeto. */
@@ -164,6 +165,16 @@ static int sphere_visible(float x,float z,float radius){
     return 1;
 }
 static float view_distance(float x,float z){float dx=x-view->x,dz=z-view->z;return sqrtf(dx*dx+dz*dz);}
+/* Floors and roofs have an absolute elevation. Testing them with a sphere
+   centred near the ground incorrectly removed middle/upper building sections. */
+static int volume_visible(float x,float z,float bottom,float top,float planRadius){
+    if(!clipEnabled)return 1;
+    float gx,gz;geo_project(x,z,&gx,&gz);
+    float gy=(fixedGround>-999999?fixedGround:geo_height(x,z))+(bottom+top)*.5f;
+    float r=hypotf(planRadius*2,(top-bottom)*.5f)+4;
+    for(int k=0;k<6;k++)if(planes[k][0]*gx+planes[k][1]*gy+planes[k][2]*gz+planes[k][3]<-r)return 0;
+    return 1;
+}
 /* v2.6 (Claude): cara lateral con degradado vertical (oclusion ambiental falsa: mas oscura abajo). a,b arriba; c,d abajo. */
 static void quad2(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,float v){
     uint32_t low=shade(color,.78f);
@@ -202,11 +213,14 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     }
     /* v2.6: descarte por esfera de la caja entera antes de generar 5 poligonos (la mitad de una celda visible queda
        fuera del encuadre). Texturas: repeticion segun la proporcion de la cara para no estirar postes, tableros, vias. */
-    if(geographic&&!rigid&&!sphere_visible(x,z,sqrtf(l*l+w*w)+height*.5f+4)){fixedGround=savedGround;return;}
+    if(geographic&&!rigid&&!volume_visible(x,z,bottom,h,hypotf(l,w))){fixedGround=savedGround;return;}
     float ul=1,uw=1,vl=1,vw=1;
     if(length>height*2.2f)ul=length/(height>8?height:8)*.5f;if(height>length*2.2f)vl=height/(length>3?length:3)*.5f;
     if(width>height*2.2f)uw=width/(height>8?height:8)*.5f;if(height>width*2.2f)vw=height/(width>3?width:3)*.5f;
     if(ul>8)ul=8;if(uw>8)uw=8;if(vl>8)vl=8;if(vw>8)vw=8;float ut=1,vt=1;
+    if((side==BRICK||side==STUCCO||side==SHOP||side==CURTAIN||side==MODERN)&&height>14){
+        ul=fmaxf(1,length/54);uw=fmaxf(1,width/54);vl=vw=fmaxf(1,height/24);
+    }
     if(length>width*2.2f)ut=length/(width>4?width:4)*.5f;if(width>length*2.2f)vt=width/(length>4?length:4)*.5f;if(ut>8)ut=8;if(vt>8)vt=8;
     Point p[8]={local(-l,bottom,-w,x,z,angle),local(l,bottom,-w,x,z,angle),local(l,bottom,w,x,z,angle),local(-l,bottom,w,x,z,angle),
         local(-l,h,-w,x,z,angle),local(l,h,-w,x,z,angle),local(l,h,w,x,z,angle),local(-l,h,w,x,z,angle)};
@@ -220,6 +234,7 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     q(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),uw,vw);    /* cara +x */
     q(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),uw,vw);  /* cara -x */
     quad(top,p[7],p[6],p[5],p[4],lit_color(color,0,1,0),ut,vt);
+    if(!rigid&&height>18){facade_lights(p[0],p[1],height,sa,-ca,side);facade_lights(p[3],p[2],height,-sa,ca,side);facade_lights(p[1],p[2],height,ca,sa,side);facade_lights(p[0],p[3],height,-ca,-sa,side);}
     litAlready=0;
     fixedGround=savedGround;
 }
@@ -614,7 +629,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     if(!s->driving&&!s->inMetro&&s->lift<1)cast_shadow(s->x,s->z,3,17);
     for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
 #ifndef AB_NOFX
-    street_lamps_glow();clouds(s->time);
+    building_shadows();street_lamps_glow();clouds(s->time);
 #endif
     geographic=0;
 #ifndef R3_HOST

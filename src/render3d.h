@@ -14,6 +14,7 @@ typedef struct {
     R3Car cars[64];
     R3Person people[42];
     float lift,metroZ;int metroDir,inMetro;
+    float metroDoors; /* 0 closed, 1 open; driven by the station dwell timer */
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
 } R3Scene;
 void r3_init(void);

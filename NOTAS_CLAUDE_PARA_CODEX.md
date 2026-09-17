@@ -159,6 +159,88 @@ se cambió la tabla de alturas por terrazas y se corrigió el culling de suelo
 que falló en PPSSPP. No reintroducir el descarte de manzanas con radio 300 sin
 comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFILE.
 
+## 13. Trabajo interrumpido de Codex — v2.8 en desarrollo (18-sep-2026)
+
+El usuario pidió parar aquí y dejar esta transferencia. **No considerar esta sección una entrega final.** La ISO y el
+EBOOT actuales se compilaron con `NARCADE_PROFILE`, `NARCADE_SPAWN_X=1250`, `NARCADE_SPAWN_Y=1030` y
+`NARCADE_HOUR=0.45f`: son binarios de diagnóstico del Centro, no deben instalarse ni publicarse. SHA256 temporal de
+`Narcade.iso`: `415b2c71c1362834d2b1931fccdc4718d6f2702ad5a7c107392129caffc4e42b`.
+
+### 13.1 Texturas y forma urbana
+
+- Se generaron dos atlas originales con ImageGen y se copiaron al proyecto:
+  `assets/urban-atlas-v28.png` y `assets/urban-detail-atlas-v28.png`.
+- `tools/textures3d.py` usa el primer atlas para los ocho materiales base (asfalto, acera, ladrillo, estuco, comercio,
+  techo, césped y agua) y el segundo para los ocho materiales extra de v2.7 (corteza, hojas, metal, hormigón, muro
+  cortina, toldo, adoquín y fachada moderna). Se regeneraron los PNG y `assets/textures3d.bin` (819.200 bytes).
+- Las fachadas altas repiten textura por planta (`height/24`) y por módulo de 54 unidades para evitar estirar una sola
+  planta sobre todo el edificio.
+- Las manzanas clásicas ahora usan frentes contiguos de anchura irregular, plantas comerciales continuas y, cuando
+  caben dos filas, un patio interior arbolado. Las parcelas diagonales grandes se dividen en tres cuerpos recortados a
+  su polígono, en lugar de una única torre triangular enorme.
+- Las casas de comuna apoyan desde un nivel común y usan tejados a dos aguas menos exagerados.
+- Se corrigió overflow con signo en `city_hash`: los productos se realizan como `unsigned`.
+
+### 13.2 Edificios que desaparecen o parecen flotar
+
+- Causa encontrada: `box()` y `prism()` hacían culling con una esfera cuyo centro vertical estaba implícitamente cerca
+  del suelo. Una planta alta podía descartarse aunque estuviese dentro del encuadre, dejando un hueco y otra planta
+  visible arriba.
+- `src/render3d.c` añade `volume_visible(x,z,bottom,top,planRadius)`, con centro y radio vertical reales.
+  `box()` lo usa después de resolver `fixedGround`; `prism()` hace lo mismo y restaura `fixedGround` si descarta.
+- `tools/qa_city28.c` comprueba 12 alturas consecutivas tanto con cajas como con prismas. Resultado: PASS.
+- Todavía hace falta recorrer visualmente toda la ciudad en PPSSPP y verificar cimientos en laderas. No declarar el
+  problema completamente cerrado solo por la prueba automática.
+
+### 13.3 Metro
+
+- `metro_update()` acelera y frena progresivamente: 35 u/s² al arrancar, 45 u/s² al frenar y velocidad máxima 130.
+- `R3Scene.metroDoors` abre/cierra las puertas durante la parada. Cada puerta tiene dos paneles deslizantes y cristal.
+- Tren y estaciones recibieron techos curvos propios (`rail_canopy`), bajos/bogies y equipos sobre el techo.
+- Se investigó en fuente oficial: Línea A usa trenes de tres coches; documentos oficiales muestran tren blanco con
+  franja verde/amarilla. El juego conserva dos coches por presupuesto geométrico, pero la apariencia sigue esa guía.
+- Falta una prueba jugable completa: esperar, ver abrir puertas, subir, viajar, frenar, bajar y comprobar colisiones.
+
+### 13.4 Día, noche, luces y sombras
+
+- La noche tiene más iluminación ambiente para conservar lectura en la pantalla PSP.
+- Los edificios cercanos generan ventanas encendidas individuales deterministas; se redujo el falso brillo de toda la
+  fachada de `CURTAIN/MODERN/SHOP/GLASS`.
+- Sol, luna y nubes ahora se dibujan con discos segmentados que miran a cámara, no cuadrados planos.
+- Sombras de personas/coches y charcos de luz usan abanicos de 12 segmentos con borde alfa cero.
+- Se añadieron sombras suaves de las parcelas edificadas cercanas y los faros se acortan al encontrar un edificio.
+- Los efectos pasan por recorte de los seis planos mediante `fx_triangle`; antes podían atravesar la cámara.
+- `GLOW_MAX` subió de 3000 a 6000. Revisar coste/memoria en PSP real antes de conservarlo definitivamente.
+- `tools/qa_city28.c`: 512 combinaciones de ciudad/metro/hora/cámara, sin overflow; pico observado 29.532 vértices de
+  mundo, 402 glow y 396 shadow; ciclo día/noche muestreado 1.001 veces, finito y acotado. PASS.
+
+### 13.5 Caminar, trotar, correr y estamina
+
+- Controles objetivo: caminar 42 sin X; mantener X = trotar 68; tres pulsaciones de X separadas 0,07–0,45 s = correr
+  100. La fase de animación se adaptó a esas velocidades.
+- Se añadió `g.stamina` (0..100) y `g.exhausted`. La carrera consume toda la barra en 6 s. Agotada, cancela el sprint y
+  obliga a trotar. Recupera 12,5/s moviéndose o 18/s quieto; no permite correr otra vez hasta llegar a 100.
+- El HUD muestra una barra amarilla de estamina debajo de la salud y roja cuando está agotado.
+- Estamina y estado de agotamiento son transitorios: al iniciar/cargar se restauran a 100/normal y no cambian el formato
+  del guardado.
+- `tools/qa_locomotion.c` se actualizó a 42/68/100. Pasa marcha/trote/carrera, entradas lentas, pausa, pared y estamina
+  a 30 y 60 Hz. El mensaje de prueba confirma agotamiento en seis segundos, bloqueo hasta recarga total y nuevo sprint.
+
+### 13.6 Estado de pruebas y siguiente paso obligatorio
+
+- PASS: `qa_locomotion`, `qa_render3d` y `qa_city28` en sus últimas ejecuciones.
+- `qa_regression3d` FALLA en la prueba antigua `tap(B_SELECT); assert(g.screen==MAP)` porque Claude cambió SELECT a
+  zoom y movió el mapa a PAUSA > MAPA. Es una prueba obsoleta, no evidencia de fallo del juego. Actualizar `tools/qa.c`
+  para abrir START/PAUSE y seleccionar MAPA; después ejecutar la regresión completa.
+- No se terminó la inspección visual de la compilación de perfil abierta en PPSSPP. No hay capturas finales ni medida
+  fiable nueva de tiempo de dibujo.
+- Antes de entregar: actualizar QA obsoleta, ejecutar todas las pruebas, inspeccionar día/noche/Centro/Metro/laderas,
+  ajustar rendimiento si supera 33 ms, compilar de producción SIN flags `NARCADE_*`, verificar ISO y crear un paquete
+  versionado nuevo. No sobrescribir la v2.5/v2.6 previa.
+- Archivos modificados principales: `src/city26.inc`, `src/daylight.inc`, `src/game.c`, `src/render3d.c`,
+  `src/render3d.h`, `src/psp_main.c`, `tools/textures3d.py`, `tools/qa_locomotion.c`, `tools/package_iso.py`.
+  Nuevos: los dos atlas y `tools/qa_city28.c`. El árbol está sucio y contiene trabajo del usuario/Claude: preservarlo.
+
 ## 10. v2.5 (17-sep noche, commit `02e61b3`) — instalada en la PSP
 - Ciudad irregular en `src/city3d.inc` (incluido desde `render3d.c`; `city()` solo llama a `city_v25()`), ciclo
   dia/noche en `src/daylight.inc`. Detalle en `CAMBIOS_v1.1.md`. Reglas: la red de calles y `solid()` no se tocan;
@@ -228,3 +310,6 @@ comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFIL
 - Rendimiento medido en PPSSPP en el Centro: ~35 ms (v2.6.1: 32) con mucha mas geometria; resto de la ciudad 22-28.
   Palancas si hace falta: `far`/`cityMid` en `city_v26()`, `tree()` (170), `nearby` de coches (500) y peatones (270).
 - Pruebas: `-DNARCADE_HOUR=0.02f` fija la hora (noche) en compilaciones de prueba.
+
+> **Continuación inmediata:** leer la sección 13 de este documento. Contiene la transferencia completa del trabajo
+> v2.8 interrumpido el 18-sep-2026, el estado real de pruebas y la advertencia sobre los binarios de diagnóstico.

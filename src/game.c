@@ -49,6 +49,7 @@ static struct {
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
  float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel;int runTaps;
+ float stamina;int exhausted;
  float trafficYield[CAR_COUNT];
  int pauseTab,pauseBack;
  float lift,metroZ,metroWait;int metroDir,inMetro;int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
@@ -230,12 +231,17 @@ static void separate_cars(void){
  if(g.car>=0){g.x=g.cars[g.car].x;g.y=g.cars[g.car].y;}
 }
 /* v2.6: tren del Metro (va y vuelve por x=CM_METRO_X, para 6 s en cada estacion) y viaje del jugador a bordo. */
+static float metroSpeed=0;
 static void metro_update(float dt){
- if(g.metroDir==0){g.metroDir=1;g.metroZ=cm_station_z(1);g.metroWait=6;}
- if(g.metroWait>0){g.metroWait-=dt;}
+ if(g.metroDir==0){g.metroDir=1;g.metroZ=cm_station_z(1);g.metroWait=6;metroSpeed=0;}
+ if(g.metroWait>0){g.metroWait=fmaxf(0,g.metroWait-dt);metroSpeed=0;}
  else{
-  float before=g.metroZ;g.metroZ+=g.metroDir*130*dt;
-  for(int bz=1;bz<=5;bz+=2){float sz=cm_station_z(bz);if(before!=sz&&(before-sz)*(g.metroZ-sz)<=0){g.metroZ=sz;g.metroWait=6;break;}}
+  float remaining=g.metroDir>0?2180-g.metroZ:g.metroZ-60;
+  for(int bz=1;bz<=5;bz+=2){float d=(cm_station_z(bz)-g.metroZ)*g.metroDir;if(d>.01f&&d<remaining)remaining=d;}
+  float wanted=fminf(130,sqrtf(fmaxf(0,2*45*remaining)));
+  metroSpeed+=clampf(wanted-metroSpeed,-45*dt,35*dt);
+  float before=g.metroZ;g.metroZ+=g.metroDir*metroSpeed*dt;
+  for(int bz=1;bz<=5;bz+=2){float sz=cm_station_z(bz);if(before!=sz&&(before-sz)*(g.metroZ-sz)<=0){g.metroZ=sz;g.metroWait=6;metroSpeed=0;break;}}
   if(g.metroZ<60){g.metroZ=60;g.metroDir=1;g.metroWait=2;}if(g.metroZ>2180){g.metroZ=2180;g.metroDir=-1;g.metroWait=2;}
  }
  if(g.inMetro){g.x=CM_METRO_X;g.y=g.metroZ;g.lift=CM_PLAT_H+1;g.a=g.metroDir>0?PI*.5f:-PI*.5f;g.viewYaw=g.a;g.cameraVelocity=0;g.walking=0;}
@@ -317,7 +323,7 @@ void game_save_summary(char *title,int titlecap,char *detail,int detailcap){
 static int apply_save(const Save *sp){Save s=*sp;g.lift=0;g.inMetro=0;
  if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
- g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;return 1;}
+ g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;return 1;}
 int game_import_save(const void *buf,int len){if(len<(int)sizeof(Save))return 0;if(!apply_save((const Save*)buf))return 0;g.screen=WORLD;notice("Partida cargada desde la Memory Stick.");return 1;}
 static int loadfile(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;size_t n=fread(&s,1,sizeof(s),f);fclose(f);
  if(n!=sizeof(s))return 0;return apply_save(&s);}
@@ -325,7 +331,7 @@ static int loadfile(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;s
 static int loadfile_old(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;size_t n=fread(&s,1,sizeof(s),f);fclose(f);
  if(n!=sizeof(s)||s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
- g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;return 1;
+ g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;return 1;
 }
 #endif
 static int load_game(void){if(loadfile(g.savepath))return 1;char b[300];snprintf(b,sizeof(b),"%s.bak",g.savepath);return loadfile(b);}
@@ -333,7 +339,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -344,7 +350,7 @@ static void advance(void){
  if(g.step>=missions[g.mission].count){g.cash+=missions[g.mission].reward;g.reputation+=3;dialog("MISION COMPLETADA",missions[g.mission].outro,2);}else{notice("Objetivo completado. Consulta la nueva marca amarilla.");game_save();}
 }
 static void end_dialog(void){int a=g.dialogAction;g.screen=WORLD;if(a==1)advance();if(a==2){g.mission++;g.step=0;game_save();if(g.mission<36)start_mission();else{g.heat=0;dialog("NARCADE / FIN DE LA HISTORIA",g.ending==1?"Vera entrega el expediente a la justicia. Los vecinos conservan sus datos. Sara vuelve a casa. La historia termina, pero la ciudad sigue abierta: encuentra los 24 vinilos, realiza encargos y recorre Medellin. made by Naresz.":"Mara publica las pruebas sin exponer los datos privados. Los barrios guardan copias y vigilan su ciudad. Sara vuelve a casa. La historia termina, pero puedes seguir explorando, reunir los 24 vinilos y realizar encargos. made by Naresz.",0);}}}
-void game_init(void){memset(&g,0,sizeof(g));g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");world_init();}
+void game_init(void){memset(&g,0,sizeof(g));g.stamina=100;g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");world_init();}
 
 /* Mini-games: all are real state machines and require player input. */
 static const char *puzzleNames[]={"","","PC / CLAVE DE CUATRO DIGITOS","PC / CIRCUITO AISLADO","PC / MEMORIA DEL REGISTRO","RADIO / SINTONIA FINA","CONSOLA / SESION DE RITMO","ESTUCHE / CIERRE MECANICO","ACCESO / PATIO VIGILADO"};
@@ -435,11 +441,20 @@ static void foot_pace(int moving,float dt){
  if(pressed(B_CROSS)){
   if(g.tapAge>=.07f&&g.tapAge<=.45f)g.runTaps++;else g.runTaps=1;
   g.runTaps=g.runTaps>3?3:g.runTaps;g.tapAge=0;
-  if(g.runTaps>=3)g.sprintTime=.45f;
+  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=.45f;
  }
  if(g.tapAge>.45f)g.runTaps=0;
- float wanted=g.sprintTime>0?100.f:held(B_CROSS)?68.f:42.f; /* v2.5 (Claude): escala humana; antes 150/111/72 */
+ float wanted=g.exhausted?68.f:g.sprintTime>0?100.f:held(B_CROSS)?68.f:42.f;
  g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
+}
+static void stamina_tick(float dt){
+ if(g.car<0&&!g.inMetro&&g.footTravel>.01f&&g.sprintTime>0&&!g.exhausted){
+  g.stamina=fmaxf(0,g.stamina-dt*(100.f/6));
+  if(g.stamina<=0){g.exhausted=1;g.sprintTime=0;g.runTaps=0;notice("Cansado: trota mientras recuperas la estamina.");}
+ }else{
+  g.stamina=fminf(100,g.stamina+dt*(g.footTravel>.01f?12.5f:18.f));
+  if(g.exhausted&&g.stamina>=100){g.exhausted=0;g.runTaps=0;g.tapAge=10;notice("Estamina recuperada. Pulsa X repetidamente para correr.");}
+ }
 }
 static void world_tick(float ax,float ay,float dt){
  g.footTravel=0;
@@ -533,9 +548,10 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_SQUARE)&&g.car<0)interact();
  /* Animate distance actually travelled: pushing into a wall no longer runs
     the feet in place. Keep phase continuous through all three gaits. */
- float motionTarget=g.car<0?clampf(g.footTravel/(dt*72),0,2.1f):0;
+ stamina_tick(dt);
+ float motionTarget=g.car<0?clampf(g.footTravel/(dt*42),0,2.1f):0;
  g.motion+=(motionTarget-g.motion)*(1-expf(-dt*12));
- if(g.footTravel>.0001f)g.gaitPhase=fmodf(g.gaitPhase+g.footTravel*(.15f-.025f*clampf(g.motion-1,0,1.1f)),2*PI);
+ if(g.footTravel>.0001f)g.gaitPhase=fmodf(g.gaitPhase+g.footTravel*(.255f-.045f*clampf(g.motion-1,0,1.1f)),2*PI);
  if(pressed(B_UP)&&g.car>=0)interact();
 }
 
@@ -701,6 +717,7 @@ static void hud(void){
  /* Esquina superior derecha: vida, carro, dinero, busqueda. */
  rect(W-122,8,112,5,RGB(40,48,50));rect(W-122,8,(int)(g.health*1.12f),5,g.health>30?TEAL:CORAL);
  if(g.car>=0){rect(W-122,15,112,3,RGB(40,48,50));rect(W-122,15,(int)(g.cars[g.car].hp*1.12f),3,GOLD);}
+ else if(!g.inMetro){rect(W-122,15,112,4,RGB(40,48,50));rect(W-122,15,(int)(g.stamina*1.12f),4,g.exhausted?CORAL:GOLD);}
  snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,21,b,WHITE,1);
  if(g.heat>0)for(int i=0;i<5;i++)rect(W-122+i*10,36,7,4,g.heat>i?CORAL:RGB(40,48,50));
  /* Cronometros de ruta / huida. */
@@ -731,7 +748,7 @@ static void title_draw(void){
  line(0,79,480,142,RGB(95,125,124));for(int i=0;i<3;i++){int x=75+i*164+(int)(g.clock*5)%164;int y=79+x*63/480;rect(x,y,1,8,MUTED);rect(x-7,y+8,15,11,TEAL);rect(x-5,y+10,4,4,INK);rect(x+1,y+10,4,4,INK);}
  label(24,16,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
  text(22,36,"NARCADE",INK,6);text(18,31,"NARCADE",WHITE,6);
- rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.6",WHITE);
+ rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.8",WHITE);
  rect(14,169,222,76,INK);text(28,181,g.menu==0?"> CONTINUAR / EMPEZAR":"  CONTINUAR / EMPEZAR",g.menu==0?LIME:MUTED,1);text(28,204,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(28,226,"X confirmar",TEAL,1);
  rect(288,165,178,80,INK);text(312,176,"made by",WHITE,1);signature(287,184);
  footer("36 misiones  /  7 minijuegos  /  radio original");
@@ -843,6 +860,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
  scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
+ scene.metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
  for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police};
