@@ -6,6 +6,7 @@ when rebuilding materials; checked-in textures3d.bin builds without Python.
 from pathlib import Path
 import struct
 from PIL import Image
+from npc_textures import create, NAMES as NPC_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['asphalt','sidewalk','brick','stucco','shop','roof','grass','water',
@@ -38,7 +39,14 @@ def main():
     white=Image.new('RGB',(128,128),'white');white.save(ROOT/'assets/textures3d/flat.png')
     result.extend(b'\xff\xff'*(128*128))
     assert len(result)==688128
+    # Additional pedestrian materials stay in main RAM, preserving the PSP's
+    # existing 2MB VRAM layout. Each swizzled 64px tile is only 8KB.
+    for i,name in enumerate(NPC_NAMES):
+        tile=create(i);tile.save(ROOT/'assets/textures3d'/f'{name}.png')
+        raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
+        result.extend(swizzle(raw,128,64))
+    assert len(result)==753664
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('21 materials, RGB565, swizzled, 128x128: 688128 bytes')
+    print('21 VRAM materials + 8 pedestrian RAM materials: 753664 bytes')
 
 if __name__=='__main__':main()

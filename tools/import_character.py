@@ -1,7 +1,7 @@
 """Reduce the user's GLB, retain named pieces for procedural animation, map cloth UVs.
 Requires numpy and fast-simplification only when regenerating player_mesh.h.
 """
-import sys,json,struct,math
+import sys,json,struct,math,re
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'build/python-deps'))
@@ -59,7 +59,10 @@ for name,positions,faces,material in pieces:
         for i in f:normal[i]+=n
     normal/=np.maximum(np.linalg.norm(normal,axis=1,keepdims=True),1e-8)
     matname=material['name'];mat=20;bone=0
-    side=1 if '-l' in name else 2 if '-r' in name else 0
+    # Match the side token, never the '-l' inside 'pants-leg-r'.
+    # The old substring test assigned BOTH trouser legs to the left limb.
+    side_match=re.search(r'-(l|r)(?:-|$)',name)
+    side={'l':1,'r':2}[side_match[1]] if side_match else 0
     if name.startswith(('pants-leg','hem-back','sole-','outsole-','upper-','ankle-','collar-pad','heel-tab','stripe-')):bone=side
     if name.startswith(('sleeve-','arm-','palm-','finger-','nail-','thumb-')):bone=side+2
     color=np.array(material['pbrMetallicRoughness']['baseColorFactor'][:3]);color=np.where(color<=.0031308,color*12.92,1.055*color**(1/2.4)-.055)

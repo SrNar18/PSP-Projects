@@ -13,7 +13,8 @@
 #endif
 
 #define PI 3.14159265358979323846f
-#define MAT_COUNT 21
+#define MAT_COUNT 29
+#define VRAM_MATERIALS 21
 #define MAX_VERTICES 8190
 #include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
@@ -39,7 +40,7 @@ static float fixedGround=-1000000;
 static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
 static void camera(const R3Scene *s){
-    float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=geo_heading(s->x,s->z,s->yaw);
+    float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=s->yaw;
     float h=geo_height(s->x,s->z);
     eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->driving?54:43),pz-sinf(yaw)*s->cameraDistance);
     float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
@@ -55,20 +56,46 @@ static void camera(const R3Scene *s){
         planes[k][3]=-normals[k][0]*eye.x-normals[k][1]*eye.y-normals[k][2]*eye.z;
     }
     planes[0][3]-=2.1f;planes[1][3]+=750;
+    /* Sphere distances require unit normals, including the side planes. */
+    for(int k=0;k<6;k++){
+        float length=sqrtf(planes[k][0]*planes[k][0]+planes[k][1]*planes[k][1]+planes[k][2]*planes[k][2]);
+        for(int j=0;j<4;j++)planes[k][j]/=length;
+    }
 }
 static float plane_distance(const Vertex *v,int k){return planes[k][0]*v->x+planes[k][1]*v->y+planes[k][2]*v->z+planes[k][3];}
 static Vertex interpolate(Vertex a,Vertex b,float t){
     Vertex v={a.u+(b.u-a.u)*t,a.v+(b.v-a.v)*t,a.color,a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t};return v;
 }
+/* v2.5 (Claude): iluminacion por hora del dia (src/daylight.inc) y ciudad irregular (src/city3d.inc). */
+static uint32_t lit_color(uint32_t c,float nx,float ny,float nz);
+static uint32_t day_scale(uint32_t c);
+static uint32_t emissive_color(int mat,uint32_t c);
+static int litAlready=0; /* box()/ground() ya iluminan por cara: polygon() no vuelve a atenuar */
 /* Optimizacion (Claude): en modo rigido todos los vertices de un objeto comparten proyeccion, rumbo y altura;
    antes se recalculaban (geo_project + geo_heading con atan2, cos, sin) para CADA vertice. Se cachean por objeto. */
 static float rigX=1e30f,rigZ=1e30f,rigYaw=1e30f,rigGX,rigGZ,rigCos,rigSin,rigH;
+static int rigMode=-1;
+static Point rigBX,rigBY,rigBZ;
+static Point unit(Point p){float n=sqrtf(p.x*p.x+p.y*p.y+p.z*p.z);return point(p.x/n,p.y/n,p.z/n);}
+static Point cross3(Point a,Point b){return point(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);}
+static float projected_height(float x,float z){float lx,lz;geo_unproject(x,z,&lx,&lz);return geo_height(lx,lz);}
 static void rigid_cache(void){
-    if(objectX==rigX&&objectZ==rigZ&&objectYaw==rigYaw)return;
+    if(objectX==rigX&&objectZ==rigZ&&objectYaw==rigYaw&&rigid==rigMode)return;
+    rigMode=rigid;
     rigX=objectX;rigZ=objectZ;rigYaw=objectYaw;
     geo_project(objectX,objectZ,&rigGX,&rigGZ);
     float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;rigCos=cosf(da);rigSin=sinf(da);
     rigH=geo_height(objectX,objectZ);
+    if(rigid==2){
+        float a=geo_heading(objectX,objectZ,objectYaw),c=cosf(a),s=sinf(a);
+        float pitch=(projected_height(rigGX+c*14,rigGZ+s*14)-projected_height(rigGX-c*14,rigGZ-s*14))/28;
+        float roll=(projected_height(rigGX-s*8,rigGZ+c*8)-projected_height(rigGX+s*8,rigGZ-c*8))/16;
+        Point forward=unit(point(c,geo_clamp(pitch,-.22f,.22f),s));
+        Point up=unit(cross3(point(-s,geo_clamp(roll,-.22f,.22f),c),forward));
+        Point right=unit(cross3(forward,up));float oc=cosf(objectYaw),os=sinf(objectYaw);
+        rigBX=point(forward.x*oc-right.x*os,forward.y*oc-right.y*os,forward.z*oc-right.z*os);
+        rigBZ=point(forward.x*os+right.x*oc,forward.y*os+right.y*oc,forward.z*os+right.z*oc);rigBY=up;
+    }
 }
 static void polygon(int mat,Vertex *input,int count){
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
@@ -77,9 +104,11 @@ static void polygon(int mat,Vertex *input,int count){
         if(rigid){
             rigid_cache();
             float dx=v->x-objectX,dz=v->z-objectZ;
-            v->x=rigGX+rigCos*dx-rigSin*dz;v->z=rigGZ+rigSin*dx+rigCos*dz;
-            if(rigid==2){float lx,lz;geo_unproject(v->x,v->z,&lx,&lz);v->y+=geo_height(lx,lz);}
-            else v->y+=rigH;
+            if(rigid==2){float h=v->y;
+                v->x=rigGX+rigBX.x*dx+rigBY.x*h+rigBZ.x*dz;
+                v->z=rigGZ+rigBX.z*dx+rigBY.z*h+rigBZ.z*dz;
+                v->y=rigH+rigBX.y*dx+rigBY.y*h+rigBZ.y*dz;
+            }else{v->x=rigGX+rigCos*dx-rigSin*dz;v->z=rigGZ+rigSin*dx+rigCos*dz;v->y+=rigH;}
         }else{geo_project(v->x,v->z,&gx,&gz);v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
     }
     /* PSP rejects large triangles crossing its near/guard planes. Clip in
@@ -107,6 +136,7 @@ static void polygon(int mat,Vertex *input,int count){
         }
     }
     if(count<3)return;
+    if(!litAlready)for(int j=0;j<count;j++)buffers[src][j].color=day_scale(buffers[src][j].color);
     int needed=(count-2)*3;
     if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
     Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;
@@ -114,6 +144,7 @@ static void polygon(int mat,Vertex *input,int count){
 }
 /* Optimizacion (Claude): descarte por esfera envolvente contra el frustum (en coordenadas proyectadas). */
 static int sphere_visible(float x,float z,float radius){
+    if(!clipEnabled)return 1; /* offline mesh export */
     float gx,gz;geo_project(x,z,&gx,&gz);float gy=geo_height(x,z)+radius*.4f;
     for(int k=0;k<6;k++)if(planes[k][0]*gx+planes[k][1]*gy+planes[k][2]*gz+planes[k][3]<-radius)return 0;
     return 1;
@@ -142,20 +173,25 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     }
     Point p[8]={local(-l,bottom,-w,x,z,angle),local(l,bottom,-w,x,z,angle),local(l,bottom,w,x,z,angle),local(-l,bottom,w,x,z,angle),
         local(-l,h,-w,x,z,angle),local(l,h,-w,x,z,angle),local(l,h,w,x,z,angle),local(-l,h,w,x,z,angle)};
-    quad(side,p[4],p[5],p[1],p[0],shade(color,.82f),1,1);
-    quad(side,p[6],p[7],p[3],p[2],color,1,1);
-    quad(side,p[5],p[6],p[2],p[1],shade(color,.94f),1,1);
-    quad(side,p[7],p[4],p[0],p[3],shade(color,.72f),1,1);
-    quad(top,p[7],p[6],p[5],p[4],color,1,1);
+    /* v2.5: cada cara segun su orientacion respecto al sol (angle rota las normales locales). */
+    float ca=cosf(angle),sa=sinf(angle);uint32_t sc=emissive_color(side,color);
+    litAlready=1;
+    quad(side,p[4],p[5],p[1],p[0],lit_color(sc,sa,0,-ca),1,1);   /* cara -z */
+    quad(side,p[6],p[7],p[3],p[2],lit_color(sc,-sa,0,ca),1,1);   /* cara +z */
+    quad(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),1,1);    /* cara +x */
+    quad(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),1,1);  /* cara -x */
+    quad(top,p[7],p[6],p[5],p[4],lit_color(color,0,1,0),1,1);
+    litAlready=0;
     fixedGround=savedGround;
 }
 static void ground(int mat,float x,float z,float w,float d,float y,uint32_t color,float repeat){
     /* Subdivide at terrain lattice boundaries: roads genuinely climb hills. */
-    for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,(floorf(zz/80)+1)*80);if(endz<=zz+.001f)endz=fminf(z+d,zz+80);
+    for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,geo_next_z(zz));if(endz<=zz+.001f)endz=fminf(z+d,zz+.01f);
         for(float xx=x;xx<x+w-.001f;){float endx=fminf(x+w,(floorf(xx/80)+1)*80);if(endx<=xx+.001f)endx=fminf(x+w,xx+80);
-            Vertex v[4]={{(xx-x)/w*repeat,(zz-z)/d*repeat,color,xx,y,zz},{(endx-x)/w*repeat,(zz-z)/d*repeat,color,endx,y,zz},
-                         {(endx-x)/w*repeat,(endz-z)/d*repeat,color,endx,y,endz},{(xx-x)/w*repeat,(endz-z)/d*repeat,color,xx,y,endz}};
-            polygon(mat,v,4);xx=endx;
+            uint32_t lc=lit_color(color,0,1,0);
+            Vertex v[4]={{(xx-x)/w*repeat,(zz-z)/d*repeat,lc,xx,y,zz},{(endx-x)/w*repeat,(zz-z)/d*repeat,lc,endx,y,zz},
+                         {(endx-x)/w*repeat,(endz-z)/d*repeat,lc,endx,y,endz},{(xx-x)/w*repeat,(endz-z)/d*repeat,lc,xx,y,endz}};
+            litAlready=1;polygon(mat,v,4);litAlready=0;xx=endx;
         }zz=endz;
     }
 }
@@ -166,65 +202,9 @@ static void tree(float x,float z){
     box(x,z,19,20,20,13,.35f,GRASS,GRASS,COLOR(190,220,155));
     box(x,z,30,13,13,10,-.2f,GRASS,GRASS,COLOR(216,239,176));
 }
-static void city(void){
-    const uint32_t white=0xffffffffu;
-    for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
-        float x=bx*320,z=bz*320;
-        if(!nearby(x+160,z+160,790))continue;
-        /* Optimizacion (Claude): manzana entera fuera del campo de vision -> no se genera nada. */
-        if(!sphere_visible(x+160,z+160,300))continue;
-        /* LOD: a mas de 430 unidades se omiten los detalles pequenos (marcas viales, pasos de cebra, farolas,
-           murales, arboles) que a esa distancia ocupan menos de un pixel y quedan bajo la niebla. */
-        int far=view_distance(x+160,z+160)>430;
-        ground(ROAD,x,z,320,320,0,white,12);
-        ground(SIDEWALK,x+86,z+86,234,234,1.2f,white,12);
-        if(!far){
-            for(int k=0;k<320;k+=40){
-                ground(CAR_PAINT,x+k,z+42,19,1.2f,.15f,COLOR(244,208,100),1);
-                ground(CAR_PAINT,x+42,z+k,1.2f,19,.15f,COLOR(244,208,100),1);
-            }
-            for(int k=0;k<5;k++){
-                ground(CAR_PAINT,x+9+k*13,z+75,7,5,.2f,white,1);
-                ground(CAR_PAINT,x+75,z+9+k*13,5,7,.2f,white,1);
-            }
-        }
-        if(park(bx,bz)){
-            ground(GRASS,x+95,z+95,194,186,.5f,white,8);
-            ground(SIDEWALK,x+100,z+173,185,14,.6f,white,6);
-            ground(SIDEWALK,x+185,z+99,13,179,.6f,white,6);
-            if(!far)for(int k=0;k<4;k++)tree(x+112+k%2*157,z+115+k/2*139);
-        }else{
-            /* A continuous podium matches solid(): no walkable-looking gaps. */
-            box(x+191,z+187,0,194,186,6,0,BRICK,ROOF,white);
-            for(int k=0;k<4;k++){
-                float xx=x+143+(k%2)*96,zz=z+141+(k/2)*91;
-                int floors=2+(bx*7+bz*3+k)%3,mat=(bx+bz+k)%2?BRICK:STUCCO;
-                if(far){box(xx,zz,6,94,89,floors*24,0,mat,ROOF,white);continue;} /* LOD: un solo bloque por edificio */
-                for(int f=0;f<floors;f++)box(xx,zz,6+f*24,94,89,24,0,f?mat:SHOP,ROOF,white);
-                box(xx,zz,6+floors*24,97,92,3,0,ROOF,ROOF,white);
-                if((bx+bz+k)%3==0)box(xx+19,zz+15,9+floors*24,11,11,12,0,SIDEWALK,SIDEWALK,white);
-                if(bx<2&&k>1)quad(MURAL,point(xx-45,25,zz+44.6f),point(xx+45,25,zz+44.6f),point(xx+45,7,zz+44.6f),point(xx-45,7,zz+44.6f),white,1,1);
-            }
-            if(!far){tree(x+305,z+126);tree(x+305,z+265);}
-        }
-        if(!far){
-            box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));
-            box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
-        }
-    }
-    /* River is impassable except at the original street bridges. */
-    for(int bz=0;bz<7;bz++)if(nearby(1428,bz*320+160,850)){
-        ground(WATER,1396,bz*320+86,64,234,1.4f,white,7);
-        ground(ROAD,1392,bz*320,72,86,1,white,4);
-        box(1395,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
-        box(1461,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
-    }
-    /* Continuous mountain shoulders to the east and west of the urban valley. */
-    for(int side=0;side<2;side++)for(int row=0;row<28;row++){
-        float x=side?2560:-320,z=row*80;
-        if(nearby(x,z,1000))ground(GRASS,x,z,320,80,0,COLOR(125,167,132),5);
-    }
-}
+#include "city3d.inc"
+#include "daylight.inc"
+static void city(void){city_v25();}
 static void car(const R3Car *c){
     if(!nearby(c->x,c->z,560))return;
     if(!sphere_visible(c->x,c->z,30))return;
@@ -280,35 +260,44 @@ static void simple_person(float x,float z,float angle,int style,int walking){
     /* Reserve enough space before adding a pedestrian. The protagonist is
        submitted first; dense crowds must not truncate his outfit. Allow
        extra vertices for polygons split by the camera clip planes. */
-    const int mats[]={JACKET,JACKET_BACK,JEANS,SLEEVE,SKIN,HAIR,FACE,CAR_PAINT};
+    const int mats[]={JEANS,SKIN,HAIR,CAR_PAINT,21,22,23,24,25,26,27,28};
     for(unsigned i=0;i<sizeof(mats)/sizeof(mats[0]);i++)if(used[mats[i]]+648>MAX_VERTICES)return;
-    uint32_t tint=style<0?0xffffffffu:COLOR(175+(style*23)%80,170+(style*41)%85,160+(style*19)%95);
+    int variant=style%8,woman=variant<4,top=21+variant%6,face=woman?27:28;
+    const uint32_t skins[]={COLOR(246,216,187),COLOR(182,129,92),COLOR(225,178,139),COLOR(140,93,67)};
+    uint32_t skin=skins[(style/2)%4];
+    uint32_t tint=COLOR(210+(style*13)%45,205+(style*23)%50,205+(style*17)%50);
+    uint32_t pants=variant%3==0?COLOR(150,168,170):variant%3==1?COLOR(90,101,117):COLOR(212,209,183);
+    float shoulderWidth=woman?4.1f:variant==6?5.9f:5.1f;
+    float hipWidth=woman?2.45f:2.2f,legWidth=variant==2||variant==5?2.15f:1.65f;
     float phase=view->time*8.5f+style,swing=walking?sinf(phase):0,bob=walking?fabsf(cosf(phase))*.3f:0;
     for(int s=-1;s<=1;s+=2){
         float stride=s*swing*3.4f,lift=walking?fmaxf(0,s*swing)*1.7f:0;
-        Point hip=point(0,12+bob,s*2.2f),knee=point(stride*.55f-.6f,7+lift,s*2.3f),ankle=point(stride,2+lift,s*2.3f);
-        limb(hip,knee,2.1f,1.65f,JEANS,0xffffffffu,x,z,angle);
-        limb(knee,ankle,1.7f,1.35f,JEANS,0xffffffffu,x,z,angle);
+        Point hip=point(0,12+bob,s*hipWidth),knee=point(stride*.55f+.6f,7+lift,s*hipWidth),ankle=point(stride,2+lift,s*hipWidth);
+        limb(hip,knee,legWidth+.3f,legWidth,JEANS,pants,x,z,angle);
+        limb(knee,ankle,legWidth,legWidth*.8f,JEANS,pants,x,z,angle);
         Point shoe=local(stride+1,0,s*2.3f,x,z,angle);
         box(shoe.x,shoe.z,.45f+lift,5.3f,3.3f,1.4f,angle,CAR_PAINT,CAR_PAINT,COLOR(47,48,46));
         box(shoe.x,shoe.z,.15f+lift,5.5f,3.4f,.45f,angle,CAR_PAINT,CAR_PAINT,COLOR(196,193,175));
-        Point shoulder=point(0,20+bob,s*5.1f),elbow=point(-stride*.5f,15.8f+bob,s*5.5f),wrist=point(1-stride,12.7f+bob,s*5.2f);
-        limb(shoulder,elbow,1.8f,1.35f,SLEEVE,tint,x,z,angle);
-        limb(elbow,wrist,1.45f,1.05f,SLEEVE,tint,x,z,angle);
-        limb(wrist,point(wrist.x+.3f,wrist.y-1.8f,wrist.z),1.1f,.8f,SKIN,0xffffffffu,x,z,angle);
+        Point shoulder=point(0,20+bob,s*shoulderWidth),elbow=point(-stride*.5f,15.8f+bob,s*(shoulderWidth+.3f)),wrist=point(1-stride,12.7f+bob,s*shoulderWidth);
+        limb(shoulder,elbow,woman?1.45f:1.8f,1.25f,top,tint,x,z,angle);
+        limb(elbow,wrist,1.25f,.9f,variant%2?top:SKIN,variant%2?tint:skin,x,z,angle);
+        limb(wrist,point(wrist.x+.3f,wrist.y-1.8f,wrist.z),.95f,.7f,SKIN,skin,x,z,angle);
     }
     /* Fitted waist, chest, shoulders; different front/back UV material. */
     float heights[4]={11,14,19.5f,21},rx[4]={2.1f,2.6f,3,2.1f},rz[4]={3.8f,4,4.8f,3.4f};
+    if(woman){rx[0]=2.3f;rx[1]=2.1f;rx[2]=2.65f;rz[0]=4.5f;rz[1]=3.25f;rz[2]=4.0f;rz[3]=3.0f;}
+    if(variant==6){for(int i=0;i<4;i++){rx[i]*=1.28f;rz[i]*=1.15f;}}
+    if(variant==1||variant==3){heights[0]=8.5f;rx[0]=3.3f;rz[0]=5.0f;} /* tunic / long jacket */
     for(int level=0;level<3;level++)for(int k=0;k<8;k++){
         Point p=local(ringC[k]*rx[level+1],heights[level+1]+bob,ringS[k]*rz[level+1],x,z,angle);
         Point q=local(ringC[k+1]*rx[level+1],heights[level+1]+bob,ringS[k+1]*rz[level+1],x,z,angle);
         Point r=local(ringC[k+1]*rx[level],heights[level]+bob,ringS[k+1]*rz[level],x,z,angle);
         Point s=local(ringC[k]*rx[level],heights[level]+bob,ringS[k]*rz[level],x,z,angle);
-        int mat=ringC[k]+ringC[k+1]>0?JACKET:JACKET_BACK;
+        int mat=top;
         Vertex v[4]={{.5f+ringS[k]*.5f,1-(heights[level+1]-11)/10,tint,p.x,p.y,p.z},{.5f+ringS[k+1]*.5f,1-(heights[level+1]-11)/10,tint,q.x,q.y,q.z},{.5f+ringS[k+1]*.5f,1-(heights[level]-11)/10,tint,r.x,r.y,r.z},{.5f+ringS[k]*.5f,1-(heights[level]-11)/10,tint,s.x,s.y,s.z}};
         polygon(mat,v,4);
     }
-    limb(point(0,20.5f+bob,0),point(0,23+bob,0),1.35f,1.3f,SKIN,0xffffffffu,x,z,angle);
+    limb(point(0,20.5f+bob,0),point(0,23+bob,0),1.25f,1.2f,SKIN,skin,x,z,angle);
     /* Rounded jaw, cheeks, cranium. Face appears only on the forward surface. */
     float hy[6]={22.1f,23,25.2f,27.5f,28.6f,29},hr[6]={.4f,.78f,1,1,.75f,.05f};
     for(int level=0;level<5;level++)for(int k=0;k<8;k++){
@@ -316,10 +305,26 @@ static void simple_person(float x,float z,float angle,int style,int walking){
         Point q=local(.2f+ringC[k+1]*2.6f*hr[level+1],hy[level+1]+bob,ringS[k+1]*2.35f*hr[level+1],x,z,angle);
         Point r=local(.2f+ringC[k+1]*2.6f*hr[level],hy[level]+bob,ringS[k+1]*2.35f*hr[level],x,z,angle);
         Point s=local(.2f+ringC[k]*2.6f*hr[level],hy[level]+bob,ringS[k]*2.35f*hr[level],x,z,angle);
-        int mat=(k==0||k==7)?FACE:level>=2?HAIR:SKIN;
+        int mat=(k==0||k==7)?face:level>=2?HAIR:SKIN;
         float vt=1-(hy[level+1]-22.1f)/6.9f,vb=1-(hy[level]-22.1f)/6.9f;
-        Vertex v[4]={{.5f+ringS[k]*.68f,vt,0xffffffffu,p.x,p.y,p.z},{.5f+ringS[k+1]*.68f,vt,0xffffffffu,q.x,q.y,q.z},{.5f+ringS[k+1]*.68f,vb,0xffffffffu,r.x,r.y,r.z},{.5f+ringS[k]*.68f,vb,0xffffffffu,s.x,s.y,s.z}};
+        uint32_t headTint=mat==HAIR?(variant%3==0?COLOR(116,77,47):COLOR(65,53,47)):skin;
+        Vertex v[4]={{.5f+ringS[k]*.68f,vt,headTint,p.x,p.y,p.z},{.5f+ringS[k+1]*.68f,vt,headTint,q.x,q.y,q.z},{.5f+ringS[k+1]*.68f,vb,headTint,r.x,r.y,r.z},{.5f+ringS[k]*.68f,vb,headTint,s.x,s.y,s.z}};
         polygon(mat,v,4);
+    }
+    if(woman){
+        if(variant%2==0){ /* ponytail with independent lower swing */
+            limb(point(-2,26+bob,0),point(-3.6f,23+bob,0),1.4f,1.3f,HAIR,COLOR(110,79,53),x,z,angle);
+            limb(point(-3.6f,23+bob,0),point(-3.8f+swing*.3f,19+bob,.2f),1.3f,.6f,HAIR,COLOR(110,79,53),x,z,angle);
+        }else for(int side=-1;side<=1;side+=2)
+            limb(point(-.7f,26+bob,side*2.2f),point(-.8f,21.5f+bob,side*2.5f),1.2f,1.1f,HAIR,COLOR(74,57,46),x,z,angle);
+    }
+    if(variant==4||variant==7){ /* cap, including forward brim */
+        Point cap=local(0,0,0,x,z,angle);box(cap.x,cap.z,27.5f+bob,4.6f,4.8f,1.4f,angle,top,top,tint);
+        Point brim=local(2.5f,0,0,x,z,angle);box(brim.x,brim.z,27.4f+bob,3,4.8f,.35f,angle,top,top,tint);
+    }
+    if(variant==2||variant==7){ /* backpack and straps */
+        Point bag=local(-3.1f,0,0,x,z,angle);box(bag.x,bag.z,13+bob,3,5.4f,6,angle,25,25,COLOR(120,128,139));
+        for(int side=-1;side<=1;side+=2)limb(point(-1,20+bob,side*2.5f),point(2.8f,15+bob,side*2.5f),.35f,.35f,25,0xffffffffu,x,z,angle);
     }
 }
 /* Twelve-sided connected rings: smooth cloth silhouettes and continuous UVs.
@@ -350,31 +355,54 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
 }
 /* Optimizacion (Claude): las ~7.000 llamadas por fotograma compartian los mismos senos/cosenos de la marcha;
    se calculan una vez por fotograma. sin(pi*w) se aproxima con 4w(1-w) (error < 6%, invisible en la rodilla). */
-static float poseTime=-1,poseWave,poseRun,poseMotion,poseBreath,poseBob,poseCosW;
+static float poseWave,poseRun,poseMotion,poseBreath,poseBob;
+static float footStep[2],footLift[2];
+static float elbowSin,elbowCos;
+static void pose_prepare(void){
+    poseMotion=geo_clamp(view->motion,0,2.1f);poseWave=sinf(view->gaitPhase);
+    poseRun=geo_clamp((poseMotion-1)/1.08f,0,1);
+    elbowSin=sinf(poseRun*1.05f);elbowCos=cosf(poseRun*1.05f);
+    float moving=geo_clamp(poseMotion,0,1);
+    poseBreath=sinf(view->time*2.2f)*.08f*(1-moving);
+    poseBob=(1-cosf(view->gaitPhase*2))*(.13f+.22f*poseRun)*moving;
+    /* Contact: planted foot travels backwards. Recovery: bent knee and foot
+       lift only while swinging forwards. Calculated once, not per vertex. */
+    for(int i=0;i<2;i++){
+        float phase=fmodf(view->gaitPhase/(2*PI)+i*.5f,1);
+        if(phase<0)phase+=1;
+        float support=.62f-.16f*poseRun,stride=(4.2f+3.5f*poseRun)*moving;
+        if(phase<support){footStep[i]=stride*(1-2*phase/support);footLift[i]=0;}
+        else{float t=(phase-support)/(1-support),ease=t*t*(3-2*t);
+            footStep[i]=stride*(-1+2*ease);
+            footLift[i]=sinf(PI*t)*(1.5f+3.8f*poseRun)*moving;
+        }
+    }
+}
 static Point player_pose(Point p,int bone){
-    if(view->time!=poseTime){poseTime=view->time;poseMotion=view->motion;poseWave=sinf(view->gaitPhase);poseRun=geo_clamp(poseMotion-1,0,.6f);
-        poseBreath=sinf(view->time*2.2f)*.08f*(1-geo_clamp(poseMotion,0,1));poseBob=fabsf(cosf(view->gaitPhase))*.12f*poseMotion;
-        poseCosW=cosf(view->gaitPhase*2);}
     float motion=poseMotion,wave=poseWave,run=poseRun;
     int side=(bone&1)?-1:1;
     /* Animacion procedural (Claude v2.4): ademas del paso, contragiro de hombros y cadera, brazos con codo,
        inclinacion hacia delante al correr y arco del pie. Todo en funcion de la fase de marcha ya existente. */
     if(bone==1||bone==2){
-        float weight=geo_clamp(1-p.y/14.8f,0,1),swing=side*wave;
-        float lift=fmaxf(0,swing)*(1.4f+run*1.5f)*motion;
+        float weight=geo_clamp(1-p.y/14.8f,0,1);
+        float lift=footLift[bone-1],step=footStep[bone-1];
         /* Flexible knee blend preserves a continuous baggy pant surface. */
-        p.x+=swing*3.2f*motion*weight-lift*.3f*(4*weight*(1-weight));
+        p.x+=step*weight+lift*.42f*(4*weight*(1-weight));
         p.y+=lift*weight;
         /* Arco del pie: el pie que avanza se eleva mas en mitad del paso (pierna casi recta al apoyar). */
-        p.y+=fmaxf(0,-poseCosW)*.6f*motion*weight*weight;
+        p.y+=lift*.12f*(4*weight*(1-weight));
         /* La cadera gira ligeramente con la pierna que avanza. */
         float hip=geo_clamp((p.y-6)/8,0,1)*wave*.06f*motion;p.z+=p.x*hip;
     }else if(bone>=3){
         float weight=geo_clamp((24-p.y)/12,0,1);
         /* Brazo: balanceo opuesto a la pierna, mas amplio al correr; el codo se dobla y sube (antebrazo adelantado). */
-        float swing=-side*wave*(2.2f+run*2.5f)*motion;
+        float swing=-footStep[(bone-3)&1]*.62f;
+        /* Rotate the forearm around the elbow instead of stretching it up. */
+        if(p.y<16.5f){float dy=p.y-16.5f,xx=p.x;
+            p.x=xx*elbowCos-dy*elbowSin;p.y=16.5f+xx*elbowSin+dy*elbowCos;
+        }
         p.x+=swing*weight;
-        p.y+=run*weight*1.6f+fmaxf(0,swing)*.35f*weight*weight;
+        p.y+=fmaxf(0,swing)*.35f*weight*weight;
         p.z-=side*weight*run*.8f; /* los brazos se cierran hacia el cuerpo al correr */
     }
     float upper=geo_clamp((p.y-13)/12,0,1);
@@ -383,10 +411,11 @@ static Point player_pose(Point p,int bone){
     p.y+=poseBreath*upper;
     p.y+=poseBob*geo_clamp(p.y/4,0,1);
     /* Inclinacion hacia delante proporcional a la velocidad. */
-    p.x+=(run*.55f+geo_clamp(motion,0,1)*.35f)*upper;return p;
+    p.x+=(run*1.65f+geo_clamp(motion,0,1)*.25f)*upper;return p;
 }
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
+    pose_prepare();
     /* Optimizacion (Claude): ruta rapida para los ~2.300 triangulos del jugador. Son pequenos y estan siempre
        delante de la camara, asi que no pasan por polygon() (sin recorte de 6 planos ni copias): se posan, rotan,
        proyectan con la transformacion rigida cacheada y se escriben directamente en el lote de su material. */
@@ -403,7 +432,7 @@ static void person(float x,float z,float angle,int style,int walking){
                 if(rigid){float dx=wx-objectX,dz=wz-objectZ;wx=rigGX+rigCos*dx-rigSin*dz;wz=rigGZ+rigSin*dx+rigCos*dz;wy+=rigH;}
                 else{float gx,gz;geo_project(wx,wz,&gx,&gz);wy+=geo_height(wx,wz);wx=gx;wz=gz;}
             }
-            out[j]=(Vertex){a->u,a->v,a->color,wx,wy,wz};
+            out[j]=(Vertex){a->u,a->v,day_scale(a->color),wx,wy,wz};
         }
         used[mat]+=3;
     }
@@ -414,6 +443,14 @@ static void person(float x,float z,float angle,int style,int walking){
         cloth(sole,2,20,20,COLOR(217,213,198),x,z,angle);
         BodyRing shoe[]={{step+.4f,.55f+lift,lateral,2.60f,1.25f},{step+.3f,1.05f+lift,lateral,2.45f,1.20f},{step-.3f,1.85f+lift,lateral,1.35f,1.02f}};
         cloth(shoe,3,20,20,COLOR(237,232,217),x,z,angle);
+        /* Dark outsole and instep laces make the streetwear sneakers readable. */
+        BodyRing tread[]={{step+.4f,.08f+lift,lateral,2.60f,1.24f},{step+.4f,.20f+lift,lateral,2.66f,1.28f}};
+        cloth(tread,2,20,20,COLOR(58,61,61),x,z,angle);
+        for(int k=0;k<3;k++){
+            float xx=step-.4f+k*.45f,yy=1.86f-k*.13f+lift;
+            quad(20,local(xx,yy,lateral-.66f,x,z,angle),local(xx+.12f,yy,lateral-.66f,x,z,angle),
+                    local(xx+.12f,yy,lateral+.66f,x,z,angle),local(xx,yy,lateral+.66f,x,z,angle),COLOR(80,84,83),1,1);
+        }
     }
 }
 static void landmarks(void){
@@ -438,7 +475,7 @@ void r3_init(void){
 #ifndef R3_HOST
     /* 2 x 8888 frame + depth + 21 x 128-square 565 textures = 2,080,768 bytes. */
     textureBase=(void*)((uintptr_t)sceGeEdramGetAddr()+512*272*10);
-    memcpy((void*)((uintptr_t)textureBase|0x40000000),textures3d_data,MAT_COUNT*128*128*2);
+    memcpy((void*)((uintptr_t)textureBase|0x40000000),textures3d_data,VRAM_MATERIALS*128*128*2);
     sceKernelDcacheWritebackAll();
     sceGuInit();sceGuStart(GU_DIRECT,commands);
     sceGuDrawBuffer(GU_PSM_8888,(void*)0,512);
@@ -452,7 +489,7 @@ void r3_init(void){
 #endif
 }
 void r3_draw(uint32_t *fb,const R3Scene *s){
-    view=s;overflow=0;memset(used,0,sizeof(used));geographic=1;rigid=0;camera(s);city();
+    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;camera(s);city();
     rigid=2;
     for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
     rigid=1;
@@ -461,25 +498,36 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
     rigid=0;
     landmarks();
+    /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
+    for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
+    if(!s->driving)cast_shadow(s->x,s->z,4,26);
+    for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,3,24);
+    street_lamps_glow();clouds(s->time);
     geographic=0;
 #ifndef R3_HOST
     sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
-    sceGuClearColor(COLOR(155,189,192));sceGuClearDepth(0);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
+    sceGuClearColor(skyColor);sceGuClearDepth(0);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
     sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuDisable(GU_BLEND);sceGuDisable(GU_LIGHTING);
     sceGuEnable(GU_TEXTURE_2D);sceGuTexMode(GU_PSM_5650,0,0,1);
     sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);sceGuTexFilter(GU_LINEAR,GU_LINEAR);
     sceGuTexWrap(GU_REPEAT,GU_REPEAT);sceGuTexScale(1,1);sceGuTexOffset(0,0);sceGuShadeModel(GU_SMOOTH);
-    sceGuEnable(GU_FOG);sceGuFog(300,690,COLOR(155,189,192));
+    sceGuEnable(GU_FOG);sceGuFog(300,690,skyColor);
     sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,2,760);
     ScePspFVector3 e={eye.x,eye.y,eye.z},t={target.x,target.y,target.z};
     ScePspFVector3 up={0,1,0};sceGumMatrixMode(GU_VIEW);sceGumLoadIdentity();sceGumLookAt(&e,&t,&up);
     sceGumMatrixMode(GU_MODEL);sceGumLoadIdentity();
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
-        sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
+        if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
+        else sceGuTexImage(0,64,64,64,textures3d_data+VRAM_MATERIALS*128*128*2+(m-VRAM_MATERIALS)*64*64*2);
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,used[m],0,mesh[m]);
     }
-    sceGuDisable(GU_FOG);sceGuFinish();sceGuSync(0,0);
+    /* v2.5: pase de sombras (oscurece) y pase aditivo (luces, nubes, sol). Sin textura ni niebla. */
+    sceGuDisable(GU_FOG);sceGuDisable(GU_TEXTURE_2D);sceGuEnable(GU_BLEND);sceGuDepthMask(GU_TRUE);
+    if(shadowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,shadowUsed,0,shadowMesh);}
+    if(glowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_FIX,0,0xffffff);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,glowUsed,0,glowMesh);}
+    sceGuDisable(GU_BLEND);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
+    sceGuFinish();sceGuSync(0,0);
 #else
     (void)fb;
 #endif

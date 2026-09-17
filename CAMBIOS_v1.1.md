@@ -60,3 +60,19 @@ Tecnicas (render3d.c, world_geo.h):
   (FINDINGS.md, verificado en hardware): el chunk fact no puede declarar mas muestras de las que decodifican los
   frames (samples + delay + 368 <= frames*1024). tools/make_snd0.py ya aplica la regla; ATRAC3 LP4 66 kbps de
   atracdenc deberia sonar. PENDIENTE de confirmar en la E-1000.
+
+## v2.5 — 17 septiembre 2026 (Codex)
+
+- Terreno por terrazas: calles horizontales y cruces nivelados; rampas verticales
+  continuas de pendiente inferior al 12%. Relieve artístico, no levantamiento real.
+- Transformación ortonormal de los coches: inclinación sin deformar carrocería.
+- Contactos: conservar velocidad tangencial y marcha atrás, escape junto a paredes
+  y breve cesión del tráfico. Sin detener ambos vehículos por cualquier roce.
+- Cámara amortiguada en coordenadas proyectadas, gesto de joystick estable y
+  recuperación gradual de distancia tras obstáculos. L/R siguen siendo radio.
+- Corregido descarte de suelo cercano: planos normalizados y culling conservador
+  de manzanas. Regresión de cobertura de suelo con 512 posiciones/orientaciones.
+- Modelo v3 y animación de Claude conservados; suelas y cordones añadidos.
+  Exportación actual: 2.692 triángulos, OBJ/MTL y GIF de las poses reales del motor.
+- Entrega: release/Narcade_v2.5_PSP.zip, ISO y PBP. Detalles en VALIDACION_v2.5.md.
+  Probado en PPSSPP y pruebas nativas; pendiente de probar esta versión en PSP real.

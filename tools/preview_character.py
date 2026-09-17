@@ -7,7 +7,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[1]
 verts=[];uv=[];faces=[];material=None
-for line in (ROOT/'assets/nico.obj').read_text().splitlines():
+model=Path(sys.argv[sys.argv.index('--model')+1]) if '--model' in sys.argv else ROOT/'assets/nico.obj'
+for line in model.read_text().splitlines():
     fields=line.split()
     if not fields:continue
     if fields[0]=='v':verts.append(list(map(float,fields[1:])))
@@ -39,7 +40,7 @@ def render(angle):
         z=a*p[0,2]+b*p[1,2]+c*p[2,2]
         old=depth[ymin:ymax+1,xmin:xmax+1];mask=(a>=-1e-5)&(b>=-1e-5)&(c>=-1e-5)&(z>old)
         u=a*t[0,0]+b*t[1,0]+c*t[2,0];vv=1-(a*t[0,1]+b*t[1,1]+c*t[2,1])
-        tex=textures[mat];tx=np.clip((u*127).astype(int),0,127);ty=np.clip((vv*127).astype(int),0,127)
+        tex=textures[mat];size=tex.shape[0];tx=np.clip((u*(size-1)).astype(int),0,size-1);ty=np.clip((vv*(size-1)).astype(int),0,size-1)
         colors=verts[ids,3:6] if verts.shape[1]>=6 else np.ones((3,3))
         shade=a[...,None]*colors[0]+b[...,None]*colors[1]+c[...,None]*colors[2]
         rgb=np.clip(tex[ty,tx]*shade,0,255).astype(np.uint8)
@@ -49,12 +50,12 @@ sheet=Image.new('RGB',(W*3,H+60),(30,36,44));draw=ImageDraw.Draw(sheet)
 for i,(angle,label) in enumerate([(0,'FRENTE'),(.8,'TRES CUARTOS'),(math.pi,'ESPALDA')]):
     sheet.paste(render(angle),(i*W,40));draw.text((i*W+155,20),label,fill=(235,240,248))
 draw.text((30,H+43),'NARCADE - Malla y texturas del juego. Vista de estudio; no es una captura de PSP.',fill=(185,199,212))
-out=ROOT/'assets/nico-streetwear-preview.png';sheet.save(out);print(out)
+out=Path(sys.argv[sys.argv.index('--output')+1]) if '--output' in sys.argv else ROOT/'assets/nico-streetwear-preview.png';sheet.save(out);print(out)
 if '--animate' in sys.argv:
     raw=(ROOT/'build/player-animation.bin').read_bytes();nf,nv=struct.unpack_from('<II',raw)
     poses=np.frombuffer(raw[8:],dtype='<f4').reshape(nf,nv,3);assert nv==len(verts)
     W,H=240,360
-    for name,start,duration in [('walk',0,46),('run',16,29)]:
+    for name,start,duration in [('walk',0,36),('jog',16,27),('run',32,23)]:
         frames=[]
         for pose in poses[start:start+16]:
             verts[:,:3]=pose

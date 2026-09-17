@@ -1,0 +1,37 @@
+NARCADE 3D v2.5 - made by Naresz
+17 de septiembre de 2026
+
+INSTALAR
+Extrae el ZIP. Copia ISO/Narcade.iso a la carpeta ISO de la Memory Stick
+de tu PSP con el mismo CFW que ya utilizabas. Conserva una copia de tu ISO
+anterior si quieres comparar. Esta entrega no se ha instalado en tu consola.
+
+Alternativa: copia PSP/GAME/NARCADE/EBOOT.PBP a esa misma ruta en la tarjeta.
+ISO y PBP son dos formas de ejecutar el mismo juego; no necesitas ambas.
+Las partidas existentes mantienen su formato y sus cuatro ranuras.
+
+CAMBIOS
+- Calles horizontales y cruces nivelados como terrazas. Las calles verticales
+  conectan los niveles mediante rampas continuas de pendiente inferior al 12%.
+- Los coches se inclinan como un cuerpo rigido: no se aplastan en las rampas.
+- Los roces laterales no frenan automaticamente ambos coches. La marcha atras
+  permite salir de un contacto; el trafico cede brevemente tras un choque.
+- Camara amortiguada y movimiento del joystick en las coordenadas reales del
+  mundo dibujado. Mantener una direccion lateral no provoca vueltas continuas.
+  La camara se acerca ante obstaculos y recupera la distancia suavemente.
+- Correccion de manzanas de suelo que desaparecian junto al jugador.
+- Personaje v3 conservado, con ropa streetwear, animaciones al caminar/correr
+  y detalles adicionales en las zapatillas (suela y cordones).
+
+CONTROLES PRINCIPALES
+Joystick: caminar y orientar el seguimiento de camara; conducir al volante.
+X: correr a pie / acelerar en coche. Cuadrado: frenar y dar marcha atras.
+Triangulo: entrar/salir de coche. L/R: cambiar radio en coche.
+Start: mapa, mensajes, guardar y volver al menu principal.
+
+VALIDACION
+Probado en PPSSPP 1.20.4 y mediante pruebas automaticas del motor.
+La prueba en una PSP fisica de esta version 2.5 queda pendiente.
+Consulta VALIDACION_v2.5.md y QA-v2.5.txt para el alcance exacto.
+El mapa es una interpretacion simplificada de Medellin; los desniveles son
+artisticos y se han adaptado a la solicitud de terrazas, no son topografia real.

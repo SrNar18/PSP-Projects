@@ -46,7 +46,9 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
+ float tapAge,sprintTime,footSpeed,footTravel;int runTaps;
+ float trafficYield[CAR_COUNT];
  int pauseTab,pauseBack;
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
@@ -117,6 +119,28 @@ static int foot_free(float x,float y){
  return 1;
 }
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
+static void camera_follow(float target,float dt){
+ /* Critically damped heading in rendered world space, bounded turn speed. */
+ float d=angle_delta(g.viewYaw,target),omega=8,decay=expf(-omega*dt),v=g.cameraVelocity;
+ float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
+ g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
+ float limit=2.4f*dt;
+ if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
+ g.viewYaw+=change;
+}
+static void camera_clearance(float dt){
+#ifdef NARCADE_3D
+ float gx,gz;geo_project(g.x,g.y,&gx,&gz);float desired=g.car>=0?95:65;
+ for(float d=8;d<desired;d+=2){
+  float x,y;geo_unproject(gx-cosf(g.viewYaw)*d,gz-sinf(g.viewYaw)*d,&x,&y);
+  if(solid(x,y)){desired=fmaxf(10,d-4);break;}
+ }
+ if(g.cameraDistance<=0||desired<g.cameraDistance)g.cameraDistance=desired;
+ else g.cameraDistance+=(desired-g.cameraDistance)*(1-expf(-dt*4));
+#else
+ (void)dt;
+#endif
+}
 /* Four separating axes for two oriented 36x18 car footprints. */
 static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *depth){
  if(fabsf(b->y-a->y)>42)return 0;
@@ -144,6 +168,19 @@ static int car_free_at(const Car *c,float x,float y){
  return 1;
 }
 static void car_push(const Car *c,float x,float y,float *outX,float *outY){float gx,gy;physics_project(c->x,c->y,&gx,&gy);physics_unproject(gx+x,gy+y,outX,outY);}
+static int contact_slide(Car *a,const Car *b,float nx,float ny,float depth){
+ /* If a wall blocks the shortest correction, try a small tangential escape.
+    Only accept a free position that actually reduces penetration. */
+ float directions[4][2]={{nx-ny,ny+nx},{nx+ny,ny-nx},{-ny,nx},{ny,-nx}};
+ for(int k=0;k<4;k++){
+  float length=sqrtf(directions[k][0]*directions[k][0]+directions[k][1]*directions[k][1]);
+  Car candidate=*a;car_push(a,directions[k][0]/length*(depth+.3f),directions[k][1]/length*(depth+.3f),&candidate.x,&candidate.y);
+  if(!car_free_at(&candidate,candidate.x,candidate.y))continue;
+  float dx,dy,d;
+  if(!car_overlap(&candidate,b,&dx,&dy,&d)||d<depth-.05f){a->x=candidate.x;a->y=candidate.y;return 1;}
+ }
+ return 0;
+}
 static void separate_cars(void){
  /* Resolve independently of damage cooldown. Several passes settle pile-ups. */
  for(int pass=0;pass<8;pass++){
@@ -151,19 +188,28 @@ static void separate_cars(void){
   for(int i=0;i<CAR_COUNT;i++)for(int j=i+1;j<CAR_COUNT;j++){
    Car *a=&g.cars[i],*b=&g.cars[j];float nx,ny,depth;
    if(!car_overlap(a,b,&nx,&ny,&depth))continue;
-   float push=depth+.06f,ax,ay,bx,by,aax,aay,bbx,bby;
+   float push=depth+.3f,ax,ay,bx,by,aax,aay,bbx,bby;
    car_push(a,-nx*push*.5f,-ny*push*.5f,&ax,&ay);car_push(b,nx*push*.5f,ny*push*.5f,&bx,&by);
    car_push(a,-nx*push,-ny*push,&aax,&aay);car_push(b,nx*push,ny*push,&bbx,&bby);
    int moveA=car_free_at(a,ax,ay),moveB=car_free_at(b,bx,by);
    if(moveA&&moveB){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
    else if(car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
    else if(car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
-   /* Stop the closing velocity; parked cars remain stationary afterwards. */
-   float impact=fabsf(a->speed)+fabsf(b->speed);
+   else if(contact_slide(a,b,-nx,-ny,depth)||contact_slide(b,a,nx,ny,depth))changed=1;
+   float aa=physics_heading(a),ba=physics_heading(b);
+   float an=cosf(aa)*nx+sinf(aa)*ny,bn=cosf(ba)*nx+sinf(ba)*ny;
+   float closing=a->speed*an-b->speed*bn,impact=fmaxf(0,closing);
    if(pass==0&&(i==g.car||j==g.car)&&impact>25&&g.hitCD<=0){
     g.cars[g.car].hp-=impact*.025f;g.heat=fminf(5,g.heat+.25f);g.hitCD=.7f;
    }
-   a->speed=0;b->speed=0;
+   /* Resolve the inward normal velocity only. Side rubbing and reversing
+      away must retain their tangential/escaping motion. */
+   if(pass==0&&closing>0){
+    float den=an*an+bn*bn;
+    if(den>.001f){float impulse=closing/den;a->speed-=impulse*an;b->speed+=impulse*bn;}
+    if(a->parked)a->speed=0;if(b->parked)b->speed=0;
+    if(i!=g.car)g.trafficYield[i]=.45f;if(j!=g.car)g.trafficYield[j]=.45f;
+   }
   }
   if(!changed)break;
  }
@@ -239,7 +285,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;world_init();start_mission();}
+static void fresh_game(void){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=65;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;world_init();start_mission();}
 static void advance(void){
  if(g.side){g.cash+=180;g.jobs++;g.reputation++;g.side=0;g.raceTime=0;notice("ENCARGO COMPLETO  +$180  +1 reputacion");g.screen=WORLD;game_save();return;}
  g.step++;g.checkpoint=0;g.raceTime=0;g.missionTimer=0;g.screen=WORLD;
@@ -328,11 +374,24 @@ static void enter_exit(void){
   if(best!=1){g.heat=fmaxf(g.heat,g.cars[best].police?3:1.2f);notice("CARRO TOMADO. X acelera / [] frena / L-R radio.");}else notice("Luna: cuidalo. X acelera / [] frena / L-R radio.");
  }else notice("Acercate a un carro. TRIANGULO para tomarlo.");
 }
+static void foot_pace(int moving,float dt){
+ g.tapAge+=dt;g.sprintTime=fmaxf(0,g.sprintTime-dt);
+ if(!moving){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;return;}
+ if(pressed(B_CROSS)){
+  if(g.tapAge>=.07f&&g.tapAge<=.45f)g.runTaps++;else g.runTaps=1;
+  g.runTaps=g.runTaps>3?3:g.runTaps;g.tapAge=0;
+  if(g.runTaps>=3)g.sprintTime=.45f;
+ }
+ if(g.tapAge>.45f)g.runTaps=0;
+ float wanted=g.sprintTime>0?150.f:held(B_CROSS)?111.f:72.f;
+ g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
+}
 static void world_tick(float ax,float ay,float dt){
+ g.footTravel=0;
  if(pressed(B_SELECT)){g.screen=MAP;g.mapSel=g.mission<36?step_now()->loc:0;return;}
  if(pressed(B_TRI))enter_exit();
 #ifdef NARCADE_3D
- if(g.car>=0){g.viewYaw+=angle_delta(g.cars[g.car].a,g.viewYaw)*(1-expf(-dt*3.5f));g.stickActive=0;}
+ if(g.car>=0)g.stickActive=0;
  if(g.car>=0){if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;}
 #else
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
@@ -343,29 +402,47 @@ static void world_tick(float ax,float ay,float dt){
   /* Anchor input direction for this stick gesture. Following the camera with
      an unanchored lateral input would turn a held direction into endless circles. */
   float sx=dx,sy=dy;
-  if(sx*sx+sy*sy>.04f){if(!g.stickActive){g.inputYaw=g.viewYaw;g.stickActive=1;}}
+  if(sx*sx+sy*sy>.04f){
+   float intent=atan2f(sx,-sy);
+   if(!g.stickActive||fabsf(angle_delta(intent,g.stickAngle))>.65f){g.inputYaw=g.viewYaw;g.stickAngle=intent;g.stickActive=1;}
+  }
   else{g.stickActive=0;sx=sy=0;}
   dx=-sinf(g.inputYaw)*sx-cosf(g.inputYaw)*sy;dy=cosf(g.inputYaw)*sx-sinf(g.inputYaw)*sy;
+  float desiredYaw=atan2f(dy,dx),inputLength=sqrtf(dx*dx+dy*dy);
+  dx/=fmaxf(1,inputLength);dy/=fmaxf(1,inputLength);
+  float gx,gz,lx,lz;geo_project(g.x,g.y,&gx,&gz);geo_unproject(gx+dx,gz+dy,&lx,&lz);dx=lx-g.x;dy=lz-g.y;
 #endif
-  float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;if(n>.1f){dx/=fmaxf(1,n);dy/=fmaxf(1,n);g.a=atan2f(dy,dx);float speed=held(B_CROSS)?111:72;
+  float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;foot_pace(g.walking,dt);if(n>.1f){
+#ifndef NARCADE_3D
+  dx/=fmaxf(1,n);dy/=fmaxf(1,n);
+#endif
+  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*12));float speed=g.footSpeed;
+  float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
   float grade=(geo_height(g.x+dx*4,g.y+dy*4)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+grade*grade);
   if(foot_free(g.x+dx*speed*dt,g.y))g.x+=dx*speed*dt;if(foot_free(g.x,g.y+dy*speed*dt))g.y+=dy*speed*dt;
+  float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
+  g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
-  g.viewYaw+=angle_delta(g.a,g.viewYaw)*(1-expf(-dt*3.2f));
+  camera_follow(desiredYaw,dt);
 #endif
   }
  }else{
-  Car *c=&g.cars[g.car];float steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
+  foot_pace(0,dt);
+  Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
   c->a+=steer*dt*(1.4f+fabsf(c->speed)/130)*(c->speed<0?-1:1)*clampf(fabsf(c->speed)/25,0,1);
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
-  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->hp-=fabsf(c->speed)*.025f;c->speed*=-.24f;g.hitCD=.12f;}
+  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
+  else if(car_free_at(c,xx,c->y)){c->x=xx;c->speed*=.85f;}
+  else if(car_free_at(c,c->x,yy)){c->y=yy;c->speed*=.85f;}
+  else{c->a=oldAngle;c->hp-=fabsf(c->speed)*.025f;c->speed*=.2f;g.hitCD=.12f;}
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
  for(int i=0;i<CAR_COUNT;i++){
   if(i==g.car)continue;Car *c=&g.cars[i];if(c->parked&&!c->police)continue;
+  if(g.trafficYield[i]>0){g.trafficYield[i]=fmaxf(0,g.trafficYield[i]-dt);c->speed=0;continue;}
   if(c->police&&g.heat>0){
    float dd=dist(g.x,g.y,c->x,c->y);
    // Pursuers use the street grid, choosing the next junction toward the player.
@@ -384,6 +461,11 @@ static void world_tick(float ax,float ay,float dt){
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a+=PI*.5f;}
  }
  separate_cars();
+#ifdef NARCADE_3D
+ if(g.car>=0)camera_follow(physics_heading(&g.cars[g.car]),dt);
+ else if(!g.walking)g.cameraVelocity=0;
+ camera_clearance(dt);
+#endif
  for(int i=0;i<42;i++){Ped *p=&g.peds[i];p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;}
  if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
@@ -392,15 +474,18 @@ static void world_tick(float ax,float ay,float dt){
  }
  if(g.health<=0){g.health=100;g.heat=0;g.car=-1;g.x=locations[14].x;g.y=locations[14].y;g.cash=g.cash>100?g.cash-100:0;g.raceTime=0;g.side=0;g.missionTimer=0;notice("HOSPITAL: te recuperaste. El objetivo sigue disponible.");game_save();}
  if(pressed(B_SQUARE)&&g.car<0)interact();
- float motionTarget=g.car<0&&g.walking?(held(B_CROSS)?1.6f:1.f):0;
- g.motion+=(motionTarget-g.motion)*(1-expf(-dt*12));g.gaitPhase+=dt*8.5f*g.motion;
+ /* Animate distance actually travelled: pushing into a wall no longer runs
+    the feet in place. Keep phase continuous through all three gaits. */
+ float motionTarget=g.car<0?clampf(g.footTravel/(dt*72),0,2.1f):0;
+ g.motion+=(motionTarget-g.motion)*(1-expf(-dt*12));
+ if(g.footTravel>.0001f)g.gaitPhase=fmodf(g.gaitPhase+g.footTravel*(.15f-.025f*clampf(g.motion-1,0,1.1f)),2*PI);
  if(pressed(B_UP)&&g.car>=0)interact();
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
- if(g.screen!=WORLD)g.stickActive=0;
+ if(g.screen!=WORLD){g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
@@ -559,7 +644,7 @@ static void title_draw(void){
  line(0,79,480,142,RGB(95,125,124));for(int i=0;i<3;i++){int x=75+i*164+(int)(g.clock*5)%164;int y=79+x*63/480;rect(x,y,1,8,MUTED);rect(x-7,y+8,15,11,TEAL);rect(x-5,y+10,4,4,INK);rect(x+1,y+10,4,4,INK);}
  label(24,16,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
  text(22,36,"NARCADE",INK,6);text(18,31,"NARCADE",WHITE,6);
- rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.4",WHITE);
+ rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.6",WHITE);
  rect(14,169,222,76,INK);text(28,181,g.menu==0?"> CONTINUAR / EMPEZAR":"  CONTINUAR / EMPEZAR",g.menu==0?LIME:MUTED,1);text(28,204,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(28,226,"X confirmar",TEAL,1);
  rect(288,165,178,80,INK);text(312,176,"made by",WHITE,1);signature(287,184);
  footer("36 misiones  /  7 minijuegos  /  radio original");
@@ -659,10 +744,9 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
- scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=scene.driving?95:65;
+ scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:(scene.driving?95:65);
  scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;
- /* Keep the camera on the player's side of walls; do not cross a building. */
- for(float d=8;d<scene.cameraDistance;d+=4)if(solid(g.x-cosf(g.viewYaw)*d,g.y-sinf(g.viewYaw)*d)){scene.cameraDistance=fmaxf(10,d-5);break;}
+ /* Obstruction distance is maintained in projected space by camera_clearance. */
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
  for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police};
  for(int i=0;i<42;i++)scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,g.peds[i].v>0?PI*.5f:-PI*.5f,i};

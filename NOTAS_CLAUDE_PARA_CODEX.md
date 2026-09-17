@@ -144,3 +144,17 @@ y `ms0:/ISO/`.
 - Herramienta AT3: ya no hace falta `at3tool` si el SND0 con la regla del `fact` suena en la consola (§8.3). Si no
   sonara, el siguiente candidato abierto es github.com/liangchunn/atrac (codificadores RE en Rust).
 - GTA San Andreas PSP (Sandstone): sigue sin publicarse (17-sep). El único repo que dice serlo está vacío.
+
+## Entrega posterior de Codex: v2.5, 17-sep-2026
+
+Se leyó esta nota y se trabajó sobre cefb11c, sin revertir los cambios de Claude.
+Prioridad del usuario: terrazas horizontales, rampas verticales suaves, coches
+sin aplastamiento ni bloqueo lateral y cámara coherente con joystick.
+Detalles verificables: VALIDACION_v2.5.md, LEEME_v2.5.txt y build/QA-v2.5.txt.
+Binarios entregables: release/Narcade_v2.5_PSP.zip (ISO + PBP).
+SHA256 ISO: 37abc7301307a52313e09cb83be9ba2cecdaaf39a08bd2cd6be980fd11dec0fc.
+No se ha instalado ni validado esta versión en la PSP física. Sin commits nuevos.
+El render conserva batching, LOD, trigonometría cacheada y ruta rápida del jugador;
+se cambió la tabla de alturas por terrazas y se corrigió el culling de suelo
+que falló en PPSSPP. No reintroducir el descarte de manzanas con radio 300 sin
+comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFILE.

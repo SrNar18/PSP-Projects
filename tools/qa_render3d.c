@@ -13,7 +13,7 @@ static void export_player(void){
  FILE *obj=fopen("assets/nico.obj","w"),*mtl=fopen("assets/nico.mtl","w");assert(obj&&mtl);
  const char *names[]={"asphalt","sidewalk","brick","stucco","shop","roof","grass","water","jacket","jeans","face","wheel","car-side","car-paint","glass","mural","jacket-back","sleeve","skin","hair","flat"};
  R3Scene s={0};s.cameraDistance=65;view=&s;memset(used,0,sizeof(used));clipEnabled=0;person(0,0,0,-1,0);clipEnabled=1;
- fputs("# Narcade 2.4 adapted personaje-v3, Y up, +X forward\nmtllib nico.mtl\n",obj);
+ fputs("# Narcade 2.6 adapted personaje-v3, Y up, +X forward\nmtllib nico.mtl\n",obj);
  int base=1,total=0;
  for(int m=0;m<MAT_COUNT;m++)if(used[m]){
   fprintf(mtl,"newmtl %s\nKd 1 1 1\nmap_Kd textures3d/%s.png\n\n",names[m],names[m]);
@@ -26,12 +26,17 @@ static void export_player(void){
 }
 static void export_animation(void){
  R3Scene s={0};s.cameraDistance=65;view=&s;clipEnabled=0;geographic=0;rigid=0;
- FILE *f=fopen("build/player-animation.bin","wb");assert(f);unsigned frames=32,vertices=0;
+ FILE *f=fopen("build/player-animation.bin","wb");assert(f);unsigned frames=48,vertices=0;
  person(0,0,0,-1,0);memset(used,0,sizeof(used));person(0,0,0,-1,0);
  for(int m=0;m<MAT_COUNT;m++)vertices+=used[m];
  fwrite(&frames,4,1,f);fwrite(&vertices,4,1,f);
  for(unsigned frame=0;frame<frames;frame++){
-  s.motion=frame<16?1:1.6f;s.gaitPhase=(frame%16)*2*PI/16;s.time=s.gaitPhase/8.5f;
+  s.motion=frame<16?1:frame<32?111.f/72:150.f/72;s.gaitPhase=(frame%16)*2*PI/16;s.time=s.gaitPhase/8.5f;
+  pose_prepare();
+  Point left=player_pose(point(0,0,-1.65f),1),right=player_pose(point(0,0,1.65f),2);
+  assert(left.y>=-.001f&&right.y>=-.001f);
+  assert(fabsf(left.x-right.x)+fabsf(left.y-right.y)>.1f);
+  if(frame%16==0)assert(left.x>0&&right.x<0);
   memset(used,0,sizeof(used));overflow=0;person(0,0,0,-1,1);assert(!overflow);
   unsigned count=0;
   for(int m=0;m<MAT_COUNT;m++)for(int i=0;i<used[m];i++){
@@ -39,10 +44,48 @@ static void export_animation(void){
   }
   assert(count==vertices);
  }
- fclose(f);clipEnabled=1;puts("PASS: 32 walking/running poses, stable topology, finite vertices.");
+ fclose(f);clipEnabled=1;puts("PASS: 48 walk/jog/sprint poses, separate alternating feet, no foot below ground, stable topology.");
+}
+static int road_covers(float x,float z){
+ for(int i=0;i<used[ROAD];i+=3){
+  Vertex *a=&mesh[ROAD][i],*b=a+1,*c=a+2;
+  float d=(b->z-c->z)*(a->x-c->x)+(c->x-b->x)*(a->z-c->z);
+  if(fabsf(d)<.0001f)continue;
+  float u=((b->z-c->z)*(x-c->x)+(c->x-b->x)*(z-c->z))/d;
+  float v=((c->z-a->z)*(x-c->x)+(a->x-c->x)*(z-c->z))/d;
+  if(u>=-.001f&&v>=-.001f&&u+v<=1.001f)return 1;
+ }
+ return 0;
 }
 int main(void){
+ int legVertices[2]={0,0};float legZ[2]={0,0};
+ for(int i=0;i<PLAYER_VERTEX_COUNT;i++){
+  const PlayerVertex *v=&player_mesh[i];
+  if(v->mat==JEANS&&v->bone>=1&&v->bone<=2){legVertices[v->bone-1]++;legZ[v->bone-1]+=v->z;}
+ }
+ assert(legVertices[0]>100&&legVertices[1]>100);
+ assert(legZ[0]<0&&legZ[1]>0);
+ puts("PASS: left AND right trouser meshes have independent limb assignments on opposite body sides.");
+ rigid=2;
+ for(int z=86;z<2240;z+=29)for(int angle=0;angle<8;angle++){
+  objectX=382;objectZ=(float)z;objectYaw=angle*PI/4;rigid_cache();
+  Point basis[]={rigBX,rigBY,rigBZ};
+  for(int a=0;a<3;a++)for(int b=0;b<3;b++){
+   float dot=basis[a].x*basis[b].x+basis[a].y*basis[b].y+basis[a].z*basis[b].z;
+   assert(fabsf(dot-(a==b?1.f:0.f))<.00001f);
+  }
+  assert(rigBY.y>.95f);
+ }
+ rigid=0;puts("PASS: car basis preserves length, width and height on every ramp and heading (no shear/flattening).");
  R3Scene s={0};s.cameraDistance=65;s.target=-1;
+ /* Workshop foreground disappeared with the previous block-sphere cull.
+    Test actual triangle coverage, not merely a nonempty road batch. */
+ for(int z=960;z<=1022;z+=2)for(int a=0;a<16;a++){
+  s.x=62;s.z=(float)z;s.yaw=a*PI/8;
+  r3_draw(NULL,&s);float xw,zw;geo_project(s.x,s.z,&xw,&zw);
+  assert(road_covers(xw,zw));
+ }
+ puts("PASS: workshop foreground road covers the player at 512 positions/headings.");
  int scenes=0,maxVertices=0;
  for(int location=0;location<56;location++)for(int yaw=0;yaw<16;yaw++){
   s.x=62+(location%8)*320;s.z=62+(location/8)*320;s.yaw=yaw*PI/8;

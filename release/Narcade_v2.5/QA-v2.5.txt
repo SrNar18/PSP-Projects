@@ -1,0 +1,22 @@
+PASS: 36 missions, 146 objectives; all seven puzzle families solved through input.
+  mini kind 2: 13 solved
+  mini kind 3: 12 solved
+  mini kind 4: 12 solved
+  mini kind 5: 12 solved
+  mini kind 6: 10 solved
+  mini kind 7: 7 solved
+  mini kind 8: 8 solved
+PASS: native simulation, saves, corrupted-save recovery, car controls, side job and PCM audio.
+PASS: 12,000 randomized input frames (sanitizers when enabled by the compiler).
+PASS: Start map, messages, save, return to title, pause/resume minigame.
+PASS: head-on, side, identical-center, pinned-wall and 32 rotated car contacts; cooldown does not block separation.
+PASS: stick follows heading, held lateral input stays straight, deadzone stable, L/R no camera rotation.
+PASS: all horizontal streets and junctions level; vertical ramp gradient below 12 percent, continuous landings.
+PASS: geographic forward/inverse, mission hubs, terminal offset and car/player collision.
+PASS: side contact preserves forward speed; reversing separates immediately and continues without waiting.
+PASS: car basis preserves length, width and height on every ramp and heading (no shear/flattening).
+PASS: workshop foreground road covers the player at 512 positions/headings.
+PASS: 896 camera/location scenes, no material overflow, all vertices inside 6 clip planes, ground crossing near plane retained. Peak 14778 vertices.
+PASS: dense crowd, protagonist geometry retained, no material overflow.
+Nico export: 2692 triangles, OBJ+MTL, original UV materials.
+PASS: 32 walking/running poses, stable topology, finite vertices.

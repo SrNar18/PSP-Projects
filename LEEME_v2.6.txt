@@ -1,0 +1,39 @@
+NARCADE 3D v2.6 - made by Naresz
+
+PEATONES NUEVOS
+Ocho variantes base: cuatro femeninas y cuatro masculinas, distribuidas
+entre los 42 peatones de la ciudad. Diferentes proporciones, tonos de piel,
+coletas, pelo hasta los hombros, gorras, mochilas y prendas largas.
+Ocho texturas originales nuevas: seis tejidos/estampados y dos rostros.
+Modelos ligeros de 344 a 418 triangulos para PSP. Mira Vista/npc-variety-preview.png.
+
+MOVIMIENTO A PIE
+Joystick sin X: caminar.
+Joystick manteniendo X: trotar.
+Joystick pulsando X repetidamente: correr rapido.
+El sprint se activa al encadenar tres pulsaciones (separadas como maximo
+por 0,45 segundos). Sigue pulsando para mantenerlo. No hace falta pulsar
+con extrema rapidez. Al dejar de pulsar, vuelve suavemente al trote si
+mantienes X, o a caminar si la sueltas. Al detenerte se reinicia el ritmo.
+La X del coche y la de los menus siguen funcionando como antes.
+
+PIERNAS Y ANIMACION
+Corregido un error del importador: las dos perneras estaban asignadas al
+mismo lado porque "pants-leg-r" contenia la secuencia "-l" de "leg".
+Ahora cada pierna y su zapatilla siguen su propio ciclo alternado.
+Mejorados apoyo, elevacion del pie, flexion de rodillas, codos al correr,
+contrabalanceo de brazos e inclinacion del torso. La fase es continua al
+cambiar de velocidad; no se reinicia el paso entre caminar, trotar y correr.
+Si una pared impide avanzar, la animacion deja de correr en el sitio.
+
+INSTALACION
+Copia ISO/Narcade.iso a la carpeta ISO de tu Memory Stick, usando el mismo
+CFW que ya utilizabas. Alternativa: PSP/GAME/NARCADE/EBOOT.PBP en esa ruta.
+No necesitas instalar ambas opciones. Conserva tu ISO anterior si quieres
+comparar. Se mantiene el formato de guardado y los cambios de la v2.5.
+
+VALIDACION
+Pruebas automaticas de entradas, campaña, guardados, colisiones, terreno
+y malla. Vistas de estudio con 48 poses reales del motor (16 por ritmo).
+Prueba de arranque de ISO en PPSSPP; pendiente de probar en PSP fisica.
+Los GIF de Vista son renders de estudio, no capturas de una PSP.
