@@ -13,8 +13,10 @@ typedef struct {
     float hubs[30][2];
     R3Car cars[64];
     R3Person people[42];
+    float lift,metroZ;int metroDir,inMetro; /* v2.6: altura peatonal (anden) y tren del Metro */
 } R3Scene;
 void r3_init(void);
+int r3_overflow(void);int r3_used(int m); /* diagnostico: poligonos descartados por presupuesto y vertices usados por material */
 void r3_draw(uint32_t *framebuffer, const R3Scene *scene);
 void r3_overlay(uint32_t *framebuffer,const uint32_t *rgba);
 void r3_shutdown(void);

@@ -88,3 +88,14 @@ Tecnicas (render3d.c, world_geo.h):
 - Escala humana: PERSON_SCALE 0.62 (jugador y NPCs); velocidades a pie 42/68/100 (antes 72/111/150).
 - Control: direccion siempre relativa a la camara actual (sin anclaje); camara con seguimiento suave (omega 4.5).
 - Coste: ~28-34 ms/fotograma en PPSSPP (30 fps) con todo lo anterior.
+
+## v2.6 — 17 septiembre 2026 (Claude)
+- Trazado urbano irregular real (`src/citymap.h` + `src/city26.inc`): manzanas dobles, partidas por una calle central,
+  triangulares junto a la Av. Oriental diagonal, pasos bajo edificios puente, Estadio, Plaza Botero, Pueblito Paisa,
+  Metro con viaducto/estaciones y Metrocable. Colision, minimapa, mapa y render comparten la misma definicion.
+- Metro a escala del jugador: escaleras, anden, tren que para en cada estacion; `[]` para subir y bajar; camara dentro.
+- Iluminacion: degradado de cielo, niebla color horizonte, oclusion ambiental en fachadas.
+- Escala jugador/edificios: `PERSON_SCALE 0.52`.
+- Minimapa precalculado (rejilla de 4 unidades).
+- Corregido: menu de guardado de la PSP dejaba pintado el slot anterior (se redibuja el fondo cada fotograma).
+- Obstaculos menores solidos (pilares, pedestales, fuentes) para que el personaje no los atraviese.

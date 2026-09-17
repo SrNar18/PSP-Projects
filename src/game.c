@@ -12,6 +12,7 @@
 #define W 480
 #define H 272
 #include "world_geo.h"
+#include "citymap.h" /* v2.6 (Claude): trazado irregular compartido con render3d */
 #define WORLD_W 2560
 #define WORLD_H 2240
 #define CAR_COUNT 64
@@ -50,6 +51,7 @@ static struct {
  float tapAge,sprintTime,footSpeed,footTravel;int runTaps;
  float trafficYield[CAR_COUNT];
  int pauseTab,pauseBack;
+ float lift,metroZ,metroWait;int metroDir,inMetro; /* v2.6: anden/escaleras y Metro (no se guardan) */
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
  Car cars[CAR_COUNT]; Ped peds[42]; Puzzle p;
@@ -80,12 +82,13 @@ static void label(int x,int y,const char *s,uint32_t c){rect(x-4,y-2,(int)strlen
 static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,20,LIME);text(28,12,a,WHITE,1);text(28,29,b,MUTED,1);}
 static void footer(const char *s){rect(0,252,W,20,INK);text(12,257,s,MUTED,1);}
 static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].steps[g.step];}
-static int parkblock(int bx,int by){return (bx==2&&by==3)||(bx==2&&by==1)||(bx==0&&by==2)||(bx==4&&by==5)||(bx==4&&by==6);}
+static int parkblock(int bx,int by){return cm_park(bx,by);}
 static int solid(float x,float y){
  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8)return 1;
- int lx=(int)x%320,ly=(int)y%320,bx=(int)x/320,by=(int)y/320;
+ int ly=(int)y%320;
  if(x>1396&&x<1460&&ly>86)return 1;
- return !parkblock(bx,by)&&lx>94&&lx<288&&ly>94&&ly<280;
+ /* v2.6: manzanas irregulares (fusionadas, partidas, triangulares): la huella la define citymap.h */
+ return cm_solid(x,y)||cm_obstacle(x,y);
 }
 static int free_at(float x,float y,int radius){return !solid(x-radius,y-radius)&&!solid(x+radius,y-radius)&&!solid(x-radius,y+radius)&&!solid(x+radius,y+radius);}
 static void physics_project(float x,float y,float *a,float *b){
@@ -109,6 +112,13 @@ static float physics_heading(const Car *c){
  return c->a;
 #endif
 }
+/* v2.6: escaleras y anden del Metro. Arriba solo se puede estar sobre el anden o la escalera; no hay saltos bruscos. */
+static int lift_ok(float x,float y){
+ int up=g.lift>15;float nl=cm_lift(x,y,up);
+ if(up&&nl<1)return 0;                 /* borde del anden */
+ if(fabsf(nl-g.lift)>6)return 0;       /* no se entra a la escalera por el lateral */
+ return 1;
+}
 static int foot_free(float x,float y){
  if(!free_at(x,y,5))return 0;
  for(int i=0;i<CAR_COUNT;i++){
@@ -130,7 +140,7 @@ static void camera_follow(float target,float dt){
 }
 static void camera_clearance(float dt){
 #ifdef NARCADE_3D
- float gx,gz;geo_project(g.x,g.y,&gx,&gz);float desired=g.car>=0?95:65;
+ float gx,gz;geo_project(g.x,g.y,&gx,&gz);float desired=g.car>=0?95:65;if(g.inMetro){g.cameraDistance=30;return;}
  for(float d=8;d<desired;d+=2){
   float x,y;geo_unproject(gx-cosf(g.viewYaw)*d,gz-sinf(g.viewYaw)*d,&x,&y);
   if(solid(x,y)){desired=fmaxf(10,d-4);break;}
@@ -215,10 +225,24 @@ static void separate_cars(void){
  }
  if(g.car>=0){g.x=g.cars[g.car].x;g.y=g.cars[g.car].y;}
 }
+/* v2.6: tren del Metro (va y vuelve por x=CM_METRO_X, para 6 s en cada estacion) y viaje del jugador a bordo. */
+static void metro_update(float dt){
+ if(g.metroDir==0){g.metroDir=1;g.metroZ=cm_station_z(1);g.metroWait=6;}
+ if(g.metroWait>0){g.metroWait-=dt;}
+ else{
+  float before=g.metroZ;g.metroZ+=g.metroDir*130*dt;
+  for(int bz=1;bz<=5;bz+=2){float sz=cm_station_z(bz);if(before!=sz&&(before-sz)*(g.metroZ-sz)<=0){g.metroZ=sz;g.metroWait=6;break;}}
+  if(g.metroZ<60){g.metroZ=60;g.metroDir=1;g.metroWait=2;}if(g.metroZ>2180){g.metroZ=2180;g.metroDir=-1;g.metroWait=2;}
+ }
+ if(g.inMetro){g.x=CM_METRO_X;g.y=g.metroZ;g.lift=CM_PLAT_H+1;g.a=g.metroDir>0?PI*.5f:-PI*.5f;g.viewYaw=g.a;g.cameraVelocity=0;g.walking=0;}
+}
+static int metro_boardable(void){return !g.inMetro&&g.car<0&&g.lift>15&&g.metroWait>0&&cm_station_near(g.metroZ,2)==(int)floorf(g.y/320)&&cm_on_platform(g.x,g.y);}
 static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)return 8;if(x<640&&y<1500)return 0;if(x<1100&&y<1450)return 1;if(x<1250)return 2;if(y<650)return 3;if(x>1600&&y>1500)return 4;if(x>1800)return 5;return 6;}
 static const char *districts[]={"SAN JAVIER / COMUNA 13","LAURELES / ESTADIO","BELEN","ARANJUEZ / CASTILLA","EL POBLADO","VILLA HERMOSA / BUENOS AIRES","LA CANDELARIA / RIO","POPULAR / SANTO DOMINGO","ROBLEDO / DOCE DE OCTUBRE"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
+static void map_grid_build(void);
 static void world_init(void){
+ map_grid_build();
  rng=729;for(int i=0;i<CAR_COUNT;i++){
   Car *c=&g.cars[i];int bx=random_u()%8,by=random_u()%7;
   c->type=i%6;c->police=i>=60;c->hp=100;c->speed=0;c->parked=i<38;
@@ -234,9 +258,15 @@ static void world_init(void){
    float xx=bx+52+k*22,yy=by+42;c->a=0;
    if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;found=1;}
   }
+  for(int k=0;k<10&&!found;k++){ /* v2.6: si la calle norte esta fusionada, probar la calle oeste */
+   float xx=bx+42,yy=by+52+k*22;c->a=PI*.5f;
+   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;found=1;}
+  }
  }
  g.cars[1].type=0;
- for(int i=0;i<42;i++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
+ for(int i=0;i<42;i++){
+  for(int k=0;k<12;k++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);if(!cm_solid(g.peds[i].x,g.peds[i].y))break;} /* v2.6: acera real */
+  g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
 }
 int cachecount_public(void);
 static void fill_save(Save *s);
@@ -266,7 +296,7 @@ void game_save_summary(char *title,int titlecap,char *detail,int detailcap){
  int m=g.mission<36?g.mission:35;snprintf(title,titlecap,"Mision %02d/36 - %s",g.mission<36?g.mission+1:36,g.mission<36?missions[m].title:"Historia completada");
  int h=(int)g.playtime/3600,mi=((int)g.playtime/60)%60;
  snprintf(detail,detailcap,"$%d  -  %d vinilos  -  %d encargos\nTiempo de juego %d:%02d\nmade by Naresz",g.cash,cachecount_public(),g.jobs,h,mi);}
-static int apply_save(const Save *sp){Save s=*sp;
+static int apply_save(const Save *sp){Save s=*sp;g.lift=0;g.inMetro=0;
  if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
  g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;return 1;}
@@ -285,7 +315,11 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=65;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;world_init();start_mission();}
+static void fresh_game(void){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=65;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+#ifdef NARCADE_SPAWN_X
+ g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
+#endif
+ world_init();start_mission();}
 static void advance(void){
  if(g.side){g.cash+=180;g.jobs++;g.reputation++;g.side=0;g.raceTime=0;notice("ENCARGO COMPLETO  +$180  +1 reputacion");g.screen=WORLD;game_save();return;}
  g.step++;g.checkpoint=0;g.raceTime=0;g.missionTimer=0;g.screen=WORLD;
@@ -350,6 +384,9 @@ static void race_start(int side){g.side=side;g.checkpoint=0;g.raceTime=side?140:
  int near[6]={13,22,4,21,17,1};for(int i=0;i<6;i++)g.route[i]=near[(i+origin)%6];(void)bx;(void)by;
  notice("RUTA INICIADA: cruza los seis aros amarillos en carro.");}
 static void interact(void){
+ if(g.inMetro){if(g.metroWait>0){int bz=cm_station_near(g.metroZ,2);if(bz>=0){g.inMetro=0;g.x=CM_METRO_X-14;g.y=cm_station_z(bz);g.lift=CM_PLAT_H;g.a=PI;notice("Bajaste del Metro. Escalera al sur del anden.");}}return;}
+ if(metro_boardable()){g.inMetro=1;notice("METRO: viaje en marcha. [] para bajar en la siguiente estacion.");return;}
+ if(g.lift>15){if(g.metroWait<=0||cm_station_near(g.metroZ,2)!=(int)floorf(g.y/320))notice("Espera el Metro en el anden: para 6 segundos en cada estacion.");return;} /* en el anden no se toman carros de la calle */
  if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(dist(g.x,g.y,l->x,l->y)<58){
   if(s->kind==K_DRIVE){if(g.car<0){notice("Este objetivo requiere llegar en un carro.");return;}advance();return;}
   if(s->kind==K_RACE){if(g.car<0){notice("Consigue un carro antes de iniciar el recorrido.");return;}if(g.raceTime<=0)race_start(0);return;}
@@ -397,7 +434,7 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
 #endif
  if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
- if(g.car<0){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
+ if(g.car<0&&!g.inMetro){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
 #ifdef NARCADE_3D
   /* Anchor input direction for this stick gesture. Following the camera with
      an unanchored lateral input would turn a held direction into endless circles. */
@@ -419,14 +456,15 @@ static void world_tick(float ax,float ay,float dt){
   g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*12));float speed=g.footSpeed;
   float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
   float grade=(geo_height(g.x+dx*4,g.y+dy*4)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+grade*grade);
-  if(foot_free(g.x+dx*speed*dt,g.y))g.x+=dx*speed*dt;if(foot_free(g.x,g.y+dy*speed*dt))g.y+=dy*speed*dt;
+  if(foot_free(g.x+dx*speed*dt,g.y)&&lift_ok(g.x+dx*speed*dt,g.y))g.x+=dx*speed*dt;if(foot_free(g.x,g.y+dy*speed*dt)&&lift_ok(g.x,g.y+dy*speed*dt))g.y+=dy*speed*dt;
+  g.lift=cm_lift(g.x,g.y,g.lift>15);
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
   camera_follow(desiredYaw,dt);
 #endif
   }
- }else{
+ }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
   foot_pace(0,dt);
   Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
@@ -461,6 +499,7 @@ static void world_tick(float ax,float ay,float dt){
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a+=PI*.5f;}
  }
  separate_cars();
+ metro_update(dt);
 #ifdef NARCADE_3D
  if(g.car>=0)camera_follow(physics_heading(&g.cars[g.car]),dt);
  else if(!g.walking)g.cameraVelocity=0;
@@ -579,14 +618,28 @@ int cachecount_public(void){return cachecount();}
    - Abajo a la izquierda: minimapa circular con calles, rio, objetivo y posicion. */
 static void text_center(int cx,int y,const char *s,uint32_t c,int scale){text(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
 static void box_center(int cx,int y,int w,int h,uint32_t c){rect(cx-w/2,y,w,h,c);}
+/* v2.6: el minimapa se dibuja cada fotograma (3.200 muestras); el trazado se precalcula en una rejilla de 4 unidades
+   (640x560 bytes = 358 KB) para no evaluar poligonos por pixel. Codigos: 0 fuera, 1 rio, 2 calle, 3 acera/plaza, 4 parque, 5 edificio. */
+#define MG_STEP 4
+static unsigned char mapGrid[WORLD_H/MG_STEP][WORLD_W/MG_STEP];static int mapGridBuilt=0;
+static void map_grid_build(void){
+ if(mapGridBuilt)return;
+ for(int j=0;j<WORLD_H/MG_STEP;j++)for(int i=0;i<WORLD_W/MG_STEP;i++){
+  float wx=i*MG_STEP+MG_STEP*.5f,wy=j*MG_STEP+MG_STEP*.5f;int ly=(int)wy%320;unsigned char c;
+  if(wx>1396&&wx<1460&&ly>86)c=1;
+  else{int kind=cm_parcel_at(wx,wy);if(kind<0)c=cm_on_road(wx,wy)?2:3;else c=kind==1?4:5;}
+  mapGrid[j][i]=c;
+ }
+ mapGridBuilt=1;
+}
 static uint32_t map_ground(float gx,float gz){
  float wx,wy;geo_unproject(gx,gz,&wx,&wy);
  if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)return RGB(20,30,34);
- int lx=(int)wx%320,ly=(int)wy%320,bx=(int)wx/320,by=(int)wy/320;
- if(wx>1396&&wx<1460&&ly>86)return RGB(39,127,147);
- if(lx<86||ly<86)return RGB(119,128,123);
+ if(!mapGridBuilt)map_grid_build();
+ unsigned char c=mapGrid[(int)wy/MG_STEP][(int)wx/MG_STEP];
+ if(c==1)return RGB(39,127,147);if(c==2)return RGB(119,128,123);if(c==3)return RGB(150,152,140);
  int h=(int)geo_clamp(geo_height(wx,wy)*.14f,0,40);
- return parkblock(bx,by)?RGB(57+h,91+h,68):RGB(51+h,67+h,54);
+ return c==4?RGB(57+h,91+h,68):RGB(51+h,67+h,54);
 }
 static void map_point(float x,float y,float sc,int ox,int oy,int *mx,int *my){float gx,gz;geo_project(x,y,&gx,&gz);*mx=ox+(int)(gx*sc);*my=oy+(int)(gz*sc);}
 static void minimap(int cx,int cy,int r){
@@ -606,7 +659,11 @@ static void minimap(int cx,int cy,int r){
 #ifdef NARCADE_PROFILE
 static float profileMs=0,profileMax=0;void game_set_profile(float ms){profileMs=ms;if(ms>profileMax)profileMax=ms;if(g.clock<.5f)profileMax=0;}
 #endif
-static void hud(void){char b[180];
+static void hud(void){
+#ifdef NARCADE_SPAWN_X
+ {char dbg[96];snprintf(dbg,sizeof(dbg),"x%d y%d lift%d metro%d z%d w%d sp%d ff%d lo%d s%d",(int)g.x,(int)g.y,(int)g.lift,g.inMetro,(int)g.metroZ,(int)g.metroWait,(int)g.footSpeed,foot_free(g.x,g.y-3),lift_ok(g.x,g.y-3),solid(g.x-5,g.y-8));text(6,4,dbg,WHITE,1);snprintf(dbg,sizeof(dbg),"ovf%d side%d stucco%d paint%d road%d roof%d",r3_overflow(),r3_used(1),r3_used(3),r3_used(13),r3_used(0),r3_used(5));text(6,14,dbg,WHITE,1);text(6,4,dbg,WHITE,1);}
+#endif
+ char b[180];
 #ifdef NARCADE_PROFILE
  snprintf(b,sizeof(b),"%.1f ms  (max %.1f)",profileMs,profileMax);rect(4,40,140,14,INK);text(8,42,b,GOLD,1);
 #endif
@@ -627,7 +684,9 @@ static void hud(void){char b[180];
  const char *line=NULL;uint32_t col=WHITE;
  if(g.noticeT>0){line=g.notice;col=WHITE;}
  else if(g.mission<36){const Step *st=step_now();
-  if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"[]",act);line=b;col=LIME;}
+  if(g.inMetro){line=g.metroWait>0?"[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
+  else if(metro_boardable()){line="[] SUBIR AL METRO";col=LIME;}
+  else if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
   int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
@@ -745,7 +804,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:(scene.driving?95:65);
- scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;
+ scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
  for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police};

@@ -21,6 +21,7 @@ static float sunR=1,sunG=1,sunB=1;   /* color de la luz directa */
 static float ambR=.5f,ambG=.5f,ambB=.55f;
 static float night=0;                /* 0 dia ... 1 noche cerrada */
 static uint32_t skyColor=COLOR(155,189,192);
+static uint32_t horizonColor=COLOR(205,222,214); /* v2.6: bruma del horizonte (mas clara y calida que el cenit); tambien color de niebla */
 static float lerpf(float a,float b,float t){return a+(b-a)*t;}
 static float smooth01(float t){t=t<0?0:t>1?1:t;return t*t*(3-2*t);}
 static void day_update(float time){
@@ -37,6 +38,9 @@ static void day_update(float time){
     /* cielo: azul claro de dia, naranja/violeta al amanecer y atardecer, azul noche */
     float r=lerpf(lerpf(155,236,dusk),14,night),g=lerpf(lerpf(189,140,dusk),18,night),b=lerpf(lerpf(192,110,dusk),40,night);
     skyColor=COLOR((int)r,(int)g,(int)b);
+    /* horizonte: bruma clara de dia, naranja intenso al amanecer/atardecer, gris-azul apagado de noche */
+    float hr=lerpf(lerpf(215,250,dusk),40,night),hg=lerpf(lerpf(226,170,dusk),46,night),hb=lerpf(lerpf(222,120,dusk),70,night);
+    horizonColor=COLOR((int)hr,(int)hg,(int)hb);
 }
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){
     float d=nx*sunX+ny*sunY+nz*sunZ;if(d<0)d=0;

@@ -47,11 +47,14 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  uint32_t *fb=buffers[*index^1];game_draw(fb,512);
  sceDisplaySetFrameBuf(fb,512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart(); /* nunca IMMEDIATE: pantalla negra en PSP E-1000 */
  for(;;){
-  sceDisplayWaitVblankStart();
+  /* El dialogo del sistema NO borra lo que dibujo el fotograma anterior: hay que redibujar el fondo del juego
+     cada vez (si no, el resaltado del slot anterior se queda "pegado"). La pausa es estatica: sin parpadeo. */
+  game_draw(fb,512);
   int st=sceUtilitySavedataGetStatus();
   if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
   else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilitySavedataShutdownStart();
   else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
+  sceDisplayWaitVblankStart();
  }
  if(sd.base.result!=0)return 0;
  if(mode)return game_import_save(saveBuf,(int)sd.dataSize);

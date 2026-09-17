@@ -3,6 +3,7 @@
  */
 #include "render3d.h"
 #include "world_geo.h"
+#include "citymap.h" /* v2.6 (Claude): trazado irregular compartido con game.c */
 #include <math.h>
 #include <string.h>
 #ifndef R3_HOST
@@ -41,10 +42,21 @@ static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
 static void camera(const R3Scene *s){
     float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=s->yaw;
-    float h=geo_height(s->x,s->z);
+    float h=geo_height(s->x,s->z)+s->lift; /* v2.6: anden del Metro */
     eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->driving?54:43),pz-sinf(yaw)*s->cameraDistance);
     float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
     target=point(px+cosf(yaw)*25,h+(s->driving?10:11),pz+sinf(yaw)*25);
+    if(s->inMetro){ /* v2.6: camara dentro del coche del Metro, mirando en el sentido de la marcha */
+        float dir=s->metroDir>0?1:-1;float mx,mz;geo_project(CM_METRO_X,s->metroZ+dir*(CM_TRAIN_CAR*.5f+3-26),&mx,&mz);float base=geo_height(CM_METRO_X,s->metroZ)+CM_PLAT_H;
+        eye=point(mx-3,base+13,mz);float tx,tz;geo_project(CM_METRO_X,s->metroZ+dir*160,&tx,&tz);target=point(tx,base+9,tz); /* coche delantero, mirando por el testero */
+    }else if(s->lift>15){ /* en el anden: camara baja y cercana para no ver la marquesina desde arriba */
+        float d=s->cameraDistance<48?s->cameraDistance:48;
+        eye=point(px-cosf(yaw)*d,h+16,pz-sinf(yaw)*d);target=point(px+cosf(yaw)*25,h+9,pz+sinf(yaw)*25);
+    }
+#ifdef NARCADE_TOPVIEW
+    /* solo pruebas: vista aerea oblicua para revisar el trazado (NARCADE_EXTRA_CFLAGS=-DNARCADE_TOPVIEW) */
+    eye=point(px-cosf(yaw)*260,h+NARCADE_TOPVIEW,pz-sinf(yaw)*260);target=point(px+cosf(yaw)*60,h,pz+sinf(yaw)*60);
+#endif
     float fx=target.x-eye.x,fy=target.y-eye.y,fz=target.z-eye.z;
     float n=sqrtf(fx*fx+fy*fy+fz*fz);fx/=n;fy/=n;fz/=n;
     float rx=-fz,rz=fx,rn=sqrtf(rx*rx+rz*rz);rx/=rn;rz/=rn;
@@ -79,13 +91,14 @@ static Point rigBX,rigBY,rigBZ;
 static Point unit(Point p){float n=sqrtf(p.x*p.x+p.y*p.y+p.z*p.z);return point(p.x/n,p.y/n,p.z/n);}
 static Point cross3(Point a,Point b){return point(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);}
 static float projected_height(float x,float z){float lx,lz;geo_unproject(x,z,&lx,&lz);return geo_height(lx,lz);}
+static float playerLift=0; /* v2.6: altura extra del jugador (anden del Metro) */
 static void rigid_cache(void){
     if(objectX==rigX&&objectZ==rigZ&&objectYaw==rigYaw&&rigid==rigMode)return;
     rigMode=rigid;
     rigX=objectX;rigZ=objectZ;rigYaw=objectYaw;
     geo_project(objectX,objectZ,&rigGX,&rigGZ);
     float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;rigCos=cosf(da);rigSin=sinf(da);
-    rigH=geo_height(objectX,objectZ);
+    rigH=geo_height(objectX,objectZ)+playerLift;
     if(rigid==2){
         float a=geo_heading(objectX,objectZ,objectYaw),c=cosf(a),s=sinf(a);
         float pitch=(projected_height(rigGX+c*14,rigGZ+s*14)-projected_height(rigGX-c*14,rigGZ-s*14))/28;
@@ -150,6 +163,12 @@ static int sphere_visible(float x,float z,float radius){
     return 1;
 }
 static float view_distance(float x,float z){float dx=x-view->x,dz=z-view->z;return sqrtf(dx*dx+dz*dz);}
+/* v2.6 (Claude): cara lateral con degradado vertical (oclusion ambiental falsa: mas oscura abajo). a,b arriba; c,d abajo. */
+static void quad2(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,float v){
+    uint32_t low=shade(color,.78f);
+    Vertex p[4]={{0,0,color,a.x,a.y,a.z},{u,0,color,b.x,b.y,b.z},{u,v,low,c.x,c.y,c.z},{0,v,low,d.x,d.y,d.z}};
+    polygon(m,p,4);
+}
 static void quad(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,float v){
     Vertex p[4]={{0,0,color,a.x,a.y,a.z},{u,0,color,b.x,b.y,b.z},{u,v,color,c.x,c.y,c.z},{0,v,color,d.x,d.y,d.z}};
     polygon(m,p,4);
@@ -157,7 +176,8 @@ static void quad(int m,Point a,Point b,Point c,Point d,uint32_t color,float u,fl
 /* Optimizacion (Claude): la misma rotacion se repite miles de veces por fotograma (todos los vertices de un
    objeto comparten angulo). Cachear seno/coseno del ultimo angulo evita dos llamadas trigonometricas por vertice. */
 static float localA=1e30f,localC=1,localS=0;
-#define PERSON_SCALE 0.62f /* v2.5 (Claude): personas a escala de la ciudad (un piso = 1.35 personas, coche = 2 personas) */
+#define PERSON_SCALE 0.52f /* v2.6: 1.75 m = 15 unidades; un piso (24) = 1.6 personas, como en la realidad */
+#define PERSON_SCALE_OLD 0.62f /* v2.5 (Claude): personas a escala de la ciudad (un piso = 1.35 personas, coche = 2 personas) */
 static float localScale=1; /* factor aplicado a las coordenadas locales (personas) */
 static Point local(float x,float y,float z,float cx,float cz,float a){
     if(a!=localA){localA=a;localC=cosf(a);localS=sinf(a);}
@@ -169,20 +189,25 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     float l=length*.5f,w=width*.5f,h=bottom+height;
     float savedGround=fixedGround;
     if(geographic&&!rigid){
+        if(fixedGround>-999999){if(bottom==0)bottom=-1;} /* v2.6: nivel de parcela impuesto desde fuera (podio) */
+        else{
         float low=geo_height(x,z),high=low;
         for(int a=-1;a<=1;a+=2)for(int b=-1;b<=1;b+=2){Point p=local(a*l,0,b*w,x,z,angle);float hh=geo_height(p.x,p.z);low=fminf(low,hh);high=fmaxf(high,hh);}
         fixedGround=high;
         if(bottom==0)bottom=low-high-1; /* Foundation reaches the downhill ground. */
+        }
     }
     Point p[8]={local(-l,bottom,-w,x,z,angle),local(l,bottom,-w,x,z,angle),local(l,bottom,w,x,z,angle),local(-l,bottom,w,x,z,angle),
         local(-l,h,-w,x,z,angle),local(l,h,-w,x,z,angle),local(l,h,w,x,z,angle),local(-l,h,w,x,z,angle)};
     /* v2.5: cada cara segun su orientacion respecto al sol (angle rota las normales locales). */
     float ca=cosf(angle),sa=sinf(angle);uint32_t sc=emissive_color(side,color);
     litAlready=1;
-    quad(side,p[4],p[5],p[1],p[0],lit_color(sc,sa,0,-ca),1,1);   /* cara -z */
-    quad(side,p[6],p[7],p[3],p[2],lit_color(sc,-sa,0,ca),1,1);   /* cara +z */
-    quad(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),1,1);    /* cara +x */
-    quad(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),1,1);  /* cara -x */
+    int ao=height>14&&bottom<=6.5f;  /* degradado solo en volumenes que arrancan del suelo/podio */
+    void (*q)(int,Point,Point,Point,Point,uint32_t,float,float)=ao?quad2:quad;
+    q(side,p[4],p[5],p[1],p[0],lit_color(sc,sa,0,-ca),1,1);   /* cara -z */
+    q(side,p[6],p[7],p[3],p[2],lit_color(sc,-sa,0,ca),1,1);   /* cara +z */
+    q(side,p[5],p[6],p[2],p[1],lit_color(sc,ca,0,sa),1,1);    /* cara +x */
+    q(side,p[7],p[4],p[0],p[3],lit_color(sc,-ca,0,-sa),1,1);  /* cara -x */
     quad(top,p[7],p[6],p[5],p[4],lit_color(color,0,1,0),1,1);
     litAlready=0;
     fixedGround=savedGround;
@@ -199,15 +224,16 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
     }
 }
 static int nearby(float x,float z,float range){float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
-static int park(int x,int z){return (x==2&&z==3)||(x==2&&z==1)||(x==0&&z==2)||(x==4&&z==5)||(x==4&&z==6);}
+static int park(int x,int z){return cm_park(x,z);}
 static void tree(float x,float z){
     box(x,z,0,3,3,25,0,ROOF,ROOF,COLOR(104,85,61));
     box(x,z,19,20,20,13,.35f,GRASS,GRASS,COLOR(190,220,155));
     box(x,z,30,13,13,10,-.2f,GRASS,GRASS,COLOR(216,239,176));
 }
 #include "city3d.inc"
+#include "city26.inc"
 #include "daylight.inc"
-static void city(void){city_v25();}
+static void city(void){city_v26();}
 static void car(const R3Car *c){
     if(!nearby(c->x,c->z,560))return;
     if(!sphere_visible(c->x,c->z,30))return;
@@ -481,6 +507,8 @@ static void landmarks(void){
         box(x,z,35+sinf(view->time*3)*3,5,5,5,view->time,CAR_PAINT,CAR_PAINT,COLOR(239,255,94));
     }
 }
+int r3_overflow(void){return overflow;}
+int r3_used(int m){return m<MAT_COUNT?used[m]:0;}
 void r3_init(void){
 #ifndef R3_HOST
     /* 2 x 8888 frame + depth + 21 x 128-square 565 textures = 2,080,768 bytes. */
@@ -503,14 +531,15 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     rigid=2;
     for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
     rigid=1;
-    objectX=s->x;objectZ=s->z;objectYaw=s->angle;
-    if(!s->driving)person(s->x,s->z,s->angle,-1,s->moving);
+    objectX=s->x;objectZ=s->z;objectYaw=s->angle;playerLift=s->lift;rigX=-1e9f; /* invalidar cache */
+    if(!s->driving&&!s->inMetro)person(s->x,s->z,s->angle,-1,s->moving);
+    playerLift=0;rigX=-1e9f;
     for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
     rigid=0;
     landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
-    if(!s->driving)cast_shadow(s->x,s->z,3,17);
+    if(!s->driving&&!s->inMetro&&s->lift<1)cast_shadow(s->x,s->z,3,17);
     for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
     street_lamps_glow();clouds(s->time);
     geographic=0;
@@ -522,11 +551,28 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     sceGuEnable(GU_TEXTURE_2D);sceGuTexMode(GU_PSM_5650,0,0,1);
     sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);sceGuTexFilter(GU_LINEAR,GU_LINEAR);
     sceGuTexWrap(GU_REPEAT,GU_REPEAT);sceGuTexScale(1,1);sceGuTexOffset(0,0);sceGuShadeModel(GU_SMOOTH);
-    sceGuEnable(GU_FOG);sceGuFog(300,690,skyColor);
     sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,2,760);
     ScePspFVector3 e={eye.x,eye.y,eye.z},t={target.x,target.y,target.z};
     ScePspFVector3 up={0,1,0};sceGumMatrixMode(GU_VIEW);sceGumLoadIdentity();sceGumLookAt(&e,&t,&up);
     sceGumMatrixMode(GU_MODEL);sceGumLoadIdentity();
+    /* v2.6: cielo con degradado (bruma clara en el horizonte, cenit = color de fondo). Cilindro alrededor de la camara,
+       sin escribir profundidad y antes de la niebla; la niebla toma el color del horizonte para que lo lejano se funda en el. */
+    {
+        static Vertex __attribute__((aligned(16))) skyMesh[16*6];
+        for(int k=0;k<16;k++){float a0=k*2*PI/16,a1=(k+1)*2*PI/16;float R=270;
+            float x0=eye.x+cosf(a0)*R,z0=eye.z+sinf(a0)*R,x1=eye.x+cosf(a1)*R,z1=eye.z+sinf(a1)*R;float yb=eye.y-90,yt=eye.y+140;
+            Vertex *q=skyMesh+k*6;
+            q[0]=(Vertex){0,0,horizonColor,x0,yb,z0};q[1]=(Vertex){0,0,horizonColor,x1,yb,z1};q[2]=(Vertex){0,0,skyColor,x1,yt,z1};
+            q[3]=(Vertex){0,0,skyColor,x1,yt,z1};q[4]=(Vertex){0,0,skyColor,x0,yt,z0};q[5]=(Vertex){0,0,horizonColor,x0,yb,z0};
+        }
+        sceKernelDcacheWritebackRange(skyMesh,sizeof(skyMesh));
+        sceGuDisable(GU_TEXTURE_2D);sceGuDepthMask(GU_TRUE);sceGuDisable(GU_DEPTH_TEST);
+        sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,16*6,0,skyMesh);
+        sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
+    }
+#ifndef NARCADE_TOPVIEW
+    sceGuEnable(GU_FOG);sceGuFog(300,690,horizonColor);
+#endif
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
         if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
         else sceGuTexImage(0,64,64,64,textures3d_data+VRAM_MATERIALS*128*128*2+(m-VRAM_MATERIALS)*64*64*2);

@@ -169,3 +169,31 @@ comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFIL
 - Velocidades a pie: 42/68/100. Tus NPC (npc-*.png, MAT_COUNT 29) siguen intactos.
 - Pendiente de probar en consola: rendimiento real (~30 fps en PPSSPP), musica XMB (regla del fact), y el aspecto
   nocturno (faros/farolas) en la pantalla real.
+
+## 11. v2.6 (17-sep noche, Claude) — trazado irregular real, Metro a escala, iluminacion, escala — instalada en la PSP
+- **`src/citymap.h` es la unica fuente de verdad del trazado** (la incluyen `game.c` y `render3d.c`): celdas 8x7 con
+  flags `cm_cells[bz][bx]` (MERGE_E/S = manzana doble, TUNNEL = paso de 48 bajo un edificio puente, SPLIT_X/Z = calle
+  central de 40, PARK, PLAZA, STADIUM, PUEBLITO), Av. Oriental diagonal (1010,700)->(1330,1560) que recorta parcelas
+  en triangulos/trapecios, parcelas = poligonos convexos `CmParcel` (cache `cm_build()`), `cm_solid()`/`cm_parcel_at()`,
+  `cm_obstacle()` (pilares del Metro, pedestales y fuente de Plaza Botero, fuentes de parques) y geometria del Metro.
+  **Si cambias donde se dibuja algo solido, cambialo aqui; `solid()` en game.c es `cm_solid||cm_obstacle` + rio + bordes.**
+- Render: `src/city26.inc` (`city_v26()`), reutiliza los helpers de `city3d.inc`. `prism()` extruye poligonos;
+  `fill_rect()` adapta los 7 tipos de manzana al tamano real de la parcela (subdivide las dobles); `fill_poly()` para
+  parcelas triangulares; Estadio, Plaza Botero, Pueblito Paisa, Metro (viaducto x=1486, estaciones bz 1,3,5),
+  Metrocable (1760,520)->(2460,120). Dentro de una parcela se fija `fixedGround=parcel_level(p)` para que podio,
+  jardines y edificios compartan nivel en ladera (`box()`/`prism()` respetan un `fixedGround` ya fijado).
+- **Metro jugable**: escalera de 60 (x 1465..1476, lz 258..318 de las filas de estacion) sube al anden (30.2). `g.lift`
+  = `cm_lift()`; `lift_ok()` impide salir del anden por el borde. Tren: `metro_update()` (130 u/s, 6 s en cada estacion,
+  va y vuelve). `[]` en el anden con el tren parado = subir (`g.inMetro`); `[]` parado en estacion = bajar. Camara
+  dentro del coche delantero (`camera()` en render3d.c). `R3Scene` tiene `lift, metroZ, metroDir, inMetro`.
+  Mientras `inMetro` no hay paseo ni coche (la rama de conduccion exige `g.car>=0`; antes indexaba `cars[-1]`).
+- Iluminacion: cielo con degradado (cilindro `skyMesh` sin profundidad; `horizonColor` en daylight.inc) y niebla del
+  color del horizonte; `quad2()` = degradado vertical (oclusion ambiental falsa) en caras de cajas/prismas altos.
+- Escala: `PERSON_SCALE 0.52` (jugador 15 u = 1.75 m; piso 24 u). La camara a pie sigue en 43/11.
+- Minimapa: rejilla precalculada `mapGrid` (paso 4) en `world_init()`; no evaluar poligonos por pixel (costaba ~3.5 ms).
+- Pruebas: `build/tour.sh X Y nombre` (compila con `-DNARCADE_SPAWN_X/Y`, opcional `TOP=-DNARCADE_TOPVIEW=330` para vista
+  aerea sin niebla) y `build/metrotest.sh`. Con `NARCADE_SPAWN_X` definido el HUD muestra posicion/lift/metro/overflow.
+  Tiempo de fotograma en PPSSPP: ~33 ms (v2.5: 28-34).
+- Pendiente de confirmar en consola: rendimiento real, subir al Metro, musica XMB.
+- Peticion del usuario (17-sep): extraer modelos de GTA LCS/VCS con BLeeds/MDL viewer. **No se hizo**: son assets con
+  copyright de Rockstar; usar solo modelos propios o CC0 (Kenney, Quaternius) via `tools/import_character.py`.
