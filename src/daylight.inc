@@ -26,6 +26,9 @@ static float lerpf(float a,float b,float t){return a+(b-a)*t;}
 static float smooth01(float t){t=t<0?0:t>1?1:t;return t*t*(3-2*t);}
 static void day_update(float time){
     dayT=fmodf(time/DAY_SECONDS+.30f,1.0f);if(dayT<0)dayT+=1;   /* la partida empieza a media manana */
+#ifdef NARCADE_HOUR
+    dayT=NARCADE_HOUR; /* solo pruebas: hora fija (0 medianoche .. .5 mediodia) */
+#endif
     float ang=(dayT-.25f)*2*PI;                                   /* amanecer en el este, atardecer en el oeste */
     float elev=sinf(ang)*.85f+.28f;if(elev>1)elev=1;              /* sesgo: el sol pasa ~62% del ciclo sobre el horizonte (noche corta) */
     sunX=cosf(ang)*.8f;sunY=elev;sunZ=.35f;
@@ -60,6 +63,7 @@ static uint32_t day_scale(uint32_t c){
 /* Materiales que emiten luz de noche (escaparates, torres de cristal, farolas). */
 static uint32_t emissive_color(int mat,uint32_t c){
     if(night<=0)return c;
+    if(mat==CURTAIN||mat==MODERN){float w=night*.55f;int R=(int)(((c&255))*(1-w)+240*w),G=(int)((((c>>8)&255))*(1-w)+220*w),B=(int)((((c>>16)&255))*(1-w)+160*w);return COLOR(R,G,B);}
     if(mat==SHOP||mat==GLASS){float w=night*.9f;int R=(int)(((c&255))*(1-w)+250*w),G=(int)((((c>>8)&255))*(1-w)+225*w),B=(int)((((c>>16)&255))*(1-w)+150*w);return COLOR(R,G,B);}
     return c;
 }

@@ -14,12 +14,13 @@
 #endif
 
 #define PI 3.14159265358979323846f
-#define MAT_COUNT 29
+#define MAT_COUNT 37 /* 21 VRAM + 8 NPC + 8 extra (v2.7) */
 #define VRAM_MATERIALS 21
 #define MAX_VERTICES 8190
 #include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
 enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,CAR_SIDE,CAR_PAINT,GLASS,MURAL,JACKET_BACK,SLEEVE,SKIN,HAIR };
+enum { BARK=29,LEAVES,METAL,CONCRETE,CURTAIN,AWNING,COBBLE,MODERN }; /* v2.7: materiales 64px en RAM (tools/extra_textures.py) */
 typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;
 typedef struct { float x,y,z; } Point;
 static Vertex __attribute__((aligned(16))) mesh[MAT_COUNT][MAX_VERTICES];
@@ -236,49 +237,74 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
 static int nearby(float x,float z,float range){float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
 static int park(int x,int z){return cm_park(x,z);}
 static int cityMid; /* LOD intermedio (definido en city3d.inc) */
+static void tree_shape(float x,float z,int kind,int simple); /* shapes.inc */
+static int treeKind=-1; /* -1: por hash de posicion; 0 frondoso, 1 palma, 2 cipres */
 static void tree(float x,float z){
-    box(x,z,0,3,3,25,0,ROOF,ROOF,COLOR(104,85,61));
-    box(x,z,19,20,20,13,.35f,GRASS,GRASS,COLOR(190,220,155));
-    if(!cityMid)box(x,z,30,13,13,10,-.2f,GRASS,GRASS,COLOR(216,239,176)); /* v2.6: copa superior solo de cerca */
+    int kind=treeKind;
+    if(kind<0){unsigned h=(unsigned)(x*1.7f)*2654435761u^(unsigned)(z*2.3f)*40503u;h^=h>>11;unsigned r=h%100;kind=r<58?0:r<80?1:2;}
+    tree_shape(x,z,kind,cityMid||view_distance(x,z)>170);
 }
 #include "city3d.inc"
 #include "city26.inc"
+#include "shapes.inc"
 #include "daylight.inc"
 static void city(void){city_v26();}
 static void car(const R3Car *c){
-    if(!nearby(c->x,c->z,560))return;
+    if(!nearby(c->x,c->z,500))return;
     if(!sphere_visible(c->x,c->z,30))return;
     float dist=view_distance(c->x,c->z);
     static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[c->type%6];
-    box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);
-    Point cabin[8]={local(-12,10,-8,c->x,c->z,c->angle),local(9,10,-8,c->x,c->z,c->angle),local(9,10,8,c->x,c->z,c->angle),local(-12,10,8,c->x,c->z,c->angle),
-        local(-8,17,-6.7f,c->x,c->z,c->angle),local(4,17,-6.7f,c->x,c->z,c->angle),local(4,17,6.7f,c->x,c->z,c->angle),local(-8,17,6.7f,c->x,c->z,c->angle)};
-    quad(CAR_SIDE,cabin[4],cabin[5],cabin[1],cabin[0],paint,1,1);
-    quad(CAR_SIDE,cabin[6],cabin[7],cabin[3],cabin[2],paint,1,1);
-    quad(GLASS,cabin[5],cabin[6],cabin[2],cabin[1],0xffffffffu,1,1);
-    quad(GLASS,cabin[7],cabin[4],cabin[0],cabin[3],0xffffffffu,1,1);
-    quad(CAR_PAINT,cabin[7],cabin[6],cabin[5],cabin[4],paint,1,1);
+    int type=c->police?0:c->type%6;
+    if(dist>380){ /* LOD lejano: dos cajas */
+        box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);return;
+    }
+    /* v2.7 (Claude): carrocerias por secciones (perfil lateral real: capo, parabrisas inclinado, techo, luneta,
+       maletero; laterales achaflanados) en 6 siluetas: sedan, hatchback, pickup, furgoneta, deportivo, SUV. */
+    #define P CAR_PAINT
+    #define G GLASS
+    #define CP (200+CAR_PAINT)
+    #define CG (200+GLASS)
+    static const HullSec sedan[8]={{-18,8,8},{-16,10.5f,8.6f},{-9,11,8.8f},{-4,16.5f,8},{5,16.8f,8},{10,11.5f,8.8f},{17,10,8.4f},{18,8,7.6f}};
+    static const unsigned char sedanM[7]={P,P,CG,CP,CG,P,P};
+    static const HullSec hatch[7]={{-18,8,8},{-16,15,8.4f},{-8,16.5f,8.2f},{3,16.5f,8.2f},{9,11.5f,8.8f},{17,10,8.4f},{18,8,7.6f}};
+    static const unsigned char hatchM[6]={P,CG,CP,CG,P,P};
+    static const HullSec pickup[7]={{-19,9,8.6f},{-6,9,8.6f},{-6,17,8.4f},{2,17,8.4f},{7,11.5f,8.8f},{17,10.5f,8.6f},{19,8,7.8f}};
+    static const unsigned char pickupM[6]={P,CP,CP,CG,P,P};
+    static const HullSec van[6]={{-20,9,9},{-19,20,9},{2,20.5f,9},{12,15,9},{19,11,8.8f},{20,8,8}};
+    static const unsigned char vanM[5]={P,CP,CG,P,P};
+    static const HullSec sport[8]={{-18,7,8.5f},{-15,10,9},{-6,10.5f,9},{-1,14.5f,8.4f},{6,14.5f,8.4f},{11,9.5f,9},{18,8,8.4f},{18.5f,6,7.5f}};
+    static const unsigned char sportM[7]={P,P,CG,CP,CG,P,P};
+    static const HullSec suv[7]={{-18,9,8.8f},{-17,18,8.8f},{-2,18.5f,8.6f},{7,18,8.6f},{12,13,9},{17.5f,12,8.8f},{18,9,8}};
+    static const unsigned char suvM[6]={P,CG,CP,CG,P,P};
+    #undef P
+    #undef G
+    #undef CP
+    #undef CG
+    const HullSec *prof;const unsigned char *mats;int n;float floor=3,wr=3.6f;
+    switch(type){
+        case 1:prof=hatch;mats=hatchM;n=7;break;
+        case 2:prof=pickup;mats=pickupM;n=7;break;
+        case 3:prof=van;mats=vanM;n=6;wr=3.8f;break;
+        case 4:prof=sport;mats=sportM;n=8;floor=2.6f;wr=3.3f;break;
+        case 5:prof=suv;mats=suvM;n=7;floor=4;wr=4.2f;break;
+        default:prof=sedan;mats=sedanM;n=8;break;
+    }
+    hull(c->x,c->z,c->angle,prof,n,mats,floor,paint);
+    /* bajos oscuros */
+    box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(40,40,42));
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
-    for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2){
-        float u=e*11,v=s*9.3f,rotation=view->time*c->speed*.08f;
-        for(int k=0;k<8;k++){
-            float a=k*PI/4,b=(k+1)*PI/4;
-            Point p=local(u+cosf(a)*4,4+sinf(a)*4,v,c->x,c->z,c->angle);
-            Point q=local(u+cosf(b)*4,4+sinf(b)*4,v,c->x,c->z,c->angle);
-            Point center=local(u,4,v,c->x,c->z,c->angle);
-            Vertex face[3]={{.5f,.5f,0xffffffffu,center.x,center.y,center.z},{.5f+cosf(a+rotation)*.49f,.5f-sinf(a+rotation)*.49f,0xffffffffu,p.x,p.y,p.z},{.5f+cosf(b+rotation)*.49f,.5f-sinf(b+rotation)*.49f,0xffffffffu,q.x,q.y,q.z}};
-            polygon(WHEEL,face,3);
-            quad(CAR_PAINT,p,q,local(u+cosf(b)*4,4+sinf(b)*4,v-s*2.3f,c->x,c->z,c->angle),local(u+cosf(a)*4,4+sinf(a)*4,v-s*2.3f,c->x,c->z,c->angle),COLOR(36,36,35),1,1);
-        }
-    }
+    float spin=view->time*c->speed*.08f;
+    for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
     for(int s=-1;s<=1;s+=2){
-        Point p=local(18.2f,0,s*6,c->x,c->z,c->angle);
-        box(p.x,p.z,5,1,4,2,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,244,192));
-        p=local(-18.2f,0,s*6,c->x,c->z,c->angle);
-        box(p.x,p.z,5,1,4,2,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,61,42));
+        Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,244,192));
+        p=local(prof[0].x-.3f,0,s*5.5f,c->x,c->z,c->angle);
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,61,42));
     }
-    if(c->police)box(c->x,c->z,18,3,13,2,c->angle,CAR_PAINT,CAR_PAINT,((int)(view->time*5)&1)?COLOR(255,65,49):COLOR(45,147,255));
+    /* retrovisores y matricula */
+    for(int s=-1;s<=1;s+=2){Point p=local(6,0,s*(prof[0].w+1.2f),c->x,c->z,c->angle);box(p.x,p.z,11.5f,1.8f,2.2f,1.2f,c->angle,CAR_PAINT,CAR_PAINT,paint);}
+    if(c->police)box(c->x,c->z,prof[3].y+.6f,3,13,2,c->angle,CAR_PAINT,CAR_PAINT,((int)(view->time*5)&1)?COLOR(255,65,49):COLOR(45,147,255));
 }
 static const float ringC[9]={1,.7071068f,0,-.7071068f,-1,-.7071068f,0,.7071068f,1};
 static const float ringS[9]={0,.7071068f,1,.7071068f,0,-.7071068f,-1,-.7071068f,0};
@@ -296,7 +322,7 @@ static void limb(Point a,Point b,float r0,float r1,int mat,uint32_t tint,float x
 }
 static void simple_person_body(float x,float z,float angle,int style,int walking);
 static void simple_person(float x,float z,float angle,int style,int walking){
-    if(!nearby(x,z,330))return;
+    if(!nearby(x,z,270))return;
     if(!sphere_visible(x,z,22))return;
     localScale=PERSON_SCALE;simple_person_body(x,z,angle,style,walking);localScale=1;
 }

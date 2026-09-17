@@ -99,3 +99,10 @@ Tecnicas (render3d.c, world_geo.h):
 - Minimapa precalculado (rejilla de 4 unidades).
 - Corregido: menu de guardado de la PSP dejaba pintado el slot anterior (se redibuja el fondo cada fotograma).
 - Obstaculos menores solidos (pilares, pedestales, fuentes) para que el personaje no los atraviese.
+
+## v2.7 — 17/18 septiembre 2026 (Claude)
+- Formas no cubicas: coches con carroceria real (6 siluetas) y ruedas redondas; arboles frondosos, palmas y cipreses;
+  torres cilindricas y achaflanadas; cupulas, chapiteles y bovedas; fuentes y papeleras redondas; farolas con brazo;
+  bancos con respaldo; kiosco en la plaza.
+- 8 texturas nuevas (corteza, follaje, metal, hormigon, muro cortina, toldo, adoquin, fachada moderna).
+- v2.6.2: menu de guardado propio (sin dialogo lento de Sony), SELECT = zoom de camara, edificios ya no flotan.

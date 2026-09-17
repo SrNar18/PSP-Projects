@@ -7,6 +7,7 @@ from pathlib import Path
 import struct
 from PIL import Image
 from npc_textures import create, NAMES as NPC_NAMES
+from extra_textures import create as create_extra, NAMES as EXTRA_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['asphalt','sidewalk','brick','stucco','shop','roof','grass','water',
@@ -46,7 +47,13 @@ def main():
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664
+    # v2.7 (Claude): 8 materiales 64px mas en RAM para las formas nuevas (arboles, coches, torres, plazas).
+    for i,name in enumerate(EXTRA_NAMES):
+        tile=create_extra(i);tile.save(ROOT/'assets/textures3d'/f'{name}.png')
+        raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
+        result.extend(swizzle(raw,128,64))
+    assert len(result)==753664+8*8192
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('21 VRAM materials + 8 pedestrian RAM materials: 753664 bytes')
+    print('21 VRAM materials + 8 pedestrian + 8 extra RAM materials:',len(result),'bytes')
 
 if __name__=='__main__':main()

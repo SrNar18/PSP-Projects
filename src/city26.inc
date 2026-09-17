@@ -6,6 +6,11 @@
  * Reutiliza los helpers de city3d.inc (casas, tejados, jardines, puentes del rio, pasarelas) y los tipos de manzana
  * por barrio; los rellenos se adaptan al tamano real de cada parcela.
  */
+static void cylinder(float x,float z,float bottom,float r,float height,int n,float rot,int side,int top,uint32_t color);
+static void frustum(float x,float z,float bottom,float r0,float r1,float height,int n,float rot,int mat,uint32_t color);
+static void vault(float x,float z,float L,float W,float bottom,float h,int mat,uint32_t color);
+static void chamfered_rect(CmParcel *p,float x0,float z0,float x1,float z1,float c);
+static void bench(float x,float z,float angle);static void lamp_post(float x,float z,float angle);
 #define parcel_centroid cm_centroid
 #define parcel_shrunk cm_shrunk
 /* Prisma vertical sobre un poligono convexo: lados iluminados por su normal, tapa iluminada como techo. */
@@ -44,11 +49,12 @@ static void slab_draped(const CmParcel *p,float y,int mat,uint32_t color){
     for(int i=0;i<p->n;i++){int j=(i+1)%p->n;
         float ax=p->x[i],az=p->z[i],bx=p->x[j],bz=p->z[j];
         float m1x=(cx+ax)*.5f,m1z=(cz+az)*.5f,m2x=(ax+bx)*.5f,m2z=(az+bz)*.5f,m3x=(cx+bx)*.5f,m3z=(cz+bz)*.5f;
-        #define SV(X,Z) {((X)-cx)/60,((Z)-cz)/60,tc,X,y,Z}
+        float sc=(mat==COBBLE)?18.f:60.f;
+        #define SV(X,Z) {((X)-cx)/sc,((Z)-cz)/sc,tc,X,y,Z}
         Vertex t1[3]={SV(cx,cz),SV(m1x,m1z),SV(m3x,m3z)},t2[3]={SV(m1x,m1z),SV(ax,az),SV(m2x,m2z)},t3[3]={SV(m3x,m3z),SV(m2x,m2z),SV(bx,bz)},t4[3]={SV(m1x,m1z),SV(m2x,m2z),SV(m3x,m3z)};
         #undef SV
         polygon(mat,t1,3);polygon(mat,t2,3);polygon(mat,t3,3);polygon(mat,t4,3);
-        Vertex sk[4]={{0,0,sc,ax,y,az},{1,0,sc,bx,y,bz},{1,1,sc,bx,-3,bz},{0,1,sc,ax,-3,az}};polygon(mat,sk,4);
+        uint32_t kc=lit_color(COLOR(226,222,214),0,0,1);Vertex sk[4]={{0,0,kc,ax,y,az},{1,0,kc,bx,y,bz},{1,1,kc,bx,-3,bz},{0,1,kc,ax,-3,az}};polygon(CONCRETE,sk,4); /* bordillo */
     }
     litAlready=0;fixedGround=savedGround;
 }
@@ -89,7 +95,9 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
     switch(type){
     case CB_COMUNA:{int cols=(int)(w/58),rows=(int)(d/56);if(cols<1)cols=1;if(rows<1)rows=1;float cw=w/cols,cd=d/rows;
         for(int r=0;r<rows;r++)for(int c=0;c<cols;c++){unsigned hk=city_hash(bx,bz,20+r*cols+c+depth*40)^h;
-            comuna_house(x0+cw*(c+.5f)+((hk>>5)&3)-1.5f,z0+cd*(r+.5f)+((hk>>7)&3)-1.5f,cw-10-(hk>>9)%6,cd-10-(hk>>11)%6,6+(hk&3)*4,1+(hk>>2)%3,far,hk);}
+            float hx=x0+cw*(c+.5f)+((hk>>5)&3)-1.5f,hz=z0+cd*(r+.5f)+((hk>>7)&3)-1.5f,hL=cw-10-(hk>>9)%6,hW=cd-10-(hk>>11)%6,base=6+(hk&3)*4;int fl=1+(hk>>2)%3;
+            comuna_house(hx,hz,hL,hW,base,fl,far,hk);
+            if(!far&&(hk&1))frustum(hx,hz,base+fl*20+1.5f,sqrtf(hL*hL+hW*hW)*.5f,0,4+(hk>>13)%4,4,PI*.25f,METAL,(hk&2)?COLOR(150,150,160):COLOR(170,120,90)); /* v2.7: tejado de zinc a cuatro aguas */}
         if(!far&&!cityMid&&bx<3)quad(MURAL,point(cx-40,24,z0+.5f),point(cx+40,24,z0+.5f),point(cx+40,7,z0+.5f),point(cx-40,7,z0+.5f),0xffffffffu,1,1);
         break;}
     case CB_COLONIAL:{int cols=(int)(w/47);if(cols<1)cols=1;float cw=w/cols;int rows=d>=125?2:1;float W=rows==2?54:d-10;
@@ -98,10 +106,20 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         if(!far&&rows==2){float gw=w-40;if(gw>30){garden(x0+20,z0+64,gw,d-128>20?d-128:20,h,far);tree(x0+30,cz);tree(x1-30,cz);}}
         break;}
     case CB_TOWER:{int floors=6+(h>>3)%5+bias;float bw=w-14,bd=d-14;if(bw>120)bw=120;if(bd>110)bd=110;float tw=bw*.74f,td=bd*.76f;
-        if(far){box(cx,cz,6,tw,td,floors*24,0,GLASS,ROOF,COLOR(190,215,225));break;}
-        box(cx,cz,6,bw,bd,10,0,SHOP,SIDEWALK,0xffffffffu);
-        for(int f=0;f<floors;f++){int glass=(f%3)!=2;box(cx,cz,16+f*24,tw,td,24,0,glass?GLASS:STUCCO,ROOF,glass?COLOR(190,215,225):COLOR(200,200,205));}
-        box(cx,cz,16+floors*24,tw*.68f,td*.66f,14,0,STUCCO,ROOF,COLOR(200,200,205));box(cx,cz,30+floors*24,3,3,22,0,CAR_PAINT,CAR_PAINT,COLOR(180,30,30));
+        int round=(h>>7)&1;float rr=(tw<td?tw:td)*.52f;
+        if(far){if(round)cylinder(cx,cz,6,rr,floors*24,8,.39f,CURTAIN,ROOF,0xffffffffu);else box(cx,cz,6,tw,td,floors*24,0,CURTAIN,ROOF,0xffffffffu);break;}
+        box(cx,cz,6,bw,bd,10,0,SHOP,CONCRETE,0xffffffffu);
+        if(round){ /* v2.7: torre cilindrica (octogono) de muro cortina con corona */
+            cylinder(cx,cz,16,rr,floors*24,8,.39f,CURTAIN,ROOF,0xffffffffu);
+            frustum(cx,cz,16+floors*24,rr*1.04f,rr*.6f,8,8,.39f,METAL,COLOR(200,204,210));
+            cylinder(cx,cz,24+floors*24,rr*.6f,10,8,.39f,METAL,METAL,COLOR(200,204,210));
+        }else{
+            CmParcel cp;chamfered_rect(&cp,cx-tw*.5f,cz-td*.5f,cx+tw*.5f,cz+td*.5f,7);
+            prism(&cp,16,floors*24,CURTAIN,ROOF,0xffffffffu);
+            for(int f=2;f<floors;f+=3)box(cx,cz,16+f*24-1,tw+2,td+2,1.6f,0,METAL,METAL,COLOR(210,212,216)); /* fajas */
+            box(cx,cz,16+floors*24,tw*.68f,td*.66f,14,0,MODERN,ROOF,0xffffffffu);
+        }
+        box(cx,cz,30+floors*24,3,3,22,0,CAR_PAINT,CAR_PAINT,COLOR(180,30,30));
         if(w>150){tree(x0+14,z0+14);tree(x1-14,z0+14);tree(x0+14,z1-14);tree(x1-14,z1-14);garden(x0+8,cz-20,w-bw>40?(w-bw)*.5f-10:20,40,h,far);}
         break;}
     case CB_COMMERCIAL:{float aw=w*.5f,ad=d-12,bwid=w-aw-12,bd=d*.36f;float ax=x0+6+aw*.5f,bxx=x1-6-bwid*.5f,bzz=z0+6+bd*.5f;
@@ -109,21 +127,25 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         for(int f=0;f<2;f++){box(ax,cz,6+f*18,aw,ad,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);box(bxx,bzz,6+f*18,bwid,bd,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);}
         box(ax,cz,42,aw+3,ad+3,2,0,ROOF,ROOF,COLOR(120,110,100));box(bxx,bzz,42,bwid+3,bd+3,2,0,ROOF,ROOF,COLOR(120,110,100));
         rooftop(ax,cz,44,h);rooftop(bxx,bzz,44,h>>4);
-        for(int k=0;k<4;k++)box(x0+14+k*(aw-20)/4,z0,18,(aw-28)/4,10,.8f,-.3f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>(k*2))&7]);
+        for(int k=0;k<4;k++)box(x0+14+k*(aw-20)/4,z0,18,(aw-28)/4,10,.8f,-.3f,AWNING,AWNING,0xffffffffu);
         float px0=x0+aw+8,pz0=z0+bd+14,pw=x1-px0-4,pd=z1-pz0-4;if(pw>20&&pd>20){ground(ROAD,px0,pz0,pw,pd,6.3f,COLOR(150,150,150),3);for(int k=1;k<pd/30;k++)ground(CAR_PAINT,px0,pz0+k*30,pw,1.2f,6.9f,0xffffffffu,1);}
         box(bxx,z1-4,6,bwid*.5f,3,1.5f,0,CAR_PAINT,CAR_PAINT,COLOR(230,60,50));
         break;}
     case CB_CHURCH:{float nw=w*.42f,nd=d*.62f;float zz=cz+d*.08f;
         if(far){box(cx,zz,6,nw,nd,40,0,STUCCO,ROOF,COLOR(242,232,204));box(cx-nw*.38f,zz-nd*.6f,6,22,22,80,0,STUCCO,ROOF,COLOR(242,232,204));break;}
         box(cx,zz,6,nw,nd,34,0,STUCCO,ROOF,COLOR(242,232,204));gable_roof(cx,zz,nw,nd,40,58,COLOR(150,90,70));
-        float tx=cx-nw*.38f,tz=zz-nd*.6f;box(tx,tz,6,22,22,74,0,STUCCO,ROOF,COLOR(242,232,204));box(tx,tz,80,26,26,3,0,ROOF,ROOF,COLOR(150,90,70));box(tx,tz,83,2,2,10,0,CAR_PAINT,CAR_PAINT,COLOR(90,80,60));
+        /* v2.7: cupula sobre el crucero y chapitel piramidal en el campanario */
+        cylinder(cx,zz+nd*.15f,40,nw*.3f,8,8,.39f,STUCCO,ROOF,COLOR(242,232,204));
+        frustum(cx,zz+nd*.15f,48,nw*.32f,nw*.18f,7,8,.39f,METAL,COLOR(120,150,140));frustum(cx,zz+nd*.15f,55,nw*.18f,0,7,8,.39f,METAL,COLOR(120,150,140));
+        box(cx,zz+nd*.15f,61,1.2f,1.2f,6,0,CAR_PAINT,CAR_PAINT,COLOR(90,80,60));
+        float tx=cx-nw*.38f,tz=zz-nd*.6f;box(tx,tz,6,22,22,74,0,STUCCO,ROOF,COLOR(242,232,204));frustum(tx,tz,80,16,0,14,4,PI*.25f,ROOF,COLOR(150,90,70));box(tx,tz,93,1.5f,1.5f,8,0,CAR_PAINT,CAR_PAINT,COLOR(90,80,60));
         for(int k=0;k<3;k++)box(cx-nw*.5f+1,zz-30+k*30,20,1,4,12,0,GLASS,GLASS,COLOR(120,80,200));
         ground(SIDEWALK,x0+6,z0+6,w-12,d*.25f,6.2f,COLOR(226,222,214),6);tree(x0+22,z0+24);tree(x1-22,z0+24);garden(x1-60,z0+8,44,26,h,far);
         for(int k=0;k<3;k++)box(cx-50+k*50,z0+40,6,10,3,2,0,ROOF,ROOF,COLOR(110,80,50));
         break;}
     case CB_MARKET:{float nw=w-14,nd=d*.64f;
         if(far){box(cx,cz-d*.08f,6,nw,nd,26,0,BRICK,ROOF,COLOR(220,200,180));break;}
-        box(cx,cz-d*.08f,6,nw,nd,22,0,BRICK,ROOF,COLOR(220,200,180));gable_roof(cx,cz-d*.08f,nw,nd,28,44,COLOR(110,120,130));
+        box(cx,cz-d*.08f,6,nw,nd,22,0,BRICK,ROOF,COLOR(220,200,180));vault(cx,cz-d*.08f,nw+2,nd+2,28,15,METAL,COLOR(190,200,210)); /* v2.7: boveda metalica */
         for(int k=0;k<5;k++)box(x0+20+k*(nw-30)/4,z1-12,6,26,10,9,0,CAR_PAINT,CAR_PAINT,cityPastel[(h>>k)&7]);
         box(cx-nw*.3f,cz-d*.08f,6,12,12,30,0,BRICK,BRICK,COLOR(180,160,140));
         break;}
@@ -131,6 +153,11 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         for(int r=0;r<rows;r++)for(int c=0;c<cols;c++){unsigned hk=city_hash(bx,bz,60+r*cols+c+depth*40)^h;float xx=x0+cw*(c+.5f),zz=z0+cd*(r+.5f);
             int floors=2+(hk%4)+bias;int mat=(hk>>2)&1?BRICK:STUCCO;uint32_t tint=mat==STUCCO?cityPastel[(hk>>3)&7]:cityBrick[(hk>>3)&3];float L=cw-8,Wd=cd-8;
             if(far){box(xx,zz,6,L,Wd,floors*24,0,mat,ROOF,tint);continue;}
+            if(((hk>>9)&3)==0&&L>40&&Wd>40){ /* v2.7: edificio moderno con esquinas achaflanadas (prisma de 8 lados) */
+                CmParcel cp;chamfered_rect(&cp,xx-L*.5f,zz-Wd*.5f,xx+L*.5f,zz+Wd*.5f,7);
+                prism(&cp,6,12,SHOP,ROOF,0xffffffffu);prism(&cp,18,floors*24-12,(hk&4)?MODERN:CONCRETE,ROOF,0xffffffffu);
+                prism(&cp,6+floors*24,2,METAL,METAL,COLOR(200,204,210));rooftop(xx,zz,8+floors*24,hk>>8);continue;
+            }
             for(int f=0;f<floors;f++){box(xx,zz,6+f*24,L-(f==floors-1&&(hk&64)?12:0),Wd,24,0,f?mat:SHOP,ROOF,f?tint:0xffffffffu);
                 if(!cityMid&&f&&(hk>>(6+f))&1)box(xx,zz-Wd*.5f-2,6+f*24+1,L*.4f,6,1,0,SIDEWALK,SIDEWALK,COLOR(120,120,116));}
             box(xx,zz,6+floors*24,L+3,Wd+3,3,0,ROOF,ROOF,COLOR(120,110,100));rooftop(xx,zz,9+floors*24,hk>>8);
@@ -143,13 +170,13 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
 static void fill_poly(const CmParcel *p,int bx,int bz,int far,unsigned h){
     int dist=city_district(p->x[0],p->z[0]);int floors=3+(h>>4)%4+city_floor_bias(dist);float area=cm_area(p);
     if(area<2500)floors=2;
-    int mat=(dist==6||dist==4)?((h&1)?GLASS:STUCCO):((h&1)?BRICK:STUCCO);uint32_t tint=mat==GLASS?COLOR(190,215,225):mat==BRICK?cityBrick[(h>>2)&3]:cityPastel[(h>>2)&7];
+    int mat=(dist==6||dist==4)?((h&1)?CURTAIN:MODERN):((h&1)?BRICK:STUCCO);uint32_t tint=(mat==CURTAIN||mat==MODERN)?0xffffffffu:mat==BRICK?cityBrick[(h>>2)&3]:cityPastel[(h>>2)&7];
     CmParcel a,b;parcel_shrunk(p,10,&a);
     if(far){prism(&a,6,floors*24,mat,ROOF,tint);return;}
     prism(&a,6,12,SHOP,ROOF,0xffffffffu);            /* planta comercial */
     prism(&a,18,floors*24-12,mat,ROOF,tint);
     prism(&a,6+floors*24,2,ROOF,ROOF,COLOR(120,110,100));
-    if(area>6000){parcel_shrunk(p,26,&b);prism(&b,8+floors*24,36,mat==GLASS?GLASS:STUCCO,ROOF,mat==GLASS?tint:COLOR(200,200,205));}
+    if(area>6000){parcel_shrunk(p,26,&b);prism(&b,8+floors*24,36,mat==CURTAIN?CURTAIN:CONCRETE,ROOF,0xffffffffu);}
     float cx,cz;parcel_centroid(p,&cx,&cz);if(!cityMid)rooftop(cx,cz,area>6000?44+floors*24:9+floors*24,h>>6);
     (void)bx;(void)bz;
 }
@@ -163,22 +190,23 @@ static void fill_park(const CmParcel *p,int far,unsigned h){
         for(int k=0;k<4;k++)tree(x0+18+(k%2)*(w-36),z0+20+(k/2)*(d-40));
         if(w>120&&d>120){garden(x0+10,z0+10,w*.35f,d*.3f,h,far);garden(x1-10-w*.35f,z1-10-d*.34f,w*.35f,d*.34f,h>>3,far);}
         if(!cityMid){for(int k=0;k<(int)(w/19)-1;k++)box(x0+10+k*19,z0+2,1.8f,8,4,5,0,GRASS,GRASS,COLOR(50,110,55));
-            box(cx+6,cz+7,2,10,10,1,0,SIDEWALK,SIDEWALK,COLOR(200,196,186));box(cx+6,cz+7,3,7,7,4,0,WATER,WATER,0xffffffffu);
-            for(int k=0;k<3;k++)box(x0+30+k*(w-60)*.5f,cz-16,2,10,3,2,0,ROOF,ROOF,COLOR(110,80,50));}
+            cylinder(cx+6,cz+7,2,6,1,8,0,CONCRETE,CONCRETE,0xffffffffu);cylinder(cx+6,cz+7,3,4.5f,3.5f,8,.39f,WATER,WATER,0xffffffffu);
+            for(int k=0;k<3;k++)bench(x0+30+k*(w-60)*.5f,cz-16,0);}
     }else{ if(far)return;tree(cx,cz);CmParcel s;parcel_shrunk(p,18,&s);for(int i=0;i<p->n&&i<4;i++)tree(s.x[i],s.z[i]); }
 }
 /* Plaza Botero: plaza dura con esculturas de bronce sobre pedestales, palmas y fuente. */
 static void fill_plaza(const CmParcel *p,int far,unsigned h){
     float cx,cz;parcel_centroid(p,&cx,&cz);
-    CmParcel s;parcel_shrunk(p,2,&s);slab_draped(&s,1.7f,SIDEWALK,COLOR(226,222,214));
+    CmParcel s;parcel_shrunk(p,2,&s);slab_draped(&s,1.7f,COBBLE,0xffffffffu);
     if(far)return;
     CmParcel g;parcel_shrunk(p,22,&g);
     for(int i=0;i<g.n;i++){float sx=(g.x[i]+cx)*.5f,sz=(g.z[i]+cz)*.5f;
         box(sx,sz,1.6f,8,8,3,0,SIDEWALK,SIDEWALK,COLOR(200,196,186));
         box(sx,sz,4.6f,5,4,6,(i*.7f),CAR_PAINT,CAR_PAINT,COLOR(70,60,40));box(sx,sz,10.6f,3.4f,3.4f,3,0,CAR_PAINT,CAR_PAINT,COLOR(70,60,40)); /* figura rotunda */
         if(!cityMid)tree(g.x[i],g.z[i]);}
-    box(cx,cz,1.6f,14,14,1,0,SIDEWALK,SIDEWALK,COLOR(200,196,186));box(cx,cz,2.6f,10,10,4,0,WATER,WATER,0xffffffffu);
-    for(int k=0;k<4;k++)box(cx-30+k*20,cz+24,1.6f,10,3,2,0,ROOF,ROOF,COLOR(110,80,50));
+    cylinder(cx,cz,1.6f,8,1.2f,8,0,CONCRETE,CONCRETE,0xffffffffu);cylinder(cx,cz,2.8f,6,3.5f,8,.39f,WATER,WATER,0xffffffffu);cylinder(cx,cz,2.8f,1.4f,8,6,0,CONCRETE,CONCRETE,0xffffffffu); /* fuente redonda */
+    for(int k=0;k<4;k++)bench(cx-30+k*20,cz+24,0);
+    cylinder(cx+34,cz-20,1.6f,6,9,6,0,STUCCO,ROOF,cityPastel[h&7]);frustum(cx+34,cz-20,10.6f,8,0,6,6,0,ROOF,COLOR(150,90,70)); /* kiosco */
     (void)h;
 }
 /* Pueblito Paisa sobre el cerro Nutibara: cerro escalonado, plazuela, iglesia y casitas coloniales. */
@@ -248,13 +276,13 @@ static void metro_train(void){
 }
 static void metro(int bz,int far){
     float z=bz*320;
-    for(int k=0;k<5;k++)box(CM_METRO_X,z+32+k*64,0,7,7,CM_METRO_DECK,0,STUCCO,STUCCO,COLOR(200,196,190));
+    for(int k=0;k<5;k++)cylinder(CM_METRO_X,z+32+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
     box(CM_METRO_X,z+160,CM_METRO_DECK,14,320,3,0,SIDEWALK,ROAD,COLOR(190,186,180));
     if(!far){box(CM_METRO_X-3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));box(CM_METRO_X+3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
         if(!cm_metro_station(bz)){box(CM_METRO_X-6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));box(CM_METRO_X+6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));}}
     if(cm_metro_station(bz)){
         box(CM_METRO_X,z+160,CM_PLAT_H-1.2f,36,200,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                /* anden 60..260 */
-        for(int k=0;k<3;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*14,z+80+k*80,0,4,4,CM_PLAT_H-1.2f,0,STUCCO,STUCCO,COLOR(200,196,190)); /* pilares del anden */
+        for(int k=0;k<3;k++)for(int sd=-1;sd<=1;sd+=2)cylinder(CM_METRO_X+sd*14,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu); /* pilares del anden */
         for(int k=0;k<4;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*17,z+70+k*60,CM_PLAT_H,2,2,24,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
         box(CM_METRO_X,z+160,CM_PLAT_H+24,44,208,1.6f,0,SIDEWALK,SIDEWALK,COLOR(60,130,90));                         /* marquesina */
         for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*17.5f,z+160,CM_PLAT_H,.6f,200,.4f,0,CAR_PAINT,CAR_PAINT,COLOR(250,200,60)); /* linea amarilla de borde */
@@ -301,6 +329,18 @@ static void diagonal_avenue(void){
         if(!(k%3)){box(x0-nx*2,z0-nz*2,.4f,1.2f,1.2f,30,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x0-nx*2,z0-nz*2,29,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
     }
 }
+/* v2.7: farola con brazo curvo (dos tramos) y cabeza; banco con respaldo y patas. */
+static void lamp_post(float x,float z,float angle){
+    box(x,z,0,1.6f,1.6f,30,angle,METAL,METAL,COLOR(120,124,128));
+    Point a=local(2.5f,0,0,x,z,angle);box(a.x,a.z,29.2f,6,1.2f,1.2f,angle,METAL,METAL,COLOR(120,124,128));
+    Point b=local(6.5f,0,0,x,z,angle);box(b.x,b.z,30.5f,3,1.2f,1.2f,angle+.5f,METAL,METAL,COLOR(120,124,128));
+    Point h=local(7.5f,0,0,x,z,angle);frustum(h.x,h.z,28.6f,1.2f,2.6f,2.4f,6,0,METAL,COLOR(60,64,70));box(h.x,h.z,27.9f,3,3,.8f,angle,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
+}
+static void bench(float x,float z,float angle){
+    box(x,z,3.2f,10,3.2f,.8f,angle,ROOF,ROOF,COLOR(120,85,50));
+    Point b=local(0,0,-1.9f,x,z,angle);box(b.x,b.z,4,10,.7f,3.6f,angle,ROOF,ROOF,COLOR(120,85,50));
+    for(int e=-1;e<=1;e+=2){Point p=local(e*4.2f,0,0,x,z,angle);box(p.x,p.z,0,.8f,3,3.2f,angle,METAL,METAL,COLOR(60,62,66));}
+}
 static void city_cell_v26(int bx,int bz,int far,uint32_t white){
     float x=bx*320,z=bz*320;unsigned f=cm_flags(bx,bz),h=city_hash(bx,bz,7);int type=city_block_type(bx,bz);
     ground(ROAD,x,z,320,320,0,white,12);
@@ -317,7 +357,9 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.5f,white,1);
         if(h&128)for(int k=0;k<5;k++){ground(CAR_PAINT,x+9+k*13,z+75,7,5,.6f,white,1);ground(CAR_PAINT,x+75,z+9+k*13,5,7,.6f,white,1);}
         if(!cityMid){if(h&256)traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
-        box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
+        if(cityMid){box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
+        else lamp_post(x+84,z+59,PI);
+        if(!cityMid&&(h&1024))cylinder(x+90,z+70,1.2f,2.2f,5,6,0,METAL,METAL,COLOR(70,120,80)); /* v2.7: papelera */
     }
     const CmParcel *ps;int n=cm_parcels(bx,bz,&ps);
     for(int i=0;i<n;i++){
@@ -334,7 +376,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         else if(f&CM_STADIUM){prism(p,0,6,SIDEWALK,SIDEWALK,white);fill_stadium(p,far,h);}
         else{
             uint32_t podium=type==CB_COMUNA?COLOR(190,180,170):type==CB_TOWER?COLOR(215,212,205):white;
-            prism(p,0,6,type==CB_COMUNA?BRICK:SIDEWALK,type==CB_TOWER?SIDEWALK:ROOF,podium);
+            prism(p,0,6,type==CB_COMUNA?BRICK:CONCRETE,type==CB_TOWER?CONCRETE:ROOF,type==CB_COMUNA?podium:0xffffffffu);
             if(cm_is_rect(p)){int t=(n>1&&city_hash(bx,bz,90+i)%4==0)?city_block_type(bx,bz+1):type;fill_rect(bx,bz,p->x[0],p->z[0],p->x[1],p->z[2],t,far,h^city_hash(bx,bz,100+i),0);}
             else fill_poly(p,bx,bz,far,h^city_hash(bx,bz,100+i));
         }

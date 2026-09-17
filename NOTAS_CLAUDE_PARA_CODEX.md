@@ -207,3 +207,24 @@ comprobar cobertura del suelo. La compilación entregada no tiene NARCADE_PROFIL
   normal 50/34; 0 lejana 65/43; 2 cercana; 3 muy cercana). `R3Scene.eyeHeight`. El mapa sigue en PAUSA > MAPA.
 - **Edificios flotando**: con `fixedGround` impuesto (nivel de parcela), `box()`/`prism()` ahora bajan el cimiento
   hasta el terreno mas bajo de su huella (antes solo 1 unidad: en ladera se veia el hueco).
+
+## 12. v2.7 (17/18-sep, Claude) — formas no cubicas, texturas nuevas — instalada en la PSP
+- **8 materiales 64px nuevos en RAM** (`tools/extra_textures.py`, se generan en `tools/textures3d.py`; `MAT_COUNT 37`;
+  enum `BARK,LEAVES,METAL,CONCRETE,CURTAIN,AWNING,COBBLE,MODERN` = indices 29..36). Regenerar con
+  `python tools/textures3d.py` si se tocan (escribe `assets/textures3d.bin`). Cada material cuesta 196 KB de malla
+  estatica (`mesh[MAT_COUNT][8190]`): no anadir a la ligera.
+- **`src/shapes.inc`** (incluido tras city26.inc): `cylinder()` (prisma regular <=8 lados), `frustum()` (cono /
+  piramide / tronco), `vault()` (boveda), `wheel()`, `hull()` (carroceria por secciones), `tree_shape()`,
+  `chamfered_rect()`. Todas pasan por `polygon()` (recorte, proyeccion, modo rigido de coches, luz por normal).
+- **Coches**: `car()` en render3d.c usa `hull()` con 6 siluetas (sedan, hatchback, pickup, furgoneta, deportivo, SUV)
+  por `type`, ruedas con `wheel()`, retrovisores, bajos. LOD: >380 dos cajas; >300 sin ruedas.
+- **Arboles**: `tree()` elige por hash: frondoso (tronco + troncos de cono LEAVES), palma (tronco en dos tramos
+  inclinado + 7 frondas), cipres. Simplificados con `cityMid` o a mas de 170.
+- **Edificios**: torres cilindricas o achaflanadas de muro cortina con corona; clasicos con esquinas achaflanadas
+  (MODERN/CONCRETE); iglesia con cupula (troncos de cono) y chapitel piramidal; mercado con boveda metalica; casas de
+  comuna con tejado de zinc a cuatro aguas; parcelas triangulares con CURTAIN/MODERN; podios de hormigon.
+- **Mobiliario**: farolas con brazo (`lamp_post`), bancos con respaldo (`bench`), papeleras, fuentes redondas, kiosco,
+  toldos con textura AWNING, Plaza Botero adoquinada (COBBLE, escala 18), pilares del Metro cilindricos.
+- Rendimiento medido en PPSSPP en el Centro: ~35 ms (v2.6.1: 32) con mucha mas geometria; resto de la ciudad 22-28.
+  Palancas si hace falta: `far`/`cityMid` en `city_v26()`, `tree()` (170), `nearby` de coches (500) y peatones (270).
+- Pruebas: `-DNARCADE_HOUR=0.02f` fija la hora (noche) en compilaciones de prueba.
