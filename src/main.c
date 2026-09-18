@@ -30,7 +30,7 @@ static unsigned *fb;
 static unsigned int __attribute__((aligned(16))) gulist[4096];
 static int running=1;
 
-static int exit_cb(int a1,int a2,void *c){(void)a1;(void)a2;(void)c;running=0;return 0;}
+static int exit_cb(int a1,int a2,void *c){(void)a1;(void)a2;(void)c;running=0;sceKernelExitGame();return 0;} /* salir SIEMPRE, aunque el bucle este en un dialogo */
 static int cb_thread(SceSize a,void *p){(void)a;(void)p;int cb=sceKernelCreateCallback("exit",exit_cb,0);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
 
 /* ---------- dibujo ---------- */
@@ -96,6 +96,7 @@ static void draw_chat(void){
     rect(10,38,W-20,22,PANEL);rect(10,38,3,22,USER);
     if(chatPrompt[0])text(20,42,chatPrompt,WHITE);else text(20,42,"Pulsa X y escribe algo para que la IA continue...",MUTED);
     rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC2);
+    if(status[0]&&strstr(status,"teclado"))text(20,H-44,status,BAD);
     if(!haveLM)text(20,76,"No encuentro ms0:/IA/lm.bin (modelo de lenguaje).",BAD);
     else if(chatOut[0]||generating){textwrap(20,74,W-40,chatOut,WHITE,0,10);if(generating)text(20,H-44,"escribiendo...",MUTED);}
     else{text(20,76,"Modelo de lenguaje de 5 millones de parametros entrenado",WHITE);text(20,92,"con la Wikipedia en espanol, corriendo en la propia PSP.",WHITE);
@@ -142,30 +143,57 @@ static void utf16_to_utf8(const unsigned short *s,char *out,int cap){int n=0;for
     else if(c<0x800){if(n+2>=cap)break;out[n++]=0xc0|(c>>6);out[n++]=0x80|(c&0x3f);}
     else{if(n+3>=cap)break;out[n++]=0xe0|(c>>12);out[n++]=0x80|((c>>6)&0x3f);out[n++]=0x80|(c&0x3f);}}
     out[n]=0;}
+/* Teclado propio de respaldo (si el del sistema no arranca): rejilla con cruceta, X letra, O borrar, START listo. */
+static const char *KBD_ROWS[4]={"1234567890-","qwertyuiop","asdfghjklñ","zxcvbnm,.?"};
+static int simple_kbd(char *result,int cap,unsigned **buffers,int *index){
+    int r=1,c=0;unsigned prev=0xffffffff;char buf[QMAX];snprintf(buf,sizeof(buf),"%s",result);
+    for(;;){
+        SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);unsigned pr=pad.Buttons&~prev;prev=pad.Buttons;
+        int rl=(int)strlen(KBD_ROWS[r]);
+        if(pr&PSP_CTRL_UP)r=(r+3)%4;if(pr&PSP_CTRL_DOWN)r=(r+1)%4;if(pr&PSP_CTRL_LEFT)c=(c+rl-1)%rl;if(pr&PSP_CTRL_RIGHT)c=(c+1)%rl;
+        rl=(int)strlen(KBD_ROWS[r]);if(c>=rl)c=rl-1;
+        int len=(int)strlen(buf);
+        if(pr&PSP_CTRL_CROSS){unsigned char ch=KBD_ROWS[r][c];if(ch==0xf1){if(len<cap-3){buf[len++]=(char)0xc3;buf[len++]=(char)0xb1;buf[len]=0;}}else if(len<cap-2){buf[len++]=ch;buf[len]=0;}}
+        if(pr&PSP_CTRL_SQUARE){if(len<cap-2){buf[len++]=' ';buf[len]=0;}}
+        if(pr&PSP_CTRL_CIRCLE){if(len>0){len--;while(len>0&&((unsigned char)buf[len]&0xc0)==0x80)len--;buf[len]=0;}else return 0;}
+        if(pr&PSP_CTRL_START){snprintf(result,cap,"%s",buf);return buf[0]!=0;}
+        if(pr&PSP_CTRL_SELECT)return 0;
+        rect(0,0,W,H,BG);rect(0,0,W,30,INK);text(12,8,"Teclado",ACC);text(90,8,"cruceta mover  X letra  [] espacio  O borrar  START listo  SELECT cancelar",MUTED);
+        rect(10,40,W-20,24,PANEL);text(20,45,buf,WHITE);rect(20+(int)strlen(buf)*FONT_W,45,FONT_W,FONT_H,USER);
+        for(int i=0;i<4;i++){const char *row=KBD_ROWS[i];int n=(int)strlen(row);int x0=(W-n*34)/2;
+            for(int j=0;j<n;j++){int sel=(i==r&&j==c);rect(x0+j*34,90+i*40,30,30,sel?ACC:PANEL);char ch[3]={row[j],0,0};if((unsigned char)row[j]==0xf1){ch[0]=(char)0xc3;ch[1]=(char)0xb1;}text(x0+j*34+11,90+i*40+8,ch,sel?INK:WHITE);}}
+        present(index,buffers);
+    }
+}
 static int osk(char *result,int cap,unsigned **buffers,int *index){
     static unsigned short intext[QMAX],outtext[QMAX],desc[64];
     utf8_to_utf16(result,intext,QMAX);utf8_to_utf16("Escribe tu pregunta",desc,64);memset(outtext,0,sizeof(outtext));
     SceUtilityOskData data;memset(&data,0,sizeof(data));
-    data.language=PSP_UTILITY_OSK_LANGUAGE_SPANISH;data.lines=1;data.unk_24=1;data.inputtype=PSP_UTILITY_OSK_INPUTTYPE_ALL;
+    data.language=PSP_UTILITY_OSK_LANGUAGE_DEFAULT; /* la del sistema; SPANISH explicito fallaba en consola */data.lines=1;data.unk_24=1;data.inputtype=PSP_UTILITY_OSK_INPUTTYPE_ALL;
     data.desc=desc;data.intext=intext;data.outtextlength=QMAX;data.outtextlimit=QMAX-1;data.outtext=outtext;
     SceUtilityOskParams p;memset(&p,0,sizeof(p));p.base.size=sizeof(p);
     sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_LANGUAGE,&p.base.language);
     sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_UNKNOWN,&p.base.buttonSwap);
     p.base.graphicsThread=17;p.base.accessThread=19;p.base.fontThread=18;p.base.soundThread=16;
     p.datacount=1;p.data=&data;
-    if(sceUtilityOskInitStart(&p)<0)return 0;
+    int rc=sceUtilityOskInitStart(&p);if(rc<0){snprintf(status,sizeof(status),"Teclado del sistema no disponible (%08x): teclado propio.",(unsigned)rc);return simple_kbd(result,cap,buffers,index);}
     /* un solo buffer visible mientras dura el dialogo; el GE dibuja en el */
     unsigned *vis=buffers[*index^1],*snap=buffers[*index];
     fb=snap;draw_frame();
     memcpy(vis,snap,STRIDE*H*4);gu_draw_buffer(vis);
     sceDisplaySetFrameBuf(vis,STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
+    int frames=0,seen=0;
     for(;;){
+        if(!running)break;
         memcpy(vis,snap,STRIDE*H*4);gu_draw_buffer(vis);
         int st=sceUtilityOskGetStatus();
+        if(st==PSP_UTILITY_DIALOG_VISIBLE)seen=1;
         if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilityOskUpdate(1);
         else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilityOskShutdownStart();
         else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
         sceDisplayWaitVblankStart();
+        /* si en 4 s el teclado del sistema no se ha mostrado, se cierra y se usa el propio (nunca colgarse) */
+        if(++frames>240&&!seen){sceUtilityOskShutdownStart();for(int k=0;k<60&&sceUtilityOskGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();fb=buffers[*index];snprintf(status,sizeof(status),"Teclado del sistema no responde: teclado propio.");return simple_kbd(result,cap,buffers,index);}
     }
     fb=buffers[*index];
     if(data.result==PSP_UTILITY_OSK_RESULT_CHANGED){utf16_to_utf8(outtext,result,cap);return 1;}
@@ -211,7 +239,11 @@ int main(void){
     scePowerSetClockFrequency(333,333,166);
     sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     unsigned *buffers[2];buffers[0]=(unsigned*)((uintptr_t)sceGeEdramGetAddr()|0x40000000);buffers[1]=buffers[0]+STRIDE*H;
-    sceGuInit();sceGuStart(GU_DIRECT,gulist);sceGuDrawBuffer(GU_PSM_8888,(void*)0,STRIDE);sceGuDispBuffer(W,H,(void*)(STRIDE*H*4),STRIDE);sceGuFinish();sceGuSync(0,0);
+    /* GU completo aunque dibujemos por CPU: los dialogos del sistema (teclado) usan el contexto del GE */
+    sceGuInit();sceGuStart(GU_DIRECT,gulist);
+    sceGuDrawBuffer(GU_PSM_8888,(void*)0,STRIDE);sceGuDispBuffer(W,H,(void*)(STRIDE*H*4),STRIDE);sceGuDepthBuffer((void*)(STRIDE*H*8),STRIDE);
+    sceGuOffset(2048-(W/2),2048-(H/2));sceGuViewport(2048,2048,W,H);sceGuScissor(0,0,W,H);sceGuEnable(GU_SCISSOR_TEST);
+    sceGuFinish();sceGuSync(0,0);sceDisplayWaitVblankStart();sceGuDisplay(GU_TRUE);
     int index=0;fb=buffers[index];
     gBuffers=buffers;gIndex=&index;
     haveKB=kb_open("ms0:/IA");haveLM=lm_load("ms0:/IA/lm.bin");
