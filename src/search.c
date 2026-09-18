@@ -79,6 +79,17 @@ int kb_words(const char *text,char out[][24],int max){
     }
     return n;
 }
+/* Variante morfologica sencilla de una palabra normalizada (0 si no hay). */
+int kb_variant(const char *w,char *out){
+    int l=(int)strlen(w);
+    if(l>6&&!strcmp(w+l-6,"ciones")){memcpy(out,w,l-6);strcpy(out+l-6,"cion");return 1;}
+    if(l>5&&!strcmp(w+l-4,"cion")){memcpy(out,w,l-4);strcpy(out+l-4,"ciones");return 1;}
+    if(l>5&&!strcmp(w+l-5,"mente")){memcpy(out,w,l-5);out[l-5]=0;return 1;}
+    if(l>4&&!strcmp(w+l-2,"es")&&strchr("dlrnsz",w[l-3])){memcpy(out,w,l-2);out[l-2]=0;return 1;} /* paises->pais, ciudades->ciudad */
+    if(l>3&&w[l-1]=='s'&&w[l-2]!='s'){memcpy(out,w,l-1);out[l-1]=0;return 1;}              /* guerras->guerra */
+    if(l>3&&w[l-1]!='s'&&strchr("aeiou",w[l-1])){strcpy(out,w);out[l]='s';out[l+1]=0;return 1;} /* guerra->guerras */
+    return 0;
+}
 static int find_term(unsigned h,unsigned *off,unsigned *df,unsigned *len){
     int lo=0,hi=(int)nterms-1;unsigned rec[4];
     while(lo<=hi){
@@ -100,9 +111,12 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq){
     char w[12][24];int n=kb_words(query,w,12);*nq=n;for(int i=0;i<n;i++)strcpy(qwords[i],w[i]);
     memset(hused,0,sizeof(hused));
     int found=0;
-    for(int i=0;i<n;i++){
-        unsigned off,df,len;if(!find_term(fnv_word(w[i]),&off,&df,&len))continue;found++;
-        float idf=logf(1+(float)ndoc/(df+1));
+    for(int i0=0;i0<n*2;i0++){
+        /* segunda pasada: variantes morfologicas (plural -s/-es, -ciones -> -cion, -mente) con peso 0.7 */
+        int i=i0%n;char var[24];float wmul=1.0f;
+        if(i0>=n){if(!kb_variant(w[i],var))continue;wmul=0.7f;}else strcpy(var,w[i]);
+        unsigned off,df,len;if(!find_term(fnv_word(var),&off,&df,&len))continue;found++;
+        float idf=logf(1+(float)ndoc/(df+1))*wmul;
         unsigned take=len<pcap?len:pcap;
         sceIoLseek(fpst,(SceOff)off,PSP_SEEK_SET);int got=sceIoRead(fpst,pbuf,take);if(got<=0)continue;
         unsigned p=0,doc=0,cnt=0;
@@ -168,7 +182,12 @@ int kb_best_sentence(const char *text,char qwords[][24],int nq,char *out,int cap
 static int has_year(const char *s){int run=0;for(;*s;s++){if(*s>='0'&&*s<='9'){run++;if(run==4)return 1;}else run=0;}return 0;}
 static int has_digit(const char *s){for(;*s;s++)if(*s>='0'&&*s<='9')return 1;return 0;}
 static int has_place(const char *s){const char *p=s;while((p=strstr(p," en "))){p+=4;if((unsigned char)*p>='A'&&(unsigned char)*p<='Z')return 1;}return strstr(s,"ubicad")||strstr(s,"situad")||strstr(s,"localizad")?1:0;}
-int kb_best_answer(const char *text,char qwords[][24],int nq,const char *question,char *out,int cap){
+int kb_best_answer_t(const char *title,const char *text,char qwords[][24],int nq,const char *question,char *out,int cap);
+int kb_best_answer(const char *text,char qwords[][24],int nq,const char *question,char *out,int cap){return kb_best_answer_t("",text,qwords,nq,question,out,cap);}
+int kb_best_answer_t(const char *title,const char *text,char qwords[][24],int nq,const char *question,char *out,int cap){
+    /* atributo = palabras de la pregunta que no forman parte del titulo del articulo ("capital" en "capital de Australia") */
+    char tw[16][24];int ntw=kb_words(title,tw,16);int isAttr[12];int nAttr=0;
+    for(int a=0;a<nq;a++){isAttr[a]=1;for(int b=0;b<ntw;b++)if(!strcmp(qwords[a],tw[b]))isAttr[a]=0;if(isAttr[a])nAttr++;}
     char ql[160];int n=0;for(const char *c=question;*c&&n<159;c++)ql[n++]=(*c>='A'&&*c<='Z')?*c+32:*c;ql[n]=0;
     int qWhen=strstr(ql,"cuando")||strstr(ql,"cu\xc3\xa1ndo")||strstr(ql,"fecha")||strstr(ql,"a\xc3\xb1o");
     int qWhere=strstr(ql,"donde")||strstr(ql,"d\xc3\xb3nde")||strstr(ql,"ubica")||strstr(ql,"capital")||strstr(ql,"pais")||strstr(ql,"pa\xc3\xads");
@@ -179,10 +198,10 @@ int kb_best_answer(const char *text,char qwords[][24],int nq,const char *questio
     if(!ns){snprintf(out,cap,"%s",text);return 0;}
     int best=0;float bs=-1e9f;
     for(int i=0;i<ns;i++){char tmp[1024];int l=len[i]<1023?len[i]:1023;memcpy(tmp,sent[i],l);tmp[l]=0;
-        char sw[24][24];int nsw=kb_words(tmp,sw,24);int ov=0;
-        for(int a=0;a<nq;a++)for(int b=0;b<nsw;b++)if(!strcmp(qwords[a],sw[b])){ov++;break;}
-        float sc=ov*10.f-i*.6f+(l<160?l:160)/80.f;
-        if(i==0)sc+=6;                          /* la definicion siempre parte con ventaja */
+        char sw[24][24];int nsw=kb_words(tmp,sw,24);int ov=0,ovAttr=0;
+        for(int a=0;a<nq;a++)for(int b=0;b<nsw;b++){char v[24];if(!strcmp(qwords[a],sw[b])||(kb_variant(qwords[a],v)&&!strcmp(v,sw[b]))){ov++;if(isAttr[a])ovAttr++;break;}}
+        float sc=ov*6.f+ovAttr*14.f-i*.6f+(l<160?l:160)/80.f;
+        if(i==0)sc+=nAttr?3:8;                  /* sin atributo, la definicion manda; con atributo, la frase que lo contiene */
         if(qWhen&&has_year(tmp))sc+=9;if(qWhere&&has_place(tmp))sc+=7;if(qHow&&has_digit(tmp))sc+=7;
         if(l<25)sc-=8;                          /* frases minusculas (abreviaturas) no responden nada */
         if(sc>bs){bs=sc;best=i;}}

@@ -86,7 +86,8 @@ static char qwords[12][24];static int nq=0;
 static char title[200],body[TXT],answer[1200];
 static int haveKB=0;static char status[120]="";
 static int history=0;
-static int reveal=0; /* bytes de la respuesta ya 'escritos' (animacion letra a letra) */
+static int reveal=0;static int showArticle=0; /* TRIANGULO: ver el articulo completo */
+static char smallTalk[600]=""; /* respuesta conversacional (saludo, calculo, identidad) */ /* bytes de la respuesta ya 'escritos' (animacion letra a letra) */
 static int mode=0; /* 0 buscar (Wikipedia), 1 charla (modelo diminuto) */
 static char chatPrompt[QMAX]="",chatOut[900]="";static int haveLM=0,generating=0;
 static unsigned **gBuffers;static int *gIndex;
@@ -116,16 +117,24 @@ static void draw_frame(void){
     if(nhits>0){
         /* respuesta */
         rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC);
-        snprintf(b,sizeof(b),"%.90s",title);text(20,71,b,ACC2);
-        snprintf(b,sizeof(b),"%d/%d",sel+1,nhits);text(W-20-strlen(b)*FONT_W,71,b,MUTED);
-        char shown[1200];int al=(int)strlen(answer);int r=reveal<al?reveal:al;
-        while(r<al&&r>0&&((unsigned char)answer[r]&0xc0)==0x80)r++; /* no cortar un caracter UTF-8 */
-        memcpy(shown,answer,r);shown[r]=0;if(r<al&&((history+reveal)/4)&1)strcat(shown,"_");
-        int y=89;int lines=textwrap(20,y,W-40,shown,WHITE,0,4);int used=lines<4?lines:4;y+=used*(FONT_H+2)+6;
-        rect(20,y-3,W-40,1,RGB(60,70,90));
-        int avail=(H-26-6-y)/(FONT_H+2);
-        int total=textwrap(20,y,W-40,body,MUTED,scroll,avail);
-        if(total>avail){snprintf(b,sizeof(b),"%d/%d",scroll+1,total-avail+1);text(W-20-strlen(b)*FONT_W,H-26-16,b,MUTED);}
+        if(showArticle){ /* articulo completo, con scroll */
+            snprintf(b,sizeof(b),"%.70s",title);text(20,71,b,ACC2);snprintf(b,sizeof(b),"%d/%d",sel+1,nhits);text(W-20-strlen(b)*FONT_W,71,b,MUTED);
+            int y=89;int avail=(H-26-6-y)/(FONT_H+2);int total=textwrap(20,y,W-40,body,WHITE,scroll,avail);
+            if(total>avail){snprintf(b,sizeof(b),"%d/%d",scroll+1,total-avail+1);text(W-20-strlen(b)*FONT_W,H-26-16,b,MUTED);}
+        }else{ /* UNA respuesta, escrita letra a letra, y la fuente debajo */
+            char shown[1200];int al=(int)strlen(answer);int r=reveal<al?reveal:al;
+            while(r<al&&r>0&&((unsigned char)answer[r]&0xc0)==0x80)r++; /* no cortar un caracter UTF-8 */
+            memcpy(shown,answer,r);shown[r]=0;if(r<al&&((history+reveal)/4)&1)strcat(shown,"_");
+            int y=74;int avail=(H-26-30-y)/(FONT_H+2);int total=textwrap(20,y,W-40,shown,WHITE,scroll,avail);
+            if(total>avail){snprintf(b,sizeof(b),"%d/%d",scroll+1,total-avail+1);text(W-20-strlen(b)*FONT_W,H-26-16,b,MUTED);}
+            rect(20,H-26-30,W-40,1,RGB(60,70,90));
+            snprintf(b,sizeof(b),"Fuente: %.44s  (%d/%d)",title,sel+1,nhits);text(20,H-26-24,b,ACC2);
+            text(W-20-22*FONT_W,H-26-24,"TRIANGULO: articulo",MUTED);
+        }
+    }else if(smallTalk[0]){
+        rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC);
+        char shown[600];int al=(int)strlen(smallTalk);int r=reveal<al?reveal:al;while(r<al&&r>0&&((unsigned char)smallTalk[r]&0xc0)==0x80)r++;
+        memcpy(shown,smallTalk,r);shown[r]=0;if(r<al)strcat(shown,"_");textwrap(20,74,W-40,shown,WHITE,0,9);
     }else if(question[0]){
         rect(10,66,W-20,40,PANEL);text(20,80,status[0]?status:"No encontre nada sobre eso. Prueba con otras palabras.",BAD);
     }else{
@@ -137,7 +146,7 @@ static void draw_frame(void){
         text(20,172,"  capital de Australia",MUTED);text(20,188,"  Medellin metro",MUTED);
         if(status[0])text(20,214,status,BAD);
     }
-    rect(0,H-22,W,22,INK);text(12,H-17,"X preguntar  L/R resultado  ARRIBA/ABAJO leer  O borrar  SELECT charla",MUTED);
+    rect(0,H-22,W,22,INK);text(12,H-17,"X preguntar  L/R otra fuente  /\\ articulo  O borrar  SELECT charla",MUTED);
 }
 
 /* ---------- teclado del sistema ---------- */
@@ -221,7 +230,7 @@ static void chat_run(void){
 static void load_hit(int i){
     scroll=0;
     if(!kb_doc(hits[i].doc,title,sizeof(title),body,sizeof(body))){snprintf(title,sizeof(title),"(error de lectura)");body[0]=0;answer[0]=0;return;}
-    kb_best_answer(body,qwords,nq,question,answer,sizeof(answer));reveal=0;
+    kb_best_answer_t(title,body,qwords,nq,question,answer,sizeof(answer));reveal=0;showArticle=0;
 }
 /* Reordena los mejores candidatos leyendo sus titulos: premia que el titulo contenga las palabras de la pregunta
    y penaliza titulos largos ("Australia" antes que "Australia Occidental" para "capital de Australia"). */
@@ -234,7 +243,33 @@ static void rerank(KbHit *h,int n){
     }
     for(int i=1;i<n;i++){KbHit x=h[i];int j=i;while(j>0&&h[j-1].score<x.score){h[j]=h[j-1];j--;}h[j]=x;}
 }
+/* Comprension basica de la pregunta antes de buscar: saludos, identidad, calculo, hora. Devuelve 1 si ya respondio. */
+static double parse_num(const char **s){while(**s==' ')(*s)++;double v=0,f=0,d=1;int any=0,neg=0;if(**s=='-'){neg=1;(*s)++;}
+    while(**s>='0'&&**s<='9'){v=v*10+(**s-'0');(*s)++;any=1;}if(**s=='.'||**s==','){(*s)++;while(**s>='0'&&**s<='9'){d/=10;f+=(**s-'0')*d;(*s)++;any=1;}}
+    if(!any)return -1e300;return neg?-(v+f):v+f;}
+static int small_talk(const char *qraw){
+    char ql[QMAX];int n=0;for(const char *c=qraw;*c&&n<QMAX-1;c++)ql[n++]=(*c>='A'&&*c<='Z')?*c+32:*c;ql[n]=0;
+    char w[12][24];int nw=kb_words(qraw,w,12);
+    if(strstr(ql,"cuanto es")||strstr(ql,"cuánto es")||strstr(ql,"calcula")||(nw<=3&&strpbrk(ql,"+*/x")&&strpbrk(ql,"0123456789"))){
+        const char *s=ql;while(*s&&!(*s>='0'&&*s<='9')&&*s!='-')s++;
+        double a=parse_num(&s);if(a>-1e299){while(*s==' ')s++;char op=*s;if(op=='x')op='*';if(op=='+'||op=='-'||op=='*'||op=='/'||op==':'){s++;double b=parse_num(&s);
+            if(b>-1e299){double r=op=='+'?a+b:op=='-'?a-b:op=='*'?a*b:(b!=0?a/b:0);if(op=='/'&&b==0)snprintf(smallTalk,sizeof(smallTalk),"No se puede dividir entre cero.");
+            else if(r==(long long)r)snprintf(smallTalk,sizeof(smallTalk),"%g %c %g = %lld",a,op,b,(long long)r);else snprintf(smallTalk,sizeof(smallTalk),"%g %c %g = %.4f",a,op,b,r);return 1;}}}
+    }
+    if(nw==0){
+        if(strstr(ql,"hola")||strstr(ql,"buenas")||strstr(ql,"buenos dias")||strstr(ql,"hey")){snprintf(smallTalk,sizeof(smallTalk),"Hola. Soy la IA de tu PSP. Preguntame lo que quieras: personas, lugares, historia, ciencia, deportes... Respondo con la Wikipedia en espanol que llevo en la Memory Stick.");return 1;}
+        if(strstr(ql,"gracias")){snprintf(smallTalk,sizeof(smallTalk),"De nada. Cuando quieras, otra pregunta.");return 1;}
+        if(strstr(ql,"adios")||strstr(ql,"chao")||strstr(ql,"hasta luego")){snprintf(smallTalk,sizeof(smallTalk),"Hasta luego. Pulsa START para salir.");return 1;}
+    }
+    if((strstr(ql,"quien eres")||strstr(ql,"quién eres")||strstr(ql,"que eres")||strstr(ql,"qué eres")||strstr(ql,"como te llamas")||strstr(ql,"cómo te llamas"))&&nw<=4){
+        snprintf(smallTalk,sizeof(smallTalk),"Soy PSP-IA, un asistente que corre entero dentro de esta PSP: busco entre %u articulos de la Wikipedia en espanol y tengo un pequeno modelo de lenguaje (SELECT) para charlar. No necesito internet.",kb_docs());return 1;}
+    if((strstr(ql,"como estas")||strstr(ql,"cómo estás")||strstr(ql,"que tal")||strstr(ql,"qué tal"))&&nw<=3){snprintf(smallTalk,sizeof(smallTalk),"Muy bien, a 333 MHz y con la Memory Stick llena de conocimiento. Y tu, que quieres saber?");return 1;}
+    return 0;
+}
+/* Reformula la pregunta para buscar mejor: quita "quien fue/es", "que es", "cuando", "donde", "cuantos", "capital de"... conserva el resto. */
 static void ask(void){
+    smallTalk[0]=0;reveal=0;showArticle=0;
+    if(small_talk(question)){nhits=0;history++;return;}
     static KbHit cand[40];int nc=kb_search(question,cand,40,qwords,&nq);
     rerank(cand,nc);nhits=nc<8?nc:8;for(int i=0;i<nhits;i++)hits[i]=cand[i];sel=0;scroll=0;
     if(nhits>0)load_hit(0);
@@ -273,14 +308,15 @@ int main(void){
             draw_frame();present(&index,buffers);continue;
         }
         if(pressed&PSP_CTRL_CROSS){if(osk(question,sizeof(question),buffers,&index)&&haveKB&&question[0])ask();}
-        if(pressed&PSP_CTRL_CIRCLE){question[0]=0;nhits=0;status[0]=0;}
+        if(pressed&PSP_CTRL_CIRCLE){question[0]=0;nhits=0;status[0]=0;smallTalk[0]=0;}
         if(nhits>0){
             if((pressed&PSP_CTRL_RTRIGGER)&&sel<nhits-1){sel++;load_hit(sel);}
             if((pressed&PSP_CTRL_LTRIGGER)&&sel>0){sel--;load_hit(sel);}
+            if(pressed&PSP_CTRL_TRIANGLE){showArticle^=1;scroll=0;}
             if(pressed&PSP_CTRL_DOWN)scroll++;
             if((pressed&PSP_CTRL_UP)&&scroll>0)scroll--;
         }
-        if(reveal<(int)strlen(answer))reveal+=1;else reveal=(int)strlen(answer); /* ~60 letras/s */
+        {int tl=(int)strlen(smallTalk[0]?smallTalk:answer);if(reveal<tl)reveal+=1;else reveal=tl;} /* ~60 letras/s */
         draw_frame();present(&index,buffers);
     }
     sceKernelExitGame();return 0;
