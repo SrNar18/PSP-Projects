@@ -160,3 +160,35 @@ int kb_best_sentence(const char *text,char qwords[][24],int nq,char *out,int cap
     if(bl<=0){snprintf(out,cap,"%s",text);return 0;}
     int l=bl<cap-1?bl:cap-1;memcpy(out,bs,l);out[l]=0;return 1;
 }
+
+/* Respuesta compuesta: elige la mejor frase segun el tipo de pregunta y la une con la siguiente frase.
+   - "quien es/fue", "que es": la definicion (primera frase) manda, salvo que otra tenga mucho mas solapamiento.
+   - "cuando": prefiere frases con un ano (4 digitos).  - "donde": prefiere frases con "en <Mayuscula>" o "ubicad".
+   - "cuantos/cuanta": prefiere frases con numeros. */
+static int has_year(const char *s){int run=0;for(;*s;s++){if(*s>='0'&&*s<='9'){run++;if(run==4)return 1;}else run=0;}return 0;}
+static int has_digit(const char *s){for(;*s;s++)if(*s>='0'&&*s<='9')return 1;return 0;}
+static int has_place(const char *s){const char *p=s;while((p=strstr(p," en "))){p+=4;if((unsigned char)*p>='A'&&(unsigned char)*p<='Z')return 1;}return strstr(s,"ubicad")||strstr(s,"situad")||strstr(s,"localizad")?1:0;}
+int kb_best_answer(const char *text,char qwords[][24],int nq,const char *question,char *out,int cap){
+    char ql[160];int n=0;for(const char *c=question;*c&&n<159;c++)ql[n++]=(*c>='A'&&*c<='Z')?*c+32:*c;ql[n]=0;
+    int qWhen=strstr(ql,"cuando")||strstr(ql,"cu\xc3\xa1ndo")||strstr(ql,"fecha")||strstr(ql,"a\xc3\xb1o");
+    int qWhere=strstr(ql,"donde")||strstr(ql,"d\xc3\xb3nde")||strstr(ql,"ubica")||strstr(ql,"capital")||strstr(ql,"pais")||strstr(ql,"pa\xc3\xads");
+    int qHow=strstr(ql,"cuanto")||strstr(ql,"cu\xc3\xa1nto")||strstr(ql,"cuantos")||strstr(ql,"poblacion")||strstr(ql,"habitantes")||strstr(ql,"altura")||strstr(ql,"medida");
+    const char *sent[48];int len[48];int ns=0;const char *s=text;
+    while(*s&&ns<48){const char *e=s;while(*e&&!((*e=='.'||*e=='!'||*e=='?')&&(e[1]==' '||e[1]==0)))e++;if(*e)e++;
+        if(e-s>3){sent[ns]=s;len[ns]=(int)(e-s);ns++;}while(*e==' ')e++;s=e;}
+    if(!ns){snprintf(out,cap,"%s",text);return 0;}
+    int best=0;float bs=-1e9f;
+    for(int i=0;i<ns;i++){char tmp[1024];int l=len[i]<1023?len[i]:1023;memcpy(tmp,sent[i],l);tmp[l]=0;
+        char sw[24][24];int nsw=kb_words(tmp,sw,24);int ov=0;
+        for(int a=0;a<nq;a++)for(int b=0;b<nsw;b++)if(!strcmp(qwords[a],sw[b])){ov++;break;}
+        float sc=ov*10.f-i*.6f+(l<160?l:160)/80.f;
+        if(i==0)sc+=6;                          /* la definicion siempre parte con ventaja */
+        if(qWhen&&has_year(tmp))sc+=9;if(qWhere&&has_place(tmp))sc+=7;if(qHow&&has_digit(tmp))sc+=7;
+        if(l<25)sc-=8;                          /* frases minusculas (abreviaturas) no responden nada */
+        if(sc>bs){bs=sc;best=i;}}
+    int l1=len[best],l2=(best+1<ns)?len[best+1]:0;
+    if(l1+1+l2>=cap||l1>300)l2=0;
+    int o=0;memcpy(out,sent[best],l1<cap-1?l1:cap-1);o=l1<cap-1?l1:cap-1;
+    if(l2>0&&o+1+l2<cap-1){out[o++]=' ';memcpy(out+o,sent[best+1],l2);o+=l2;}
+    out[o]=0;return 1;
+}

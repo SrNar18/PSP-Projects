@@ -82,7 +82,7 @@ def main():
                 offset+=len(blob)
                 seen={}
                 for w in words(title):seen[w]=3
-                for w in words(summ)[:90]:
+                for w in words(summ)[:160]:
                     if w not in seen:seen[w]=1
                 for w,wt in seen.items():cur_h.append(fnv(w));cur_d.append(ndoc);cur_w.append(wt)
                 ndoc+=1

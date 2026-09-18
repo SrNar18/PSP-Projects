@@ -90,7 +90,7 @@ int lm_generate(const char *prompt,char *out,int cap,int maxBytes,float temp,voi
         int t=sample(temp,0.9f);
         if(t=='\n'&&o>20)break;
         out[o++]=(char)t;out[o]=0;
-        if(tick&&(o%3==0))tick(out);
+        if(tick)tick(out);
         if(o>=maxBytes-1)break;
         forward(t,position);position++;
     }

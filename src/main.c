@@ -86,6 +86,7 @@ static char qwords[12][24];static int nq=0;
 static char title[200],body[TXT],answer[1200];
 static int haveKB=0;static char status[120]="";
 static int history=0;
+static int reveal=0; /* bytes de la respuesta ya 'escritos' (animacion letra a letra) */
 static int mode=0; /* 0 buscar (Wikipedia), 1 charla (modelo diminuto) */
 static char chatPrompt[QMAX]="",chatOut[900]="";static int haveLM=0,generating=0;
 static unsigned **gBuffers;static int *gIndex;
@@ -98,7 +99,7 @@ static void draw_chat(void){
     rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC2);
     if(status[0]&&strstr(status,"teclado"))text(20,H-44,status,BAD);
     if(!haveLM)text(20,76,"No encuentro ms0:/IA/lm.bin (modelo de lenguaje).",BAD);
-    else if(chatOut[0]||generating){textwrap(20,74,W-40,chatOut,WHITE,0,10);if(generating)text(20,H-44,"escribiendo...",MUTED);}
+    else if(chatOut[0]||generating){char shown[1000];snprintf(shown,sizeof(shown),"%s%s",chatOut,generating?"_":"");textwrap(20,74,W-40,shown,WHITE,0,10);if(generating)text(20,H-44,"escribiendo...",MUTED);}
     else{text(20,76,"Modelo de lenguaje de 5 millones de parametros entrenado",WHITE);text(20,92,"con la Wikipedia en espanol, corriendo en la propia PSP.",WHITE);
         text(20,118,"Inventa texto plausible pero NO fiable: es un juguete.",ACC2);text(20,134,"Para respuestas reales usa el modo buscar (SELECT).",MUTED);
         text(20,160,"Prueba: 'Medellin es' / 'El futbol' / 'Simon Bolivar fue'",MUTED);}
@@ -117,7 +118,10 @@ static void draw_frame(void){
         rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC);
         snprintf(b,sizeof(b),"%.90s",title);text(20,71,b,ACC2);
         snprintf(b,sizeof(b),"%d/%d",sel+1,nhits);text(W-20-strlen(b)*FONT_W,71,b,MUTED);
-        int y=89;int lines=textwrap(20,y,W-40,answer,WHITE,0,3);int used=lines<3?lines:3;y+=used*(FONT_H+2)+6;
+        char shown[1200];int al=(int)strlen(answer);int r=reveal<al?reveal:al;
+        while(r<al&&r>0&&((unsigned char)answer[r]&0xc0)==0x80)r++; /* no cortar un caracter UTF-8 */
+        memcpy(shown,answer,r);shown[r]=0;if(r<al&&((history+reveal)/4)&1)strcat(shown,"_");
+        int y=89;int lines=textwrap(20,y,W-40,shown,WHITE,0,4);int used=lines<4?lines:4;y+=used*(FONT_H+2)+6;
         rect(20,y-3,W-40,1,RGB(60,70,90));
         int avail=(H-26-6-y)/(FONT_H+2);
         int total=textwrap(20,y,W-40,body,MUTED,scroll,avail);
@@ -178,30 +182,34 @@ static int osk(char *result,int cap,unsigned **buffers,int *index){
     p.datacount=1;p.data=&data;
     int rc=sceUtilityOskInitStart(&p);if(rc<0){snprintf(status,sizeof(status),"Teclado del sistema no disponible (%08x): teclado propio.",(unsigned)rc);return simple_kbd(result,cap,buffers,index);}
     /* un solo buffer visible mientras dura el dialogo; el GE dibuja en el */
-    unsigned *vis=buffers[*index^1],*snap=buffers[*index];
+    /* Fondo estatico en RAM; cada fotograma: copiarlo al buffer OCULTO, apuntar el GE a el, dejar que el dialogo
+       dibuje encima y mostrarlo en el siguiente vblank (doble buffer como en los ejemplos del SDK). Restaurar el
+       buffer VISIBLE mientras el dialogo aun lo estaba pintando era lo que hacia parpadear el teclado. */
+    static unsigned snap[STRIDE*H] __attribute__((aligned(64)));
     fb=snap;draw_frame();
-    memcpy(vis,snap,STRIDE*H*4);gu_draw_buffer(vis);
-    sceDisplaySetFrameBuf(vis,STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
+    int back=*index;
+    memcpy(buffers[back],snap,STRIDE*H*4);gu_draw_buffer(buffers[back]);
     int frames=0,seen=0;
     for(;;){
         if(!running)break;
-        memcpy(vis,snap,STRIDE*H*4);gu_draw_buffer(vis);
         int st=sceUtilityOskGetStatus();
         if(st==PSP_UTILITY_DIALOG_VISIBLE)seen=1;
         if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilityOskUpdate(1);
         else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilityOskShutdownStart();
         else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
-        sceDisplayWaitVblankStart();
+        sceGuSync(0,0);sceDisplayWaitVblankStart();
+        sceDisplaySetFrameBuf(buffers[back],STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
+        back^=1;memcpy(buffers[back],snap,STRIDE*H*4);gu_draw_buffer(buffers[back]);
         /* si en 4 s el teclado del sistema no se ha mostrado, se cierra y se usa el propio (nunca colgarse) */
         if(++frames>240&&!seen){sceUtilityOskShutdownStart();for(int k=0;k<60&&sceUtilityOskGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();fb=buffers[*index];snprintf(status,sizeof(status),"Teclado del sistema no responde: teclado propio.");return simple_kbd(result,cap,buffers,index);}
     }
-    fb=buffers[*index];
+    *index=back;fb=buffers[*index];
     if(data.result==PSP_UTILITY_OSK_RESULT_CHANGED){utf16_to_utf8(outtext,result,cap);return 1;}
     return 0;
 }
 
 static void chat_tick(const char *partial){
-    snprintf(chatOut,sizeof(chatOut),"%s",partial);draw_frame();present(gIndex,gBuffers);
+    snprintf(chatOut,sizeof(chatOut),"%s%s",chatPrompt,partial);draw_frame();present(gIndex,gBuffers);
 }
 static void chat_run(void){
     generating=1;chatOut[0]=0;
@@ -213,7 +221,7 @@ static void chat_run(void){
 static void load_hit(int i){
     scroll=0;
     if(!kb_doc(hits[i].doc,title,sizeof(title),body,sizeof(body))){snprintf(title,sizeof(title),"(error de lectura)");body[0]=0;answer[0]=0;return;}
-    kb_best_sentence(body,qwords,nq,answer,sizeof(answer));
+    kb_best_answer(body,qwords,nq,question,answer,sizeof(answer));reveal=0;
 }
 /* Reordena los mejores candidatos leyendo sus titulos: premia que el titulo contenga las palabras de la pregunta
    y penaliza titulos largos ("Australia" antes que "Australia Occidental" para "capital de Australia"). */
@@ -222,7 +230,7 @@ static void rerank(KbHit *h,int n){
         if(!kb_doc(h[i].doc,t,sizeof(t),dummy,sizeof(dummy)))continue;
         char tw[16][24];int ntw=kb_words(t,tw,16);int inTitle=0;
         for(int a=0;a<nq;a++)for(int b=0;b<ntw;b++)if(!strcmp(qwords[a],tw[b])){inTitle++;break;}
-        h[i].score+=inTitle*4.0f-(ntw-inTitle)*1.5f-(strchr(t,'(')?2.0f:0);
+        h[i].score+=inTitle*4.0f-(ntw-inTitle)*1.5f-(strchr(t,'(')?2.0f:0)-strlen(t)*0.03f+((inTitle==nq&&ntw==nq)?3.0f:0); /* titulo exacto y corto primero */
     }
     for(int i=1;i<n;i++){KbHit x=h[i];int j=i;while(j>0&&h[j-1].score<x.score){h[j]=h[j-1];j--;}h[j]=x;}
 }
@@ -272,6 +280,7 @@ int main(void){
             if(pressed&PSP_CTRL_DOWN)scroll++;
             if((pressed&PSP_CTRL_UP)&&scroll>0)scroll--;
         }
+        if(reveal<(int)strlen(answer))reveal+=1;else reveal=(int)strlen(answer); /* ~60 letras/s */
         draw_frame();present(&index,buffers);
     }
     sceKernelExitGame();return 0;
