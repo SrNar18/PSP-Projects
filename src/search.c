@@ -9,13 +9,13 @@
 #include <math.h>
 #include <zlib.h>
 
-static SceUID fidx=-1,fpst=-1,fdoc=-1,ftxt=-1;static SceUID fvol[8];static int nvol=0,fmt=1; /* fmt 2 = PIA2: volumenes y articulos completos */
+static SceUID fidx=-1,fpst=-1,fdoc=-1,ftxt=-1,fttl=-1;static SceUID fvol[8];static int nvol=0,fmt=1; /* fmt 2 = PIA2: volumenes y articulos completos */
 static unsigned ndoc=0,nterms=0;
-static unsigned char *zbuf=0;static char *plain=0;
+static unsigned char *zbuf=0;static char *plain=0;static unsigned char *titleWords=0; /* ia.tw: palabras del titulo por doc */
 #define ZCAP (160*1024)
 #define PCAP (256*1024)
 static char base[64];
-#define HASH_SIZE 262144
+#define HASH_SIZE 524288
 static unsigned hdoc[HASH_SIZE];static float hsc[HASH_SIZE];static unsigned char hused[HASH_SIZE/8];
 static unsigned char *pbuf=0;static unsigned pcap=0;
 
@@ -30,7 +30,10 @@ int kb_open(const char *dir){
     if(fmt==1){snprintf(p,sizeof(p),"%s/ia.txt",dir);ftxt=sceIoOpen(p,PSP_O_RDONLY,0);if(ftxt<0)return -4;}
     else{if(nvol>8)nvol=8;for(int i=0;i<nvol;i++){snprintf(p,sizeof(p),"%s/ia%d.txt",dir,i);fvol[i]=sceIoOpen(p,PSP_O_RDONLY,0);if(fvol[i]<0)return -40-i;}}
     if(fidx<0)return -1;if(fpst<0)return -2;if(fdoc<0)return -3;
-    pcap=2<<20;pbuf=(unsigned char*)malloc(pcap);if(!pbuf){pcap=1<<20;pbuf=(unsigned char*)malloc(pcap);}
+    snprintf(p,sizeof(p),"%s/ia.ttl",dir);fttl=sceIoOpen(p,PSP_O_RDONLY,0); /* opcional: tabla de titulos para reordenar */
+    snprintf(p,sizeof(p),"%s/ia.tw",dir);SceUID ftw=sceIoOpen(p,PSP_O_RDONLY,0); /* opcional: 1 byte/doc con las palabras del titulo (1,7 MB en RAM) */
+    if(ftw>=0){titleWords=(unsigned char*)malloc(ndoc);if(titleWords){unsigned got=0;while(got<ndoc){int r=sceIoRead(ftw,titleWords+got,ndoc-got>(1<<20)?(1<<20):ndoc-got);if(r<=0)break;got+=r;}if(got!=ndoc){free(titleWords);titleWords=0;}}sceIoClose(ftw);}
+    pcap=1536<<10;pbuf=(unsigned char*)malloc(pcap);if(!pbuf){pcap=1<<20;pbuf=(unsigned char*)malloc(pcap);}
     zbuf=(unsigned char*)malloc(ZCAP);plain=(char*)malloc(PCAP);
     return (pbuf&&zbuf&&plain)?1:-5;
 }
@@ -105,10 +108,11 @@ static int find_term(unsigned h,unsigned *off,unsigned *df,unsigned *len){
     }
     return 0;
 }
+static int insertOK=1; /* 0: solo sumar a documentos ya presentes (terminos muy comunes, ver kb_search) */
 static void acc(unsigned doc,float s){
-    unsigned i=(doc*2654435761u)>>14;
+    unsigned i=(doc*2654435761u)>>13;
     for(int k=0;k<64;k++){unsigned j=(i+k)&(HASH_SIZE-1);
-        if(!(hused[j>>3]&(1<<(j&7)))){hused[j>>3]|=1<<(j&7);hdoc[j]=doc;hsc[j]=s;return;}
+        if(!(hused[j>>3]&(1<<(j&7)))){if(!insertOK)return;hused[j>>3]|=1<<(j&7);hdoc[j]=doc;hsc[j]=s;return;}
         if(hdoc[j]==doc){hsc[j]+=s;return;}
     }
 }
@@ -116,16 +120,23 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq){
     char w[12][24];int n=kb_words(query,w,12);*nq=n;for(int i=0;i<n;i++)strcpy(qwords[i],w[i]);
     memset(hused,0,sizeof(hused));
     int found=0;
-    for(int i0=0;i0<n*2;i0++){
-        /* segunda pasada: variantes morfologicas (plural -s/-es, -ciones -> -cion, -mente) con peso 0.7 */
-        int i=i0%n;char var[24];float wmul=1.0f;
+    /* resolver todos los terminos (y sus variantes morfologicas, peso 0.7) y procesarlos de MENOR a MAYOR df:
+       asi los documentos con las palabras raras entran seguro en la tabla y las palabras muy comunes solo
+       refuerzan a los que ya estan (la tabla tiene 512k huecos; "habitantes" solo aparece en 300k articulos). */
+    struct {unsigned off,df,len;float wmul;} tl[24];int nt=0;
+    for(int i0=0;i0<n*2&&nt<24;i0++){int i=i0%n;char var[24];float wmul=1.0f;
         if(i0>=n){if(!kb_variant(w[i],var))continue;wmul=0.7f;}else strcpy(var,w[i]);
-        unsigned off,df,len;if(!find_term(fnv_word(var),&off,&df,&len))continue;found++;
+        unsigned off,df,len;if(!find_term(fnv_word(var),&off,&df,&len))continue;
+        tl[nt].off=off;tl[nt].df=df;tl[nt].len=len;tl[nt].wmul=wmul;nt++;}
+    for(int i=1;i<nt;i++){int j=i;while(j>0&&tl[j-1].df>tl[j].df){typeof(tl[0]) t=tl[j];tl[j]=tl[j-1];tl[j-1]=t;j--;}}
+    for(int ti=0;ti<nt;ti++){
+        unsigned off=tl[ti].off,df=tl[ti].df,len=tl[ti].len;float wmul=tl[ti].wmul;found++;
+        insertOK=(ti==0)||(df<HASH_SIZE/3);
         float idf=logf(1+(float)ndoc/(df+1))*wmul;
         unsigned take=len<pcap?len:pcap;
         sceIoLseek(fpst,(SceOff)off,PSP_SEEK_SET);int got=sceIoRead(fpst,pbuf,take);if(got<=0)continue;
         unsigned p=0,doc=0,cnt=0;
-        while(p<(unsigned)got&&cnt<250000){
+        while(p<(unsigned)got&&cnt<600000){
             unsigned d=0,sh=0;unsigned char b;
             do{b=pbuf[p++];d|=(b&0x7f)<<sh;sh+=7;}while((b&0x80)&&p<(unsigned)got);
             if(p>=(unsigned)got)break;
@@ -138,6 +149,7 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq){
     for(unsigned j=0;j<HASH_SIZE;j++){
         if(!(hused[j>>3]&(1<<(j&7))))continue;
         float s=hsc[j];
+        if(titleWords&&hdoc[j]<ndoc){int tw=titleWords[hdoc[j]];s-=tw*0.9f;if(tw<=n)s+=1.2f;} /* titulos cortos primero: "Medellin" antes que "Historia de Medellin" */
         if(nh<max||s>hits[nh-1].score){
             int k=nh<max?nh:max-1;
             while(k>0&&hits[k-1].score<s){hits[k]=hits[k-1];k--;}
@@ -146,6 +158,13 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq){
     }
     return nh;
 }
+/* Tabla de titulos (ia.ttl): nwords, bytelen y hasta 4 hashes de palabras del titulo. Devuelve 0 si no hay tabla. */
+int kb_title_info(unsigned doc,int *nwords,int *blen,unsigned hashes[4]){
+    if(fttl<0)return 0;unsigned char rec[18];
+    sceIoLseek(fttl,(SceOff)doc*18,PSP_SEEK_SET);if(sceIoRead(fttl,rec,18)!=18)return 0;
+    *nwords=rec[0];*blen=rec[1];memcpy(hashes,rec+2,16);return 1;
+}
+unsigned kb_hash(const char *w){return fnv_word(w);}
 int kb_doc(unsigned doc,char *title,int tcap,char *text,int cap){
     unsigned off,len;SceUID f;
     if(fmt==1){unsigned char rec[7];sceIoLseek(fdoc,(SceOff)doc*7,PSP_SEEK_SET);if(sceIoRead(fdoc,rec,7)!=7)return 0;unsigned short l16;memcpy(&off,rec,4);memcpy(&l16,rec+4,2);len=l16;f=ftxt;}
@@ -200,8 +219,8 @@ int kb_best_answer_t(const char *title,const char *text,char qwords[][24],int nq
     int qWhere=strstr(ql,"donde")||strstr(ql,"d\xc3\xb3nde")||strstr(ql,"ubica")||strstr(ql,"capital")||strstr(ql,"pais")||strstr(ql,"pa\xc3\xads");
     int qHow=strstr(ql,"cuanto")||strstr(ql,"cu\xc3\xa1nto")||strstr(ql,"cuantos")||strstr(ql,"poblacion")||strstr(ql,"habitantes")||strstr(ql,"altura")||strstr(ql,"medida");
     static const char *sent[600];static int len[600];int ns=0;const char *s=text;
-    while(*s&&ns<600){const char *e=s;while(*e&&!((*e=='.'||*e=='!'||*e=='?')&&(e[1]==' '||e[1]==0)))e++;if(*e)e++;
-        if(e-s>3){sent[ns]=s;len[ns]=(int)(e-s);ns++;}while(*e==' ')e++;s=e;}
+    while(*s&&ns<600){while(*s==' '||*s=='\n'||*s=='?'||*s=='!'||*s=='.'||*s==')')s++;if(!*s)break;const char *e=s;while(*e&&*e!='\n'&&!((*e=='.'||*e=='!'||*e=='?')&&(e[1]==' '||e[1]==0||e[1]=='\n')))e++;if(*e&&*e!='\n')e++;
+        if(e-s>3){sent[ns]=s;len[ns]=(int)(e-s);ns++;}while(*e==' '||*e=='\n')e++;s=e;}
     if(!ns){snprintf(out,cap,"%s",text);return 0;}
     int best=0;float bs=-1e9f;
     for(int i=0;i<ns;i++){char tmp[1024];int l=len[i]<1023?len[i]:1023;memcpy(tmp,sent[i],l);tmp[l]=0;

@@ -128,7 +128,7 @@ static void draw_frame(void){
             int y=74;int avail=(H-26-30-y)/(FONT_H+2);int total=textwrap(20,y,W-40,shown,WHITE,scroll,avail);
             if(total>avail){snprintf(b,sizeof(b),"%d/%d",scroll+1,total-avail+1);text(W-20-strlen(b)*FONT_W,H-26-16,b,MUTED);}
             rect(20,H-26-30,W-40,1,RGB(60,70,90));
-            snprintf(b,sizeof(b),"Fuente: %.44s  (%d/%d)",title,sel+1,nhits);text(20,H-26-24,b,ACC2);
+            snprintf(b,sizeof(b),"Fuente: %.26s%s (%d/%d)",title,strlen(title)>26?"...":"",sel+1,nhits);text(20,H-26-24,b,ACC2);
             text(W-20-22*FONT_W,H-26-24,"TRIANGULO: articulo",MUTED);
         }
     }else if(smallTalk[0]){
@@ -235,11 +235,19 @@ static void load_hit(int i){
 /* Reordena los mejores candidatos leyendo sus titulos: premia que el titulo contenga las palabras de la pregunta
    y penaliza titulos largos ("Australia" antes que "Australia Occidental" para "capital de Australia"). */
 static void rerank(KbHit *h,int n){
-    for(int i=0;i<n;i++){char t[200],dummy[8];
+    unsigned qh[12];for(int a=0;a<nq;a++)qh[a]=kb_hash(qwords[a]);
+    for(int i=0;i<n;i++){int ntw,blen;unsigned th[4];
+        if(kb_title_info(h[i].doc,&ntw,&blen,th)){ /* rapido: tabla de titulos, sin descomprimir */
+            int inTitle=0;for(int a=0;a<nq;a++)for(int b=0;b<4;b++)if(th[b]&&th[b]==qh[a]){inTitle++;break;}
+            int extra=ntw-inTitle;if(extra<0)extra=0;
+            h[i].score+=inTitle*5.0f-extra*1.8f-blen*0.03f+((inTitle==nq&&ntw==nq)?4.0f:0)+((inTitle>0&&ntw<=2)?1.5f:0);
+            continue;
+        }
+        char t[200],dummy[8];
         if(!kb_doc(h[i].doc,t,sizeof(t),dummy,sizeof(dummy)))continue;
-        char tw[16][24];int ntw=kb_words(t,tw,16);int inTitle=0;
-        for(int a=0;a<nq;a++)for(int b=0;b<ntw;b++)if(!strcmp(qwords[a],tw[b])){inTitle++;break;}
-        h[i].score+=inTitle*4.0f-(ntw-inTitle)*1.5f-(strchr(t,'(')?2.0f:0)-strlen(t)*0.03f+((inTitle==nq&&ntw==nq)?3.0f:0); /* titulo exacto y corto primero */
+        char tw[16][24];int ntw2=kb_words(t,tw,16);int inTitle=0;
+        for(int a=0;a<nq;a++)for(int b=0;b<ntw2;b++)if(!strcmp(qwords[a],tw[b])){inTitle++;break;}
+        h[i].score+=inTitle*4.0f-(ntw2-inTitle)*1.5f-(strchr(t,'(')?2.0f:0)-strlen(t)*0.03f+((inTitle==nq&&ntw2==nq)?3.0f:0);
     }
     for(int i=1;i<n;i++){KbHit x=h[i];int j=i;while(j>0&&h[j-1].score<x.score){h[j]=h[j-1];j--;}h[j]=x;}
 }
@@ -270,7 +278,7 @@ static int small_talk(const char *qraw){
 static void ask(void){
     smallTalk[0]=0;reveal=0;showArticle=0;
     if(small_talk(question)){nhits=0;history++;return;}
-    static KbHit cand[40];int nc=kb_search(question,cand,40,qwords,&nq);
+    static KbHit cand[200];int nc=kb_search(question,cand,200,qwords,&nq);
     rerank(cand,nc);nhits=nc<8?nc:8;for(int i=0;i<nhits;i++)hits[i]=cand[i];sel=0;scroll=0;
     if(nhits>0)load_hit(0);
     else snprintf(status,sizeof(status),nq?"No encontre nada sobre eso. Prueba con otras palabras.":"Escribe alguna palabra clave (no solo 'que', 'de', 'la').");
