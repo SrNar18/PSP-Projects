@@ -421,7 +421,7 @@ static void interact(void){
 static void enter_exit(void){
  if(g.car>=0){Car *c=&g.cars[g.car];if(fabsf(c->speed)>45){notice("Frena antes de bajar del carro.");return;}float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}if(!free_at(xx,yy,5)){notice("No hay espacio para bajar. Mueve el carro.");return;}g.x=xx;g.y=yy;c->speed=0;c->parked=1;g.car=-1;return;}
  int best=-1;float d=43;for(int i=0;i<CAR_COUNT;i++){float dd=dist(g.x,g.y,g.cars[i].x,g.cars[i].y);if(dd<d&&g.cars[i].hp>0){best=i;d=dd;}}
- if(best>=0){g.car=best;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;
+ if(best>=0){g.car=best;g.steerSmooth=0;g.moveActive=0;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;
   if(best!=1){g.heat=fmaxf(g.heat,g.cars[best].police?3:1.2f);notice("CARRO TOMADO. X acelera / [] frena / L-R radio.");}else notice("Luna: cuidalo. X acelera / [] frena / L-R radio.");
  }else notice("Acercate a un carro. TRIANGULO para tomarlo.");
 }
@@ -473,8 +473,8 @@ static void world_tick(float ax,float ay,float dt){
    float wantYaw=atan2f(dy,dx);
    if(!g.moveActive){g.moveYaw=wantYaw;g.moveActive=1;}                 /* arranque: rumbo inmediato */
    else{float turn=(g.footSpeed>80?4.2f:g.footSpeed>55?5.5f:7.5f)*dt;   /* corriendo gira mas ancho */
-    float d=angle_delta(wantYaw,g.moveYaw);if(fabsf(d)>PI*.75f)g.moveYaw=wantYaw;else g.moveYaw+=clampf(d,-turn,turn);} /* media vuelta: giro seco */
-   dx=cosf(g.moveYaw)*inputLength;dy=sinf(g.moveYaw)*inputLength;
+    float d=angle_delta(wantYaw,g.moveYaw);g.moveYaw+=clampf(d,-turn,turn);} /* media vuelta: giro seco */
+   dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
   }else g.moveActive=0;
   float desiredYaw=g.moveYaw;
   float gx,gz,lx,lz;geo_project(g.x,g.y,&gx,&gz);geo_unproject(gx+dx,gz+dy,&lx,&lz);dx=lx-g.x;dy=lz-g.y;
@@ -500,8 +500,8 @@ static void world_tick(float ax,float ay,float dt){
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
   g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*9)); /* v2.9: direccion progresiva (sin saltos al soltar/pulsar) */
-  float grip=clampf(fabsf(c->speed)/25,0,1)*(1.f-clampf((fabsf(c->speed)-140)/160,0,.35f)); /* a mucha velocidad gira algo menos */
-  c->a+=g.steerSmooth*dt*(1.6f+fabsf(c->speed)/120)*(c->speed<0?-1:1)*grip;
+  float grip=clampf(fabsf(c->speed)/25,0,1); /* a mucha velocidad gira algo menos */
+  c->a+=g.steerSmooth*dt*(2.2f/(1.f+fabsf(c->speed)/180.f))*(c->speed<0?-1:1)*grip;
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
   else if(car_free_at(c,xx,c->y)){c->x=xx;c->speed*=.85f;}
@@ -557,7 +557,7 @@ static void world_tick(float ax,float ay,float dt){
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
- if(g.screen!=WORLD){g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
+ if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
@@ -742,7 +742,7 @@ static void title_draw(void){
  for(int x=-80+(int)fmodf(g.clock*19,640);x<W;x+=160){for(int i=0;i<36;i++)px(x+i,239-i/3,RGB(35,104+i*2,145+i*2));}
  for(int i=0;i<3;i++){int r=3+i*4+(int)(2*sinf(g.clock*2+i));outline(72-r,67-r,r*2,r*2,i==0?LIME:TEAL);}
  rect(0,0,W,29,RGB(7,12,20));label(16,8,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
- text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.8",WHITE);
+ text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.9.1",WHITE);
  rect(12,166,231,78,RGB(7,12,20));outline(12,166,231,78,RGB(49,102,116));
  text(25,178,g.menu==0?"> CONTINUAR PARTIDA":"  CONTINUAR PARTIDA",g.menu==0?LIME:MUTED,1);text(25,202,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(25,226,"X confirmar",TEAL,1);
  rect(300,181,169,63,RGB(7,12,20));text(321,187,"made by",WHITE,1);signature(292,190);

@@ -9,10 +9,10 @@ static void setup(void){
 static void move(unsigned button,int frames){for(int i=0;i<frames;i++)game_tick(button,0,-1,1.f/60);}
 int main(void){
  setup();move(0,90);assert(g.footSpeed>41&&g.footSpeed<43);float walk=g.x-700;
- setup();move(B_CROSS,90);assert(g.footSpeed>67&&g.footSpeed<69);assert(!g.sprintTime);float trot=g.x-700;assert(trot>walk*1.4f);
+ setup();move(B_CROSS,90);assert(g.footSpeed>73&&g.footSpeed<75);assert(!g.sprintTime);float trot=g.x-700;assert(trot>walk*1.4f);
  setup();for(int i=0;i<90;i++)move(i%12==0?B_CROSS:0,1);
  assert(g.sprintTime>0&&g.footSpeed>98);assert(g.x-700>trot);
- move(B_CROSS,75);assert(g.sprintTime==0&&g.footSpeed>67&&g.footSpeed<69);
+ move(B_CROSS,75);assert(g.sprintTime==0&&g.footSpeed>73&&g.footSpeed<75);
  move(0,75);assert(g.footSpeed>41&&g.footSpeed<43);
  puts("PASS: walking < held-X jogging < repeated-X sprint; hold never auto-sprints; rhythm expiry returns to jogging/walking.");
  setup();for(int i=0;i<120;i++)move(i%40==0?B_CROSS:0,1);assert(!g.sprintTime);
@@ -32,7 +32,7 @@ int main(void){
   while(!g.exhausted&&frames<fps*8){g.pressed=frames%(fps/5)==0?B_CROSS:0;g.held=g.pressed;foot_pace(1,dt);g.footTravel=1;stamina_tick(dt);frames++;}
   assert(g.exhausted&&g.stamina==0&&frames>fps*5&&frames<fps*8);
   for(int i=0;i<fps*7;i++){g.pressed=i%(fps/5)==0?B_CROSS:0;g.held=g.pressed;foot_pace(1,dt);g.footTravel=1;stamina_tick(dt);assert(g.exhausted&&g.sprintTime==0);}
-  assert(g.footSpeed>67&&g.footSpeed<69&&g.stamina<100);
+  assert(g.footSpeed>73&&g.footSpeed<75&&g.stamina<100);
   for(int i=0;i<fps*2;i++){g.pressed=0;foot_pace(1,dt);g.footTravel=1;stamina_tick(dt);}
   assert(!g.exhausted&&g.stamina==100);
   for(int i=0;i<fps;i++){g.pressed=i%(fps/5)==0?B_CROSS:0;g.held=g.pressed;foot_pace(1,dt);g.footTravel=1;stamina_tick(dt);}

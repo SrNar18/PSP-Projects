@@ -18,7 +18,8 @@ typedef struct {
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
 } R3Scene;
 void r3_init(void);
-void r3_set_draw_buffer(uint32_t *fb); /* v2.9: buffer de dibujo del GE para los dialogos del sistema */
+void r3_set_draw_buffer(uint32_t *fb);
+void r3_gu_buffers(uint32_t *draw,uint32_t *disp);void r3_gu_idle(void);void r3_gu_swap(void); /* v2.9.1: dialogos del sistema */ /* v2.9: buffer de dibujo del GE para los dialogos del sistema */
 int r3_overflow(void);int r3_used(int m); /* diagnostico: poligonos descartados por presupuesto y vertices usados por material */
 void r3_draw(uint32_t *framebuffer, const R3Scene *scene);
 void r3_overlay(uint32_t *framebuffer,const uint32_t *rgba);

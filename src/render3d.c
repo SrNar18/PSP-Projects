@@ -588,6 +588,26 @@ static void landmarks(void){
 /* v2.9 (Claude): fija el buffer de dibujo del GE. Los dialogos de sceUtility dibujan en el buffer de dibujo ACTUAL del GE,
    no en el que se muestra: si el ultimo game_draw fue al buffer oculto, el dialogo pintaba ahi (invisible) y la copia
    al visible arrastraba los restos de todos los fotogramas (el "slot pegado"). */
+/* v2.9.1: estado interno de sceGu para los dialogos del sistema (ver psp_main.c savedata_dialog). */
+void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
+#ifndef R3_HOST
+    sceGuStart(GU_DIRECT,commands);
+    sceGuDrawBuffer(GU_PSM_8888,(void*)((uintptr_t)draw&0x001fffff),512);sceGuDispBuffer(480,272,(void*)((uintptr_t)disp&0x001fffff),512);
+    sceGuFinish();sceGuSync(0,0);
+#else
+    (void)draw;(void)disp;
+#endif
+}
+void r3_gu_idle(void){
+#ifndef R3_HOST
+    sceGuStart(GU_DIRECT,commands);sceGuFinish();sceGuSync(0,0);
+#endif
+}
+void r3_gu_swap(void){
+#ifndef R3_HOST
+    sceGuSwapBuffers();
+#endif
+}
 void r3_set_draw_buffer(uint32_t *fb){
 #ifndef R3_HOST
     sceGuStart(GU_DIRECT,commands);sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);sceGuFinish();sceGuSync(0,0);

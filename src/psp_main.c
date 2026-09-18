@@ -2,6 +2,7 @@
 #include <pspdisplay.h>
 #include <pspctrl.h>
 #include <pspge.h>
+#include <pspgu.h>
 #include <pspaudiolib.h>
 #include <psppower.h>
 #include <pspiofilemgr.h>
@@ -11,11 +12,11 @@
 #include <stdint.h>
 #include "game.h"
 #include "render3d.h"
-PSP_MODULE_INFO("Narcade",0,2,8);
+PSP_MODULE_INFO("Narcade",0,2,9);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 static volatile int running=1;
-static int exit_cb(int a,int b,void *p){(void)a;(void)b;(void)p;running=0;return 0;}
+static int exit_cb(int a,int b,void *p){(void)a;(void)b;(void)p;running=0;sceKernelExitGame();return 0;} /* v2.9.1: salir siempre, aunque un dialogo este abierto */
 static int callbacks(SceSize n,void *p){(void)n;(void)p;int cb=sceKernelCreateCallback("Narcade exit",exit_cb,0);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
 static void audio_cb(void *buffer,unsigned int frames,void *p){(void)p;game_audio(buffer,frames);}
 
@@ -40,24 +41,28 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  if(!mode){int n=game_export_save(saveBuf,sizeof(saveBuf));if(n<=0)return 0;sd.dataSize=n;
   strcpy(sd.sfoParam.title,"Narcade");game_save_summary(sd.sfoParam.savedataTitle,sizeof(sd.sfoParam.savedataTitle),sd.sfoParam.detail,sizeof(sd.sfoParam.detail));sd.sfoParam.parentalLevel=1;
   sd.icon0FileData.buf=(void*)icon0_png;sd.icon0FileData.bufSize=sd.icon0FileData.size=(unsigned)(icon0_png_end-icon0_png);}
+ /* v2.9.1 (Claude): patron de los ejemplos del SDK (utility/savedata). El dialogo de Sony pinta con transparencia
+    sobre el buffer de DIBUJO que figura en el estado interno de sceGu y solo repinta lo que cambia: hay que
+    (1) fijar draw/disp con sceGuDrawBuffer/sceGuDispBuffer (no las variantes ...List), (2) restaurar el fondo en el
+    buffer de dibujo en cada fotograma, (3) dejar que el dialogo pinte y (4) intercambiar con sceGuSwapBuffers().
+    Restaurar el buffer visible o alternar buffers a mano dejaba el resaltado del slot anterior "pegado". */
+ static uint32_t background[512*272] __attribute__((aligned(64)));
+ game_draw(buffers[*index],512);
+ memcpy(background,buffers[*index],sizeof(background));
  if(sceUtilitySavedataInitStart(&sd)<0)return 0;
- /* Un solo buffer mientras dura el dialogo: el sistema lo dibuja encima del buffer visible, y si
-    alternaramos buffers se veria solo en fotogramas alternos. La pantalla de pausa es estatica. */
- uint32_t *fb=buffers[*index^1],*snap=buffers[*index];
- game_draw(snap,512); /* v2.6: el fondo (escena 3D + pausa) se dibuja UNA vez en el otro buffer y se copia cada fotograma:
-                         redibujar la escena entera hacia el dialogo muy lento */
- memcpy(fb,snap,512*272*4);r3_set_draw_buffer(fb); /* v2.9: el dialogo de Sony dibuja en el buffer de dibujo del GE: que sea el visible */
- sceDisplaySetFrameBuf(fb,512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart(); /* nunca IMMEDIATE: pantalla negra en PSP E-1000 */
- for(;;){
-  /* El dialogo del sistema NO borra lo que dibujo el fotograma anterior: hay que restaurar el fondo cada vez
-     (si no, el resaltado del slot anterior se queda "pegado"). Copia de 557 KB: ~1 ms. */
-  memcpy(fb,snap,512*272*4);r3_set_draw_buffer(fb);
+ int cur=*index;
+ r3_gu_buffers(buffers[cur],buffers[cur^1]);
+ while(running){
+  memcpy(buffers[cur],background,sizeof(background));sceKernelDcacheWritebackAll();
+  r3_gu_idle();
   int st=sceUtilitySavedataGetStatus();
   if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
   else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilitySavedataShutdownStart();
   else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
   sceDisplayWaitVblankStart();
+  r3_gu_swap();cur^=1;
  }
+ *index=cur;
  if(sd.base.result!=0)return 0;
  if(mode)return game_import_save(saveBuf,(int)sd.dataSize);
  return 1;

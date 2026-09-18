@@ -357,3 +357,13 @@ EBOOT actuales se compilaron con `NARCADE_PROFILE`, `NARCADE_SPAWN_X=1250`, `NAR
 - Velocidades a pie 42 / 74 (X mantenida) / 105 (tres X). El trote ya funcionaba (medido 67); se separo mas del paso.
 - Herramienta: `python tools/ppsspp_check.py hold up,cross 2.0` mantiene varios botones; `build/movetest.sh`,
   `build/dlgtest2.sh`, `build/dlgtest3.sh`.
+
+### 15.1 v2.9.1 — dialogos del sistema: patron correcto (verificado en PSP-IA en consola real)
+Los dialogos de sceUtility (guardado, teclado OSK) pintan CON TRANSPARENCIA sobre el buffer de DIBUJO que figura en
+el estado interno de sceGu y solo repintan lo que cambia. Lo unico que funciona limpio en la consola es el patron de
+los ejemplos del SDK: (1) `sceGuDrawBuffer`/`sceGuDispBuffer` (no las variantes `...List`) para fijar draw/disp;
+(2) en cada fotograma restaurar el fondo (memcpy desde RAM) EN EL BUFFER DE DIBUJO y writeback de cache;
+(3) lista GU vacia (Start/Finish/Sync); (4) `Update(1)` tambien en estado INIT; (5) WaitVblank; (6) `sceGuSwapBuffers()`.
+Restaurar el buffer visible, alternar buffers a mano o no restaurar dejaban el slot anterior pegado, medio dialogo
+invisible o parpadeo. Helpers en render3d.c: `r3_gu_buffers`, `r3_gu_idle`, `r3_gu_swap`. `exit_cb` llama a
+`sceKernelExitGame()` directamente para que HOME funcione aunque haya un dialogo abierto.

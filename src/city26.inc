@@ -282,6 +282,7 @@ static void rail_canopy(float x,float z,float width,float length,float y,float r
 static void metro_train(void){
     for(int c=0;c<2;c++){float zc=view->metroZ+(c-.5f)*(CM_TRAIN_CAR+6);
         if(!nearby(CM_METRO_X,zc,700))continue;
+        float previousGround=fixedGround;fixedGround=geo_height(CM_METRO_X,zc);
         float fl=CM_PLAT_H-.6f;
         box(CM_METRO_X,zc,fl,24,CM_TRAIN_CAR,1.2f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso */
         box(CM_METRO_X,zc,fl-3,20,CM_TRAIN_CAR-8,3,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos */
@@ -296,6 +297,8 @@ static void metro_train(void){
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
         }
+        if(!view->inMetro)for(int side=-1;side<=1;side+=2)
+            for(int k=-2;k<2;k++)box(CM_METRO_X+side*11.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
         rail_canopy(CM_METRO_X,zc,25,CM_TRAIN_CAR+1,fl+20,2.8f);
         if(view_distance(CM_METRO_X,zc)<250){
             box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
@@ -309,6 +312,7 @@ static void metro_train(void){
             for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*8,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
             for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */
         }
+        fixedGround=previousGround;
     }
 }
 static void metro(int bz,int far){
@@ -358,6 +362,7 @@ static void diagonal_avenue(void){
     for(int k=0;k<segs;k++){float t0=(float)k/segs,t1=(float)(k+1)/segs;float x0=CM_DIAG_X0+dx*t0,z0=CM_DIAG_Z0+dz*t0,x1=CM_DIAG_X0+dx*t1,z1=CM_DIAG_Z0+dz*t1;
         float mx=(x0+x1)*.5f,mz=(z0+z1)*.5f;
         if(!nearby(mx,mz,700))continue;
+        if(fmodf(z0,320)<96||fmodf(z1,320)<96)continue; /* no median or paint through cross streets */
         quad(GRASS,point(x0-nx*3,.45f,z0-nz*3),point(x1-nx*3,.45f,z1-nz*3),point(x1+nx*3,.45f,z1+nz*3),point(x0+nx*3,.45f,z0+nz*3),COLOR(140,190,120),1,2);
         quad(SIDEWALK,point(x0-nx*3.6f,.4f,z0-nz*3.6f),point(x1-nx*3.6f,.4f,z1-nz*3.6f),point(x1-nx*3,.4f,z1-nz*3),point(x0-nx*3,.4f,z0-nz*3),0xffffffffu,1,1);
         quad(SIDEWALK,point(x0+nx*3,.4f,z0+nz*3),point(x1+nx*3,.4f,z1+nz*3),point(x1+nx*3.6f,.4f,z1+nz*3.6f),point(x0+nx*3.6f,.4f,z0+nz*3.6f),0xffffffffu,1,1);
@@ -384,12 +389,15 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
     ground(ROAD,x,z,320,320,0,white,12);
     int westMerged=(cm_flags(bx-1,bz)&CM_MERGE_E)!=0,northMerged=(cm_flags(bx,bz-1)&CM_MERGE_S)!=0;
     if(!far){
-        int lane=(h>>8)&3;
-        if(lane<3)for(int k=0;k<320;k+=lane==1?320:40){
-            uint32_t lc=lane==2?white:COLOR(244,208,100);float len=lane==1?318:19;
-            if(!northMerged)ground(CAR_PAINT,x+k+1,z+42,len,1.2f,.5f,lc,1);
-            if(!westMerged)ground(CAR_PAINT,x+42,z+k+1,1.2f,len,.5f,lc,1);
-            if(lane==1){if(!northMerged)ground(CAR_PAINT,x+1,z+45,318,1.2f,.5f,lc,1);if(!westMerged)ground(CAR_PAINT,x+45,z+1,1.2f,318,.5f,lc,1);}
+        /* Leave junctions and diagonal crossings clear. Stable dash phase
+           and colour belong to the street, not a random building block. */
+        for(int k=96;k<304;k+=32){
+            if(!northMerged&&cm_diag_dist(x+k+8,z+42)>CM_DIAG_HALF+12&&
+               !((cm_flags(bx,bz-1)|f)&CM_SPLIT_X && k>160&&k<216))
+                ground(CAR_PAINT,x+k,z+42,16,1.2f,.5f,COLOR(244,208,100),1);
+            if(!westMerged&&cm_diag_dist(x+42,z+k+8)>CM_DIAG_HALF+12&&
+               !((cm_flags(bx-1,bz)|f)&CM_SPLIT_Z && k>160&&k<216))
+                ground(CAR_PAINT,x+42,z+k,1.2f,16,.5f,COLOR(244,208,100),1);
         }
         if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+189.4f,z+k,1.2f,19,.5f,white,1);
         if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.5f,white,1);
