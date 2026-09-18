@@ -191,13 +191,12 @@ static int osk(char *result,int cap,unsigned **buffers,int *index){
     p.datacount=1;p.data=&data;
     int rc=sceUtilityOskInitStart(&p);if(rc<0){snprintf(status,sizeof(status),"Teclado del sistema no disponible (%08x): teclado propio.",(unsigned)rc);return simple_kbd(result,cap,buffers,index);}
     /* un solo buffer visible mientras dura el dialogo; el GE dibuja en el */
-    /* Fondo estatico en RAM; cada fotograma: copiarlo al buffer OCULTO, apuntar el GE a el, dejar que el dialogo
-       dibuje encima y mostrarlo en el siguiente vblank (doble buffer como en los ejemplos del SDK). Restaurar el
-       buffer VISIBLE mientras el dialogo aun lo estaba pintando era lo que hacia parpadear el teclado. */
-    static unsigned snap[STRIDE*H] __attribute__((aligned(64)));
-    fb=snap;draw_frame();
-    int back=*index;
-    memcpy(buffers[back],snap,STRIDE*H*4);gu_draw_buffer(buffers[back]);
+    /* El teclado de Sony repinta SOLO lo que cambia entre fotogramas (asume que el buffer persiste). Por eso ni el
+       doble buffer ni restaurar el fondo cada fotograma sirven: se ve medio teclado o parpadea al mover el cursor.
+       Solucion: UN buffer visible, fondo dibujado una vez, GE apuntando a ese buffer, y no tocarlo hasta que cierre. */
+    int back=*index;fb=buffers[back];draw_frame();
+    sceKernelDcacheWritebackAll();gu_draw_buffer(buffers[back]);
+    sceDisplaySetFrameBuf(buffers[back],STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
     int frames=0,seen=0;
     for(;;){
         if(!running)break;
@@ -206,12 +205,12 @@ static int osk(char *result,int cap,unsigned **buffers,int *index){
         if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilityOskUpdate(1);
         else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilityOskShutdownStart();
         else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
-        sceGuSync(0,0);sceDisplayWaitVblankStart();
-        sceDisplaySetFrameBuf(buffers[back],STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
-        back^=1;memcpy(buffers[back],snap,STRIDE*H*4);gu_draw_buffer(buffers[back]);
+        sceDisplayWaitVblankStart();
         /* si en 4 s el teclado del sistema no se ha mostrado, se cierra y se usa el propio (nunca colgarse) */
         if(++frames>240&&!seen){sceUtilityOskShutdownStart();for(int k=0;k<60&&sceUtilityOskGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();fb=buffers[*index];snprintf(status,sizeof(status),"Teclado del sistema no responde: teclado propio.");return simple_kbd(result,cap,buffers,index);}
     }
+    /* al volver, redibujar limpio en el otro buffer para no ver restos del teclado */
+    back^=1;
     *index=back;fb=buffers[*index];
     if(data.result==PSP_UTILITY_OSK_RESULT_CHANGED){utf16_to_utf8(outtext,result,cap);return 1;}
     return 0;
