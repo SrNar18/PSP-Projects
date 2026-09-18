@@ -1,0 +1,28 @@
+NARCADE 3D v2.8 - made by Naresz
+
+Instalacion ISO
+1. Copia Narcade_v2.8.iso a la carpeta ISO de la Memory Stick.
+2. Abre el juego desde Juegos > Memory Stick.
+
+Cambios principales
+- Guardar y Continuar abren el panel oficial de Sony para las cuatro ranuras.
+- Camara mas estable al girar y correr hacia los lados.
+- Caminar sin X, trotar manteniendo X y correr pulsando X repetidamente.
+- Estamina con agotamiento y recuperacion.
+- Choques frontales con parada o rebote segun la fuerza del impacto.
+- Nueva portada animada basada en la ilustracion nocturna de Medellin.
+- Ambiente urbano durante la exploracion, mezclado con la radio de los carros.
+- Texturas urbanas, cielo, sol, nubes, luces, sombras, Metro y personajes mejorados.
+
+Controles principales
+- Analogico/cruceta: mover o girar.
+- X mantenida a pie: trotar.
+- X repetida a pie: correr.
+- X en carro: acelerar.
+- Cuadrado: interactuar a pie / frenar o reversa en carro.
+- Triangulo: entrar o salir del carro.
+- Circulo: mensajes.
+- Select: distancia de camara.
+- Start: pausa, mapa, mensajes, guardar y salir.
+
+La ISO fue compilada para PSP de 32 MB y firmware 6.00. Tambien puede abrirse en PPSSPP.

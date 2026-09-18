@@ -313,3 +313,31 @@ EBOOT actuales se compilaron con `NARCADE_PROFILE`, `NARCADE_SPAWN_X=1250`, `NAR
 
 > **Continuación inmediata:** leer la sección 13 de este documento. Contiene la transferencia completa del trabajo
 > v2.8 interrumpido el 18-sep-2026, el estado real de pruebas y la advertencia sobre los binarios de diagnóstico.
+
+## 14. v2.8 terminada — guardado Sony, control, choques, portada y ambiente (18-sep-2026)
+
+- Se eliminó por completo la pantalla propia de cuatro ranuras. Continuar usa
+  `PSP_UTILITY_SAVEDATA_LISTLOAD` y Guardar/Guardar y salir usan
+  `PSP_UTILITY_SAVEDATA_LISTSAVE`, con `saveNameList` de cuatro entradas. La selección,
+  sobrescritura y cancelación se realizan en el panel oficial de Sony. Cancelar una carga
+  conserva el título; cancelar un guardado conserva la pausa.
+- La referencia del joystick queda anclada durante cada gesto y solo se recalcula al soltar
+  o cambiar claramente su dirección. Esto evita que mantener izquierda/derecha durante una
+  carrera describa un círculo por la rotación simultánea de la cámara.
+- X mantenida trota; tres pulsaciones repetidas corren. La ventana tolera pulsaciones entre
+  0,035 y 0,60 s y mantiene la carrera 0,70 s entre pulsaciones. Se conserva estamina,
+  agotamiento y recuperación completa antes de volver a correr.
+- Los choques frontales contra un carro estacionado detienen el vehículo a poca velocidad y
+  aplican un rebote limitado y progresivo en impactos fuertes. El roce lateral conserva el
+  movimiento tangencial y la separación geométrica sigue usando hasta ocho pasadas.
+- La portada del XMB (`PIC1.png`) se usa ahora dentro del título mediante una versión indexada
+  de 240x136 escalada a pantalla. Tiene exposición, reflejos y neón animados en tiempo real,
+  manteniendo un coste pequeño en memoria y evitando un decodificador de vídeo.
+- Durante el mundo se mezcla ambiente urbano estéreo procedural: aire de calle, tráfico grave
+  y bocinas lejanas. Sigue sonando bajo la radio del coche y no añade una pista grande a la ISO.
+- Pruebas superadas: campaña completa (146 objetivos), menús y solicitudes nativas de guardado,
+  marcha/trote/carrera/estamina a 30 y 60 Hz, movimiento lateral, choques, 896 escenas de cámara,
+  512 combinaciones ciudad/Metro/día-noche, 12 plantas elevadas, 42 peatones y animación separada
+  de ambas piernas. Compilación final de producción sin `NARCADE_PROFILE`, spawn ni hora forzada.
+- ISO final: 12.916.736 bytes. SHA-256:
+  `c8fad9814a2a9ec6e186df5ac6c2799d38b74f72dd122b0aed1b2237759b7236`.

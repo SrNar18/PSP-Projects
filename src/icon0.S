@@ -6,4 +6,6 @@ icon0_png:
 .incbin "assets/ICON0.png"
 .global icon0_png_end
 icon0_png_end:
+#ifndef _WIN32
 .section .note.GNU-stack,"",@progbits
+#endif

@@ -12,6 +12,7 @@ static void require_separated(void){
  if(car_overlap(&g.cars[0],&g.cars[1],&nx,&ny,&d)&&d>=.01f)fprintf(stderr,"Overlap %.3f at (%.2f %.2f) (%.2f %.2f), free %d %d\n",d,g.cars[0].x,g.cars[0].y,g.cars[1].x,g.cars[1].y,car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y),car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y));
  assert(!car_overlap(&g.cars[0],&g.cars[1],&nx,&ny,&d)||d<.01f);
  if(!car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y))fprintf(stderr,"Blocked test car at %.2f %.2f angle %.2f\n",g.cars[0].x,g.cars[0].y,g.cars[0].a);
+ if(!car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y))fprintf(stderr,"Blocked second test car at %.2f %.2f angle %.2f\n",g.cars[1].x,g.cars[1].y,g.cars[1].a);
  assert(car_free_at(&g.cars[0],g.cars[0].x,g.cars[0].y));
  assert(car_free_at(&g.cars[1],g.cars[1].x,g.cars[1].y));
 }
@@ -31,8 +32,16 @@ int main(void){
  g.screen=WORLD;tap(B_START);tap(B_L);assert(g.pauseTab==3);tap(B_CROSS);assert(g.screen==TITLE&&g.menu==0);
  puts("PASS: Start map, messages, save, return to title, pause/resume minigame.");
 
- isolated_cars();g.cars[0]=(Car){150,42,0,100,100,0,0,0};g.cars[1]=(Car){175,42,0,0,100,0,1,0};
+ game_init();game_set_native_savedata(1);tap(B_CROSS);assert(game_take_request()==2&&g.screen==TITLE);
+ fresh_game();finishdialog();tap(B_START);tap(B_R);tap(B_R);tap(B_CROSS);assert(game_take_request()==1&&g.screen==PAUSE);
+ game_request_result(1,0);assert(g.screen==PAUSE);tap(B_R);tap(B_CROSS);assert(game_take_request()==3);
+ game_request_result(3,0);assert(g.screen==PAUSE);
+ puts("PASS: Continue, save and save/exit request Sony savedata directly; cancel preserves the correct screen.");
+
+ isolated_cars();g.cars[0]=(Car){700,682,0,40,100,0,0,0};g.cars[1]=g.cars[0];g.cars[1].speed=0;g.cars[1].parked=1;car_push(&g.cars[0],30,0,&g.cars[1].x,&g.cars[1].y);
  g.car=0;g.hitCD=10;separate_cars();require_separated();assert(g.x==g.cars[0].x);
+ assert(g.cars[0].speed<1&&g.cars[0].speed>-1);
+ g.cars[0]=(Car){700,682,0,200,100,0,0,0};g.cars[1]=g.cars[0];g.cars[1].speed=0;g.cars[1].parked=1;car_push(&g.cars[0],30,0,&g.cars[1].x,&g.cars[1].y);separate_cars();require_separated();assert(g.cars[0].speed<0);
  /* Identical centers must still produce a deterministic separation axis. */
  g.cars[0].x=g.cars[1].x=200;g.cars[0].y=g.cars[1].y=42;separate_cars();require_separated();
  /* One car pinned against the building: all separation goes to free car. */

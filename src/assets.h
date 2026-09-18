@@ -5,3 +5,5 @@ static const int track_length[] = {481090,450382,516292,432000};
 static const char *track_names[] = {"Ladera FM / Concreto y cielo","Rio 90.7 / Puente de noche","Sur Beats / Ventanas abiertas","Horizonte / Vuelta a casa"};
 extern const unsigned char signature_data[];
 extern const short radio_data[];
+extern const unsigned char title_bg_indices[];
+extern const unsigned short title_bg_palette[];

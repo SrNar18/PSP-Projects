@@ -32,7 +32,7 @@ typedef struct {int kind,loc,seed,par; const char *text;} Step;
 typedef struct {const char *title,*who,*intro,*outro;int count,reward;Step steps[6];} Mission;
 #include "story.h"
 #include "assets.h"
-enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE,SLOTS};
+enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE};
 typedef struct {float x,y,a,speed,hp;int type,parked,police;} Car;
 typedef struct {float x,y,v,phase;int vertical;} Ped;
 typedef struct {
@@ -61,7 +61,7 @@ static uint32_t *fb;static int pitch;
 #ifdef NARCADE_3D
 static uint32_t *renderTarget;
 #endif
-static volatile int audioStation=0,audioEnabled=0;
+static volatile int audioStation=0,audioEnabled=0,audioAmbient=0;
 static unsigned audioPos=0;static int audioLast=-1;
 static uint32_t rng=137;
 static uint32_t random_u(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
@@ -220,8 +220,11 @@ static void separate_cars(void){
    /* Resolve the inward normal velocity only. Side rubbing and reversing
       away must retain their tangential/escaping motion. */
    if(pass==0&&closing>0){
-    float den=an*an+bn*bn;
-    if(den>.001f){float impulse=closing/den;a->speed-=impulse*an;b->speed+=impulse*bn;}
+    /* Low-speed contact stops against a parked car; hard impacts add a
+       controlled rebound. Parked vehicles act as immovable obstacles. */
+    float restitution=clampf((impact-48.f)/210.f,0,.42f);
+    float den=(a->parked?0:an*an)+(b->parked?0:bn*bn);
+    if(den>.001f){float impulse=closing*(1+restitution)/den;if(!a->parked)a->speed-=impulse*an;if(!b->parked)b->speed+=impulse*bn;}
     if(a->parked)a->speed=0;if(b->parked)b->speed=0;
     if(i!=g.car)g.trafficYield[i]=.45f;if(j!=g.car)g.trafficYield[j]=.45f;
    }
@@ -292,27 +295,13 @@ int game_save(void){
 }
 /* v2.2 (Claude): guardado nativo de PSP. El bucle principal consulta game_take_request() y abre el
    dialogo de la Memory Stick (sceUtilitySavedata); los datos van y vienen con export/import. */
-static int nativeSave=0,saveRequest=0,saveSlot=0;
-/* v2.6.2: menu de ranuras propio (rapido) + AUTOSAVE/AUTOLOAD del sistema sin lista. El lector de ranuras lo pone
-   psp_main (lee PARAM.SFO de cada carpeta). */
-static int (*slotReader)(int slot,char *title,int titlecap,char *detail,int detailcap)=0;
-static char slotTitle[4][64],slotDetail[4][128];static int slotUsed[4],slotMode=0,slotSel=0,slotBack=TITLE;
-void game_set_slot_reader(int (*fn)(int,char*,int,char*,int)){slotReader=fn;}
-static int open_slots(int mode){
- int any=0;
- for(int i=0;i<4;i++){slotUsed[i]=slotReader?slotReader(i,slotTitle[i],64,slotDetail[i],128):0;if(!slotUsed[i]){strcpy(slotTitle[i],"Ranura vacia");slotDetail[i][0]=0;}else any=1;}
- if(mode==2&&!any)return 0; /* nada que cargar */
- slotMode=mode;slotBack=g.screen;slotSel=0;
- if(mode==2){for(int i=0;i<4;i++)if(slotUsed[i]){slotSel=i;break;}}
- g.screen=SLOTS;return 1;
-}
+static int nativeSave=0,saveRequest=0;
 void game_set_native_savedata(int on){nativeSave=on;}
 int game_take_request(void){int r=saveRequest;saveRequest=0;return r;}
-int game_request_slot(void){return saveSlot;}
 void game_request_result(int req,int ok){
  if(req==1)notice(ok?"Partida guardada en la Memory Stick.":"Guardado cancelado.");
  else if(req==3){if(ok){game_save();g.screen=TITLE;g.menu=0;}else notice("Guardado cancelado. Sigues en la partida.");}
- else if(req==2&&!ok)game_continue();}
+ else if(req==2&&!ok){g.screen=TITLE;g.menu=0;notice("Carga cancelada.");}}
 static void fill_save(Save *s){memset(s,0,sizeof(*s));s->magic=0x4e415243;s->version=1;s->mission=g.mission;s->step=g.step;s->cash=g.cash;s->reputation=g.reputation;s->ending=g.ending;s->x=g.x;s->y=g.y;s->health=g.health;s->playtime=g.playtime;s->caches=g.caches;s->jobs=g.jobs;s->station=g.station;s->check=savecheck(s);
  if(s->mission<36&&s->step>=missions[s->mission].count){s->mission++;s->step=0;s->check=savecheck(s);}}
 int game_export_save(void *buf,int cap){if(!g.active||cap<(int)sizeof(Save))return 0;fill_save((Save*)buf);return sizeof(Save);}
@@ -439,11 +428,11 @@ static void foot_pace(int moving,float dt){
  g.tapAge+=dt;g.sprintTime=fmaxf(0,g.sprintTime-dt);
  if(!moving){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;return;}
  if(pressed(B_CROSS)){
-  if(g.tapAge>=.07f&&g.tapAge<=.45f)g.runTaps++;else g.runTaps=1;
+  if(g.tapAge>=.035f&&g.tapAge<=.60f)g.runTaps++;else g.runTaps=1;
   g.runTaps=g.runTaps>3?3:g.runTaps;g.tapAge=0;
-  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=.45f;
+  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=.70f;
  }
- if(g.tapAge>.45f)g.runTaps=0;
+ if(g.tapAge>.60f)g.runTaps=0;
  float wanted=g.exhausted?68.f:g.sprintTime>0?100.f:held(B_CROSS)?68.f:42.f;
  g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
 }
@@ -474,7 +463,10 @@ static void world_tick(float ax,float ay,float dt){
   float sx=dx,sy=dy;
   if(sx*sx+sy*sy>.04f){
    float intent=atan2f(sx,-sy);
-   g.inputYaw=g.viewYaw;g.stickAngle=intent;g.stickActive=1; /* v2.5 (Claude): siempre relativo a la camara actual; la camara sigue despacio (camera_follow) */
+   /* Keep the camera basis fixed during one stick gesture. Reset it only
+      when the player releases or deliberately changes stick direction. */
+   if(!g.stickActive||fabsf(angle_delta(intent,g.stickAngle))>.55f){g.inputYaw=g.viewYaw;g.stickAngle=intent;}
+   g.stickActive=1;
   }
   else{g.stickActive=0;sx=sy=0;}
   dx=-sinf(g.inputYaw)*sx-cosf(g.inputYaw)*sy;dy=cosf(g.inputYaw)*sx-sinf(g.inputYaw)*sy;
@@ -562,7 +554,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
- if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(!nativeSave||!open_slots(2))game_continue();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
+ if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
  else if(g.screen==WORLD){g.playtime+=dt;world_tick(ax,ay,dt);}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
@@ -577,19 +569,13 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   else if(g.pauseTab==1)g.journalPage=wrapi(g.journalPage+delta,3);
   else if(g.pauseTab==2)g.menu=wrapi(g.menu+delta,2);
   if(pressed(B_CROSS)){
-   if(g.pauseTab==2&&g.menu==0){if(nativeSave&&g.active)open_slots(1);else notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");}
+   if(g.pauseTab==2&&g.menu==0){if(nativeSave&&g.active)saveRequest=1;else notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");}
    else if(g.pauseTab==2&&g.menu==1)g.screen=g.pauseBack;
-   else if(g.pauseTab==3){if(nativeSave&&g.active)open_slots(3);else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
-  }
- }else if(g.screen==SLOTS){
-  int d=pressed(B_DOWN)-pressed(B_UP);if(d)slotSel=wrapi(slotSel+d,4);
-  if(pressed(B_CIRCLE)){g.screen=slotBack;if(slotBack==TITLE)g.menu=0;}
-  else if(pressed(B_CROSS)){
-   if(slotMode==2&&!slotUsed[slotSel])notice("Esa ranura esta vacia.");
-   else{saveSlot=slotSel;saveRequest=slotMode;g.screen=slotBack;} /* el bucle principal ejecuta AUTOSAVE/AUTOLOAD */
+   else if(g.pauseTab==3){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
   }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
  int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE)||rhythm;
+ audioAmbient=g.screen==WORLD;
  if(rhythm)audioPos=(unsigned)(g.p.t*44100)%(track_length[3]*2);
 }
 
@@ -741,17 +727,19 @@ static void hud(void){
 #endif
 }
 static void signature(int x,int y){for(int yy=0;yy<74;yy++)for(int xx=0;xx<180;xx++){int a=signature_data[yy*180+xx];if(a>60)rect(x+xx,y+yy,1,1,a>160?LIME:MUTED);}}
+static uint32_t title_color(unsigned short c,int shade){int r=(c&31)<<3,g=((c>>5)&63)<<2,b=((c>>11)&31)<<3;r=r*shade/255;g=g*shade/255;b=b*shade/255;return RGB(r,g,b);}
 static void title_draw(void){
- rect(0,0,W,H,INK);
- for(int x=0;x<W;x++){int y=79+(int)(sin(x*.017)*19+cos(x*.038)*13);rect(x,y,1,H-y,RGB(28,57,61));int y2=119+(int)(sin(x*.023+2)*18);rect(x,y2,1,H-y2,RGB(37,71,70));}
- for(int i=0;i<24;i++){int x=i*22-5,y=128+(i*31)%65;rect(x,y,19,150,RGB(20,38,44));for(int yy=y+6;yy<236;yy+=13)for(int xx=x+4;xx<x+17;xx+=7)if((xx+yy+i)%3)rect(xx,yy,3,4,(xx+i)%2?GOLD:RGB(111,153,135));}
- line(0,79,480,142,RGB(95,125,124));for(int i=0;i<3;i++){int x=75+i*164+(int)(g.clock*5)%164;int y=79+x*63/480;rect(x,y,1,8,MUTED);rect(x-7,y+8,15,11,TEAL);rect(x-5,y+10,4,4,INK);rect(x+1,y+10,4,4,INK);}
- label(24,16,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
- text(22,36,"NARCADE",INK,6);text(18,31,"NARCADE",WHITE,6);
- rect(21,98,249,3,LIME);label(23,110,"NARCADE 3D / PSP / v2.8",WHITE);
- rect(14,169,222,76,INK);text(28,181,g.menu==0?"> CONTINUAR / EMPEZAR":"  CONTINUAR / EMPEZAR",g.menu==0?LIME:MUTED,1);text(28,204,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(28,226,"X confirmar",TEAL,1);
- rect(288,165,178,80,INK);text(312,176,"made by",WHITE,1);signature(287,184);
- footer("36 misiones  /  7 minijuegos  /  radio original");
+ /* The XMB artwork becomes the actual title scene. A slow exposure pulse,
+    moving reflections and neon shimmer give it life without video decoding. */
+ int pulse=224+(int)(sinf(g.clock*.65f)*12);for(int y=0;y<H;y++)for(int x=0;x<W;x++){unsigned short c=title_bg_palette[title_bg_indices[(y>>1)*240+(x>>1)]];fb[y*pitch+x]=title_color(c,pulse);}
+ for(int x=-80+(int)fmodf(g.clock*19,640);x<W;x+=160){for(int i=0;i<36;i++)px(x+i,239-i/3,RGB(35,104+i*2,145+i*2));}
+ for(int i=0;i<3;i++){int r=3+i*4+(int)(2*sinf(g.clock*2+i));outline(72-r,67-r,r*2,r*2,i==0?LIME:TEAL);}
+ rect(0,0,W,29,RGB(7,12,20));label(16,8,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
+ text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.8",WHITE);
+ rect(12,166,231,78,RGB(7,12,20));outline(12,166,231,78,RGB(49,102,116));
+ text(25,178,g.menu==0?"> CONTINUAR PARTIDA":"  CONTINUAR PARTIDA",g.menu==0?LIME:MUTED,1);text(25,202,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(25,226,"X confirmar",TEAL,1);
+ rect(300,181,169,63,RGB(7,12,20));text(321,187,"made by",WHITE,1);signature(292,190);
+ footer("36 misiones / Medellin 3D / radio y ambiente urbano");
 }
 static void mini_draw(void){
  Puzzle *p=&g.p;char b[180];rect(0,0,W,H,INK);header("NARCADE / INTERACCION",puzzleNames[p->kind]);
@@ -822,16 +810,6 @@ static void journal_draw(void){
  }
  footer("L/R paginas  O volver");
 }
-static void slots_draw(void){
- rect(0,0,W,H,INK);header(slotMode==2?"CARGAR PARTIDA":"GUARDAR PARTIDA","Memory Stick  /  4 ranuras");
- for(int i=0;i<4;i++){int y=62+i*44;int sel=i==slotSel;
-  rect(16,y,448,38,sel?RGB(36,58,58):PANEL);if(sel)rect(16,y,4,38,LIME);
-  char b[24];snprintf(b,sizeof(b),"RANURA %d",i+1);text(30,y+5,b,sel?LIME:TEAL,1);
-  text(120,y+5,slotTitle[i],slotUsed[i]?WHITE:MUTED,1);
-  if(slotUsed[i]){char d[50];snprintf(d,sizeof(d),"%.46s",slotDetail[i]);text(120,y+21,d,MUTED,1);}
- }
- footer(slotMode==2?"ARRIBA/ABAJO elegir  X cargar  O volver":"ARRIBA/ABAJO elegir  X guardar (sobrescribe)  O volver");
-}
 static void pause_draw(void){
  const char *tabs[]={"MAPA","MENSAJES","PARTIDA","SALIR"};char b[100];
  if(g.pauseTab==0)map_draw();
@@ -855,7 +833,7 @@ static void pause_draw(void){
  footer(g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
 }
 static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
- if(g.screen==TITLE){title_draw();return;}if(g.screen==SLOTS){slots_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
+ if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
@@ -891,5 +869,15 @@ void game_draw(uint32_t *pixels,int stride){
 }
 void game_audio(short *stereo,unsigned frames){
  int station=audioStation;if(station>3)station=0;if(station!=audioLast){audioPos=0;audioLast=station;}
- for(unsigned i=0;i<frames;i++){short s=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;stereo[i*2]=s;stereo[i*2+1]=s;audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
+ static unsigned cityPhase=0,cityNoise=0x61289u;static int air=0;
+ for(unsigned i=0;i<frames;i++){
+  int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;
+  if(audioEnabled){audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
+  cityNoise=cityNoise*1664525u+1013904223u;int raw=(int)((cityNoise>>20)&4095)-2048;air+=(raw-air)>>7;
+  cityPhase++;int traffic=((int)((cityPhase*29u)&65535)-32768);traffic=32768-abs(traffic);
+  int hornPhase=cityPhase%(44100u*17u);int horn=(hornPhase<18000)?(((int)((hornPhase*503u)&65535)-32768)/20):0;
+  int ambience=audioAmbient?(air*2+traffic/34+horn):0;
+  int l=music+ambience,r=music+ambience+(audioAmbient?air/3:0);l=l<-32768?-32768:l>32767?32767:l;r=r<-32768?-32768:r>32767?32767:r;
+  stereo[i*2]=(short)l;stereo[i*2+1]=(short)r;
+ }
 }

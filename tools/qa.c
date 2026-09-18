@@ -33,7 +33,7 @@ int main(void){
  g.cars[1].speed=0;tap(B_TRI);assert(g.car==-1);
  // Round trip and recovery from a corrupted primary save.
  g.cash=1234;assert(game_save());g.cash=2345;assert(game_save());FILE *f=fopen(g.savepath,"wb");fputs("damaged",f);fclose(f);g.cash=0;assert(load_game());assert(g.cash==1234);
- g.screen=WORLD;tap(B_SELECT);assert(g.screen==MAP);snap("04-map");tap(B_SELECT);
+ g.screen=WORLD;tap(B_START);assert(g.screen==PAUSE&&g.pauseTab==0);snap("04-map");tap(B_START);
  int total=0,miniCounts[13]={0};
  for(int m=0;m<36;m++){
   g.mission=m;g.step=0;g.screen=WORLD;g.health=100;g.heat=0;g.side=0;g.raceTime=0;

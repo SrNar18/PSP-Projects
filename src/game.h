@@ -11,8 +11,6 @@ void game_set_save_path(const char *path);
 /* Guardado nativo PSP (dialogo de la Memory Stick). 1=guardar, 2=cargar, 3=guardar y salir al titulo. */
 void game_set_native_savedata(int on);
 int game_take_request(void);
-int game_request_slot(void); /* v2.6.2: ranura elegida en el menu propio */
-void game_set_slot_reader(int (*fn)(int slot,char *title,int titlecap,char *detail,int detailcap));
 void game_request_result(int req,int ok);
 int game_export_save(void *buf,int cap);
 int game_import_save(const void *buf,int len);
