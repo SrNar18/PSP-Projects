@@ -46,12 +46,12 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  uint32_t *fb=buffers[*index^1],*snap=buffers[*index];
  game_draw(snap,512); /* v2.6: el fondo (escena 3D + pausa) se dibuja UNA vez en el otro buffer y se copia cada fotograma:
                          redibujar la escena entera hacia el dialogo muy lento */
- memcpy(fb,snap,512*272*4);
+ memcpy(fb,snap,512*272*4);r3_set_draw_buffer(fb); /* v2.9: el dialogo de Sony dibuja en el buffer de dibujo del GE: que sea el visible */
  sceDisplaySetFrameBuf(fb,512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart(); /* nunca IMMEDIATE: pantalla negra en PSP E-1000 */
  for(;;){
   /* El dialogo del sistema NO borra lo que dibujo el fotograma anterior: hay que restaurar el fondo cada vez
      (si no, el resaltado del slot anterior se queda "pegado"). Copia de 557 KB: ~1 ms. */
-  memcpy(fb,snap,512*272*4);
+  memcpy(fb,snap,512*272*4);r3_set_draw_buffer(fb);
   int st=sceUtilitySavedataGetStatus();
   if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
   else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilitySavedataShutdownStart();

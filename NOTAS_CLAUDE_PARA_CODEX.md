@@ -341,3 +341,19 @@ EBOOT actuales se compilaron con `NARCADE_PROFILE`, `NARCADE_SPAWN_X=1250`, `NAR
   de ambas piernas. Compilación final de producción sin `NARCADE_PROFILE`, spawn ni hora forzada.
 - ISO final: 12.916.736 bytes. SHA-256:
   `c8fad9814a2a9ec6e186df5ac6c2799d38b74f72dd122b0aed1b2237759b7236`.
+
+## 15. v2.9 (18-sep, Claude) — dialogo Sony sin restos, giro continuo, direccion progresiva
+- **Dialogo de guardado de Sony (LISTSAVE/LISTLOAD) "con el slot anterior pegado" / invisible**: causa real encontrada.
+  Los dialogos de sceUtility dibujan en el **buffer de dibujo actual del GE**, no en el que se muestra. Tras
+  `game_draw(snap)` el GE apuntaba al buffer oculto: el dialogo pintaba ahi, la copia al visible arrastraba los restos
+  acumulados (o, con el titulo de Codex, el dialogo era invisible y el juego parecia colgado). Arreglo:
+  `r3_set_draw_buffer(fb)` (render3d.c) antes de cada `sceUtilitySavedataUpdate`, con el fondo restaurado por memcpy.
+  El usuario QUIERE el dialogo de Sony: no volver al menu propio.
+- **Control a pie**: direccion del stick relativa a la camara actual en cada fotograma (sin anclaje por gesto) +
+  rumbo suavizado `g.moveYaw` con giro limitado (7.5/5.5/4.2 rad/s andando/trotando/corriendo; media vuelta = giro
+  seco). Mantener izquierda/derecha = curva continua. Camara `camera_follow` mas agil (omega 5.5, 3.0 rad/s; en coche
+  6.5 y 3.6 rad/s: antes la camara era mas lenta que el coche y el giro parecia "trabarse").
+- **Coche**: direccion progresiva `g.steerSmooth` (sin saltos), agarre ligeramente menor a >140 de velocidad.
+- Velocidades a pie 42 / 74 (X mantenida) / 105 (tres X). El trote ya funcionaba (medido 67); se separo mas del paso.
+- Herramienta: `python tools/ppsspp_check.py hold up,cross 2.0` mantiene varios botones; `build/movetest.sh`,
+  `build/dlgtest2.sh`, `build/dlgtest3.sh`.

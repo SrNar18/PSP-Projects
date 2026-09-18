@@ -52,7 +52,7 @@ static struct {
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT];
  int pauseTab,pauseBack;
- float lift,metroZ,metroWait;int metroDir,inMetro;int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
+ float lift,metroZ,metroWait;int metroDir,inMetro;float moveYaw,steerSmooth;int moveActive; /* v2.9: rumbo suavizado a pie */int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
  Car cars[CAR_COUNT]; Ped peds[42]; Puzzle p;
@@ -132,10 +132,11 @@ static int foot_free(float x,float y){
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
 static void camera_follow(float target,float dt){
  /* Critically damped heading in rendered world space, bounded turn speed. */
- float d=angle_delta(g.viewYaw,target),omega=4.5f,decay=expf(-omega*dt),v=g.cameraVelocity; /* v2.5: seguimiento suave (antes 8) */
+ float omega=g.car>=0?6.5f:5.5f; /* v2.9: mas agil (antes 4.5); en coche aun mas para no quedarse atras al girar */
+ float d=angle_delta(g.viewYaw,target),decay=expf(-omega*dt),v=g.cameraVelocity;
  float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
  g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
- float limit=2.1f*dt;
+ float limit=(g.car>=0?3.6f:3.0f)*dt; /* v2.9: antes 2.1 rad/s, mas lento que el giro del coche */
  if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
  g.viewYaw+=change;
 }
@@ -433,7 +434,7 @@ static void foot_pace(int moving,float dt){
   if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=.70f;
  }
  if(g.tapAge>.60f)g.runTaps=0;
- float wanted=g.exhausted?68.f:g.sprintTime>0?100.f:held(B_CROSS)?68.f:42.f;
+ float wanted=g.exhausted?74.f:g.sprintTime>0?105.f:held(B_CROSS)?74.f:42.f; /* v2.9: trote mas distinto del paso */
  g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
 }
 static void stamina_tick(float dt){
@@ -460,18 +461,22 @@ static void world_tick(float ax,float ay,float dt){
 #ifdef NARCADE_3D
   /* Anchor input direction for this stick gesture. Following the camera with
      an unanchored lateral input would turn a held direction into endless circles. */
+  /* v2.9 (Claude): la direccion del stick es relativa a la camara ACTUAL en cada fotograma (como en cualquier juego
+     en tercera persona): mantener izquierda/derecha describe una curva continua, no un tramo recto y luego nada.
+     Lo que evita las "vueltas locas" es que el RUMBO del personaje gira con una velocidad limitada (g.moveYaw) y la
+     camara lo sigue con retardo; el anclaje anterior hacia que al girar en carrera el personaje no respondiera. */
   float sx=dx,sy=dy;
-  if(sx*sx+sy*sy>.04f){
-   float intent=atan2f(sx,-sy);
-   /* Keep the camera basis fixed during one stick gesture. Reset it only
-      when the player releases or deliberately changes stick direction. */
-   if(!g.stickActive||fabsf(angle_delta(intent,g.stickAngle))>.55f){g.inputYaw=g.viewYaw;g.stickAngle=intent;}
-   g.stickActive=1;
-  }
-  else{g.stickActive=0;sx=sy=0;}
-  dx=-sinf(g.inputYaw)*sx-cosf(g.inputYaw)*sy;dy=cosf(g.inputYaw)*sx-sinf(g.inputYaw)*sy;
-  float desiredYaw=atan2f(dy,dx),inputLength=sqrtf(dx*dx+dy*dy);
-  dx/=fmaxf(1,inputLength);dy/=fmaxf(1,inputLength);
+  if(sx*sx+sy*sy>.04f){g.stickActive=1;}else{g.stickActive=0;sx=sy=0;}
+  dx=-sinf(g.viewYaw)*sx-cosf(g.viewYaw)*sy;dy=cosf(g.viewYaw)*sx-sinf(g.viewYaw)*sy;
+  float inputLength=sqrtf(dx*dx+dy*dy);dx/=fmaxf(1,inputLength);dy/=fmaxf(1,inputLength);
+  if(inputLength>.2f){
+   float wantYaw=atan2f(dy,dx);
+   if(!g.moveActive){g.moveYaw=wantYaw;g.moveActive=1;}                 /* arranque: rumbo inmediato */
+   else{float turn=(g.footSpeed>80?4.2f:g.footSpeed>55?5.5f:7.5f)*dt;   /* corriendo gira mas ancho */
+    float d=angle_delta(wantYaw,g.moveYaw);if(fabsf(d)>PI*.75f)g.moveYaw=wantYaw;else g.moveYaw+=clampf(d,-turn,turn);} /* media vuelta: giro seco */
+   dx=cosf(g.moveYaw)*inputLength;dy=sinf(g.moveYaw)*inputLength;
+  }else g.moveActive=0;
+  float desiredYaw=g.moveYaw;
   float gx,gz,lx,lz;geo_project(g.x,g.y,&gx,&gz);geo_unproject(gx+dx,gz+dy,&lx,&lz);dx=lx-g.x;dy=lz-g.y;
 #endif
   float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;foot_pace(g.walking,dt);if(n>.1f){
@@ -494,7 +499,9 @@ static void world_tick(float ax,float ay,float dt){
   Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
-  c->a+=steer*dt*(1.4f+fabsf(c->speed)/130)*(c->speed<0?-1:1)*clampf(fabsf(c->speed)/25,0,1);
+  g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*9)); /* v2.9: direccion progresiva (sin saltos al soltar/pulsar) */
+  float grip=clampf(fabsf(c->speed)/25,0,1)*(1.f-clampf((fabsf(c->speed)-140)/160,0,.35f)); /* a mucha velocidad gira algo menos */
+  c->a+=g.steerSmooth*dt*(1.6f+fabsf(c->speed)/120)*(c->speed<0?-1:1)*grip;
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
   else if(car_free_at(c,xx,c->y)){c->x=xx;c->speed*=.85f;}

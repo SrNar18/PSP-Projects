@@ -46,4 +46,9 @@ if __name__=='__main__':
         p.screenshot('01-title');p.tap('cross');time.sleep(1);p.screenshot('02-story');p.tap('cross');time.sleep(1);p.screenshot('03-world')
     elif len(sys.argv)>1 and sys.argv[1]=='tap':
         p.tap(sys.argv[2],int(sys.argv[3]) if len(sys.argv)>3 else 3);p.screenshot('latest')
+    # v2.9: 'hold up,cross 2.0' mantiene varios botones a la vez durante N segundos (input.buttons.send)
+    elif len(sys.argv)>3 and sys.argv[1]=='hold':
+        names=sys.argv[2].split(',');secs=float(sys.argv[3])
+        p.call('input.buttons.send',buttons={n:True for n in names});time.sleep(secs)
+        p.call('input.buttons.send',buttons={n:False for n in names})
     else:p.screenshot(sys.argv[1] if len(sys.argv)>1 else 'latest')

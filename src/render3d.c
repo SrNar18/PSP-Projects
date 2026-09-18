@@ -585,6 +585,16 @@ static void landmarks(void){
         box(x,z,35+sinf(view->time*3)*3,5,5,5,view->time,CAR_PAINT,CAR_PAINT,COLOR(239,255,94));
     }
 }
+/* v2.9 (Claude): fija el buffer de dibujo del GE. Los dialogos de sceUtility dibujan en el buffer de dibujo ACTUAL del GE,
+   no en el que se muestra: si el ultimo game_draw fue al buffer oculto, el dialogo pintaba ahi (invisible) y la copia
+   al visible arrastraba los restos de todos los fotogramas (el "slot pegado"). */
+void r3_set_draw_buffer(uint32_t *fb){
+#ifndef R3_HOST
+    sceGuStart(GU_DIRECT,commands);sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);sceGuFinish();sceGuSync(0,0);
+#else
+    (void)fb;
+#endif
+}
 int r3_overflow(void){return overflow;}
 int r3_used(int m){return m<MAT_COUNT?used[m]:0;}
 void r3_init(void){
