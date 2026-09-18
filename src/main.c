@@ -107,9 +107,8 @@ static void draw_chat(void){
     rect(0,H-22,W,22,INK);text(12,H-17,"X escribir   O borrar   SELECT modo   START salir",MUTED);
 }
 static void draw_frame(void){
-    if(mode==1){draw_chat();return;}
     rect(0,0,W,H,BG);
-    rect(0,0,W,30,INK);text(12,8,"PSP-IA",ACC);text(80,8,"conocimiento offline",MUTED);
+    rect(0,0,W,30,INK);text(12,8,"PSP-IA",ACC);text(80,8,mode==1?"modo charla":"conocimiento offline",mode==1?ACC2:MUTED);
     char b[96];snprintf(b,sizeof(b),"%u articulos",kb_docs());text(W-12-strlen(b)*FONT_W,8,b,MUTED);
     /* pregunta */
     rect(10,38,W-20,22,PANEL);rect(10,38,3,22,USER);
@@ -131,6 +130,10 @@ static void draw_frame(void){
             snprintf(b,sizeof(b),"Fuente: %.26s%s (%d/%d)",title,strlen(title)>26?"...":"",sel+1,nhits);text(20,H-26-24,b,ACC2);
             text(W-20-22*FONT_W,H-26-24,"TRIANGULO: articulo",MUTED);
         }
+    }else if(chatOut[0]||generating){ /* respuesta del modelo de dialogo, escrita letra a letra */
+        rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC2);
+        char shown[1000];snprintf(shown,sizeof(shown),"%s%s",chatOut,generating?"_":"");textwrap(20,74,W-40,shown,WHITE,0,9);
+        text(20,H-26-24,mode==1?"modo charla (SELECT para volver)":"charla  -  para datos, pregunta algo concreto",MUTED);
     }else if(smallTalk[0]){
         rect(10,66,W-20,H-66-26,PANEL);rect(10,66,3,H-66-26,ACC);
         char shown[600];int al=(int)strlen(smallTalk);int r=reveal<al?reveal:al;while(r<al&&r>0&&((unsigned char)smallTalk[r]&0xc0)==0x80)r++;
@@ -146,7 +149,7 @@ static void draw_frame(void){
         text(20,172,"  capital de Australia",MUTED);text(20,188,"  Medellin metro",MUTED);
         if(status[0])text(20,214,status,BAD);
     }
-    rect(0,H-22,W,22,INK);text(12,H-17,"X preguntar  L/R otra fuente  /\\ articulo  O borrar  SELECT charla",MUTED);
+    rect(0,H-22,W,22,INK);text(12,H-17,mode==1?"X escribir  O borrar  SELECT buscar  START salir":"X preguntar  L/R otra fuente  /\\ articulo  O borrar  SELECT charla",MUTED);
 }
 
 /* ---------- teclado del sistema ---------- */
@@ -222,13 +225,13 @@ static int osk(char *result,int cap,unsigned **buffers,int *index){
 }
 
 static void chat_tick(const char *partial){
-    snprintf(chatOut,sizeof(chatOut),"%s%s",chatPrompt,partial);draw_frame();present(gIndex,gBuffers);
+    snprintf(chatOut,sizeof(chatOut),"%s",partial);draw_frame();present(gIndex,gBuffers);
 }
 static void chat_run(void){
     generating=1;chatOut[0]=0;
-    char prompt[QMAX+8];snprintf(prompt,sizeof(prompt),"%s",chatPrompt);
-    static char out[900];int n=lm_generate(prompt,out,sizeof(out),420,0.85f,chat_tick);
-    if(n>0)snprintf(chatOut,sizeof(chatOut),"%s%s",chatPrompt,out);else snprintf(chatOut,sizeof(chatOut),"(no pude generar texto)");
+    char prompt[QMAX+16];snprintf(prompt,sizeof(prompt),"U: %s\nR: ",chatPrompt); /* mismo formato que el corpus de dialogo */
+    static char out[900];int n=lm_generate(prompt,out,sizeof(out),300,0.7f,chat_tick);
+    if(n>0)snprintf(chatOut,sizeof(chatOut),"%s",out);else snprintf(chatOut,sizeof(chatOut),"(no pude generar texto)");
     generating=0;
 }
 static void load_hit(int i){
@@ -268,23 +271,37 @@ static int small_talk(const char *qraw){
             if(b>-1e299){double r=op=='+'?a+b:op=='-'?a-b:op=='*'?a*b:(b!=0?a/b:0);if(op=='/'&&b==0)snprintf(smallTalk,sizeof(smallTalk),"No se puede dividir entre cero.");
             else if(r==(long long)r)snprintf(smallTalk,sizeof(smallTalk),"%g %c %g = %lld",a,op,b,(long long)r);else snprintf(smallTalk,sizeof(smallTalk),"%g %c %g = %.4f",a,op,b,r);return 1;}}}
     }
-    if(nw==0){
+    if(0){
         if(strstr(ql,"hola")||strstr(ql,"buenas")||strstr(ql,"buenos dias")||strstr(ql,"hey")){snprintf(smallTalk,sizeof(smallTalk),"Hola. Soy la IA de tu PSP. Preguntame lo que quieras: personas, lugares, historia, ciencia, deportes... Respondo con la Wikipedia en espanol que llevo en la Memory Stick.");return 1;}
         if(strstr(ql,"gracias")){snprintf(smallTalk,sizeof(smallTalk),"De nada. Cuando quieras, otra pregunta.");return 1;}
         if(strstr(ql,"adios")||strstr(ql,"chao")||strstr(ql,"hasta luego")){snprintf(smallTalk,sizeof(smallTalk),"Hasta luego. Pulsa START para salir.");return 1;}
     }
-    if((strstr(ql,"quien eres")||strstr(ql,"quién eres")||strstr(ql,"que eres")||strstr(ql,"qué eres")||strstr(ql,"como te llamas")||strstr(ql,"cómo te llamas"))&&nw<=4){
+    if(0&&(strstr(ql,"quien eres")||strstr(ql,"quién eres")||strstr(ql,"que eres")||strstr(ql,"qué eres")||strstr(ql,"como te llamas")||strstr(ql,"cómo te llamas"))&&nw<=4){
         snprintf(smallTalk,sizeof(smallTalk),"Soy PSP-IA, un asistente que corre entero dentro de esta PSP: busco entre %u articulos de la Wikipedia en espanol y tengo un pequeno modelo de lenguaje (SELECT) para charlar. No necesito internet.",kb_docs());return 1;}
-    if((strstr(ql,"como estas")||strstr(ql,"cómo estás")||strstr(ql,"que tal")||strstr(ql,"qué tal"))&&nw<=3){snprintf(smallTalk,sizeof(smallTalk),"Muy bien, a 333 MHz y con la Memory Stick llena de conocimiento. Y tu, que quieres saber?");return 1;}
+    if(0&&(strstr(ql,"como estas")||strstr(ql,"cómo estás")||strstr(ql,"que tal")||strstr(ql,"qué tal"))&&nw<=3){snprintf(smallTalk,sizeof(smallTalk),"Muy bien, a 333 MHz y con la Memory Stick llena de conocimiento. Y tu, que quieres saber?");return 1;}
     return 0;
 }
 /* Reformula la pregunta para buscar mejor: quita "quien fue/es", "que es", "cuando", "donde", "cuantos", "capital de"... conserva el resto. */
+/* Enrutador: la pregunta va al modelo de dialogo (charla) o a la Wikipedia (datos)?
+   - sin palabras significativas, o solo palabras muy comunes (>60k articulos), o marcadores de conversacion
+     ("dime", "cuentame", "puedes", "eres", "te ", "tu ") -> modelo de dialogo.
+   - alguna palabra rara (nombre propio, termino concreto) -> Wikipedia. */
+static int wants_chat(const char *qraw){
+    char ql[QMAX];int n=0;for(const char *c=qraw;*c&&n<QMAX-1;c++)ql[n++]=(*c>='A'&&*c<='Z')?*c+32:*c;ql[n]=0;
+    const char *markers[]={"cuentame","cuéntame","dime ","puedes","eres ","estas","estás","te gusta","tu ","tú ","chiste","aburrid","triste","feliz","gracias","hola","adios","adiós","ayuda","como te","cómo te","que tal","qué tal","opinas","crees que","recomienda",0};
+    for(int i=0;markers[i];i++)if(strstr(ql,markers[i]))return 1;
+    char w[12][24];int nw=kb_words(qraw,w,12);if(nw==0)return 1;
+    int minDf=1<<30;for(int i=0;i<nw;i++){int df=kb_df(w[i]);if(df<0)continue;if(df<minDf)minDf=df;}
+    return minDf>60000; /* todo son palabras corrientes: no hay nada concreto que buscar */
+}
 static void ask(void){
     smallTalk[0]=0;reveal=0;showArticle=0;
     if(small_talk(question)){nhits=0;history++;return;}
+    if(haveLM&&(mode==1||wants_chat(question))){nhits=0;snprintf(chatPrompt,sizeof(chatPrompt),"%s",question);chat_run();history++;return;}
     static KbHit cand[200];int nc=kb_search(question,cand,200,qwords,&nq);
     rerank(cand,nc);nhits=nc<8?nc:8;for(int i=0;i<nhits;i++)hits[i]=cand[i];sel=0;scroll=0;
     if(nhits>0)load_hit(0);
+    else if(haveLM){snprintf(chatPrompt,sizeof(chatPrompt),"%s",question);chat_run();}
     else snprintf(status,sizeof(status),nq?"No encontre nada sobre eso. Prueba con otras palabras.":"Escribe alguna palabra clave (no solo 'que', 'de', 'la').");
     history++;
 }
@@ -314,13 +331,8 @@ int main(void){
         SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);unsigned pressed=pad.Buttons&~prev;prev=pad.Buttons;
         if(pressed&PSP_CTRL_START)break;
         if(pressed&PSP_CTRL_SELECT)mode^=1;
-        if(mode==1){
-            if(pressed&PSP_CTRL_CROSS){if(osk(chatPrompt,sizeof(chatPrompt),buffers,&index)&&haveLM&&chatPrompt[0])chat_run();}
-            if(pressed&PSP_CTRL_CIRCLE){chatPrompt[0]=0;chatOut[0]=0;}
-            draw_frame();present(&index,buffers);continue;
-        }
         if(pressed&PSP_CTRL_CROSS){if(osk(question,sizeof(question),buffers,&index)&&haveKB&&question[0])ask();}
-        if(pressed&PSP_CTRL_CIRCLE){question[0]=0;nhits=0;status[0]=0;smallTalk[0]=0;}
+        if(pressed&PSP_CTRL_CIRCLE){question[0]=0;nhits=0;status[0]=0;smallTalk[0]=0;chatOut[0]=0;}
         if(nhits>0){
             if((pressed&PSP_CTRL_RTRIGGER)&&sel<nhits-1){sel++;load_hit(sel);}
             if((pressed&PSP_CTRL_LTRIGGER)&&sel>0){sel--;load_hit(sel);}

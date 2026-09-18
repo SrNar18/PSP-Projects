@@ -165,6 +165,8 @@ int kb_title_info(unsigned doc,int *nwords,int *blen,unsigned hashes[4]){
     *nwords=rec[0];*blen=rec[1];memcpy(hashes,rec+2,16);return 1;
 }
 unsigned kb_hash(const char *w){return fnv_word(w);}
+/* df (numero de articulos) de una palabra normalizada; -1 si no esta en el indice */
+int kb_df(const char *w){unsigned off,df,len;if(!find_term(fnv_word(w),&off,&df,&len))return -1;return (int)df;}
 int kb_doc(unsigned doc,char *title,int tcap,char *text,int cap){
     unsigned off,len;SceUID f;
     if(fmt==1){unsigned char rec[7];sceIoLseek(fdoc,(SceOff)doc*7,PSP_SEEK_SET);if(sceIoRead(fdoc,rec,7)!=7)return 0;unsigned short l16;memcpy(&off,rec,4);memcpy(&l16,rec+4,2);len=l16;f=ftxt;}

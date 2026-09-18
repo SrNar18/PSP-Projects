@@ -88,7 +88,7 @@ int lm_generate(const char *prompt,char *out,int cap,int maxBytes,float temp,voi
     int o=0;rng^=(unsigned)sceKernelGetSystemTimeLow();
     while(o<maxBytes&&o<cap-1&&position<CTX){
         int t=sample(temp,0.9f);
-        if(t=='\n'&&o>20)break;
+        if(t=='\n'){if(o>0)break;else continue;}  /* formato de dialogo: la respuesta termina en el salto de linea */
         out[o++]=(char)t;out[o]=0;
         if(tick)tick(out);
         if(o>=maxBytes-1)break;

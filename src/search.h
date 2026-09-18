@@ -9,6 +9,7 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq);
 int kb_doc(unsigned doc,char *title,int tcap,char *text,int cap);
 int kb_title_info(unsigned doc,int *nwords,int *blen,unsigned hashes[4]);
 unsigned kb_hash(const char *w);
+int kb_df(const char *w);
 int kb_variant(const char *w,char *out);
 int kb_best_answer_t(const char *title,const char *text,char qwords[][24],int nq,const char *question,char *out,int cap);
 int kb_best_answer(const char *text,char qwords[][24],int nq,const char *question,char *out,int cap);

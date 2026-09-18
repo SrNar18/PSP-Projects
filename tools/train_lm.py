@@ -57,9 +57,9 @@ def export(model,path):
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--minutes',type=float,default=45);ap.add_argument('--mb',type=float,default=300)
     ap.add_argument('--layers',type=int,default=6);ap.add_argument('--dim',type=int,default=256);ap.add_argument('--heads',type=int,default=8);ap.add_argument('--ctx',type=int,default=192)
-    ap.add_argument('--batch',type=int,default=96);ap.add_argument('--resume',action='store_true');a=ap.parse_args()
+    ap.add_argument('--batch',type=int,default=96);ap.add_argument('--resume',action='store_true');ap.add_argument('--data',default='');ap.add_argument('--sample',default='Medellín es ');a=ap.parse_args()
     dev='cuda' if torch.cuda.is_available() else 'cpu';print('device',dev,flush=True)
-    cache=os.path.join(ROOT,'data','lm_text.bin')
+    cache=a.data if a.data else os.path.join(ROOT,'data','lm_text.bin')
     if not os.path.exists(cache):
         txt=load_text(a.mb);open(cache,'wb').write(txt.encode('utf-8'));del txt
     data=torch.frombuffer(bytearray(open(cache,'rb').read()),dtype=torch.uint8);print('bytes',len(data),flush=True)
@@ -81,12 +81,12 @@ def main():
             model.eval()
             with torch.no_grad():
                 vx,vy=batch(val);vl=F.cross_entropy(model(vx).view(-1,256),vy.view(-1)).item()
-                idx=torch.tensor([list('Medellín es '.encode('utf-8'))],device=dev)
+                idx=torch.tensor([list(a.sample.encode('utf-8'))],device=dev)
                 for _ in range(120):
                     logits=model(idx[:,-a.ctx:])[:,-1,:]/0.8;probs=F.softmax(logits,-1);nxt=torch.multinomial(probs,1);idx=torch.cat([idx,nxt],1)
                 sample=bytes(idx[0].tolist()).decode('utf-8','replace')
             model.train()
-            print(f'step {step} loss {loss.item():.3f} val {vl:.3f} lr {lr:.2e} {(time.time()-t0)/60:.1f} min | {sample[:110]!r}',flush=True)
+            print(f'step {step} loss {loss.item():.3f} val {vl:.3f} lr {lr:.2e} {(time.time()-t0)/60:.1f} min | {sample[:110].encode("ascii","replace").decode()}',flush=True)
             torch.save(model.state_dict(),ck)
     torch.save(model.state_dict(),ck)
     os.makedirs(os.path.join(ROOT,'out','IA'),exist_ok=True);export(model,os.path.join(ROOT,'out','IA','lm.bin'))
