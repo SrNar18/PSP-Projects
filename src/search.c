@@ -25,9 +25,9 @@ int kb_open(const char *dir){
     snprintf(p,sizeof(p),"%s/ia.pst",dir);fpst=sceIoOpen(p,PSP_O_RDONLY,0);
     snprintf(p,sizeof(p),"%s/ia.doc",dir);fdoc=sceIoOpen(p,PSP_O_RDONLY,0);
     snprintf(p,sizeof(p),"%s/ia.txt",dir);ftxt=sceIoOpen(p,PSP_O_RDONLY,0);
-    if(fidx<0||fpst<0||fdoc<0||ftxt<0)return 0;
-    pcap=4<<20;pbuf=(unsigned char*)malloc(pcap);
-    return pbuf!=0;
+    if(fidx<0)return -1;if(fpst<0)return -2;if(fdoc<0)return -3;if(ftxt<0)return -4;
+    pcap=4<<20;pbuf=(unsigned char*)malloc(pcap);if(!pbuf){pcap=1<<20;pbuf=(unsigned char*)malloc(pcap);}
+    return pbuf?1:-5;
 }
 unsigned kb_docs(void){return ndoc;}
 unsigned kb_terms(void){return nterms;}

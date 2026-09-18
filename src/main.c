@@ -19,7 +19,7 @@
 
 PSP_MODULE_INFO("PSP-IA",0,1,0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(24576);
+PSP_HEAP_SIZE_KB(15360); /* particion de usuario de 24 MB: mas de ~18 MB de heap falla en malloc */
 
 #define W 480
 #define H 272
@@ -106,7 +106,7 @@ static void draw_chat(void){
 static void draw_frame(void){
     if(mode==1){draw_chat();return;}
     rect(0,0,W,H,BG);
-    rect(0,0,W,30,INK);text(12,8,"PSP-IA",ACC);text(80,8,"asistente de conocimiento offline",MUTED);
+    rect(0,0,W,30,INK);text(12,8,"PSP-IA",ACC);text(80,8,"conocimiento offline",MUTED);
     char b[96];snprintf(b,sizeof(b),"%u articulos",kb_docs());text(W-12-strlen(b)*FONT_W,8,b,MUTED);
     /* pregunta */
     rect(10,38,W-20,22,PANEL);rect(10,38,3,22,USER);
@@ -187,8 +187,20 @@ static void load_hit(int i){
     if(!kb_doc(hits[i].doc,title,sizeof(title),body,sizeof(body))){snprintf(title,sizeof(title),"(error de lectura)");body[0]=0;answer[0]=0;return;}
     kb_best_sentence(body,qwords,nq,answer,sizeof(answer));
 }
+/* Reordena los mejores candidatos leyendo sus titulos: premia que el titulo contenga las palabras de la pregunta
+   y penaliza titulos largos ("Australia" antes que "Australia Occidental" para "capital de Australia"). */
+static void rerank(KbHit *h,int n){
+    for(int i=0;i<n;i++){char t[200],dummy[8];
+        if(!kb_doc(h[i].doc,t,sizeof(t),dummy,sizeof(dummy)))continue;
+        char tw[16][24];int ntw=kb_words(t,tw,16);int inTitle=0;
+        for(int a=0;a<nq;a++)for(int b=0;b<ntw;b++)if(!strcmp(qwords[a],tw[b])){inTitle++;break;}
+        h[i].score+=inTitle*4.0f-(ntw-inTitle)*1.5f-(strchr(t,'(')?2.0f:0);
+    }
+    for(int i=1;i<n;i++){KbHit x=h[i];int j=i;while(j>0&&h[j-1].score<x.score){h[j]=h[j-1];j--;}h[j]=x;}
+}
 static void ask(void){
-    nhits=kb_search(question,hits,8,qwords,&nq);sel=0;scroll=0;
+    static KbHit cand[40];int nc=kb_search(question,cand,40,qwords,&nq);
+    rerank(cand,nc);nhits=nc<8?nc:8;for(int i=0;i<nhits;i++)hits[i]=cand[i];sel=0;scroll=0;
     if(nhits>0)load_hit(0);
     else snprintf(status,sizeof(status),nq?"No encontre nada sobre eso. Prueba con otras palabras.":"Escribe alguna palabra clave (no solo 'que', 'de', 'la').");
     history++;
@@ -203,7 +215,10 @@ int main(void){
     int index=0;fb=buffers[index];
     gBuffers=buffers;gIndex=&index;
     haveKB=kb_open("ms0:/IA");haveLM=lm_load("ms0:/IA/lm.bin");
-    if(!haveKB)snprintf(status,sizeof(status),"No encuentro la base de datos en ms0:/IA (copia la carpeta IA a la Memory Stick).");
+    if(haveKB!=1){snprintf(status,sizeof(status),"No encuentro la base de datos en ms0:/IA (codigo %d).",haveKB);haveKB=0;}
+#ifdef TEST_CHAT
+    if(haveLM){mode=1;snprintf(chatPrompt,sizeof(chatPrompt),"%s",TEST_CHAT);chat_run();}
+#endif
 #ifdef TEST_QUERY
     if(haveKB){snprintf(question,sizeof(question),"%s",TEST_QUERY);ask();}
 #endif

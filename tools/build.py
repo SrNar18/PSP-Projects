@@ -10,8 +10,8 @@ def run(tool,*args):
 inc=posix(sdk/'psp/sdk/include');lib=posix(sdk/'psp/sdk/lib')
 flags=['-O2','-G0','-Wall','-Wextra','-std=gnu99','-D_PSP_FW_VERSION=600','-Isrc',f'-I{inc}',f'-I{posix(sdk/"psp/include")}']+os.environ.get('PSPIA_CFLAGS','').split()
 (ROOT/'build').mkdir(exist_ok=True)
-tq=os.environ.get('PSPIA_TEST','')
-(ROOT/'src/testquery.h').write_text(('#define TEST_QUERY "'+tq+'"'+chr(10)) if tq else '/* sin consulta de prueba */'+chr(10))
+tq=os.environ.get('PSPIA_TEST','');tc=os.environ.get('PSPIA_CHAT','')
+(ROOT/'src/testquery.h').write_text((('#define TEST_QUERY "'+tq+'"'+chr(10)) if tq else '')+(('#define TEST_CHAT "'+tc+'"'+chr(10)) if tc else '')+'/* pruebas */'+chr(10))
 objs=[]
 for src in ['main.c','search.c']+(['chat.c'] if (ROOT/'src/chat.c').exists() else []):
     obj='build/'+pathlib.Path(src).stem+'.o';objs.append(obj);run('psp-gcc',*flags,'-c','src/'+src,'-o',obj)
