@@ -9,8 +9,11 @@
 #include <math.h>
 #include <zlib.h>
 
-static SceUID fidx=-1,fpst=-1,fdoc=-1,ftxt=-1;
+static SceUID fidx=-1,fpst=-1,fdoc=-1,ftxt=-1;static SceUID fvol[8];static int nvol=0,fmt=1; /* fmt 2 = PIA2: volumenes y articulos completos */
 static unsigned ndoc=0,nterms=0;
+static unsigned char *zbuf=0;static char *plain=0;
+#define ZCAP (160*1024)
+#define PCAP (256*1024)
 static char base[64];
 #define HASH_SIZE 262144
 static unsigned hdoc[HASH_SIZE];static float hsc[HASH_SIZE];static unsigned char hused[HASH_SIZE/8];
@@ -19,15 +22,17 @@ static unsigned char *pbuf=0;static unsigned pcap=0;
 int kb_open(const char *dir){
     char p[128];snprintf(base,sizeof(base),"%s",dir);
     snprintf(p,sizeof(p),"%s/ia.hdr",dir);SceUID f=sceIoOpen(p,PSP_O_RDONLY,0);if(f<0)return 0;
-    unsigned char h[16];int n=sceIoRead(f,h,16);sceIoClose(f);if(n!=16||memcmp(h,"PIA1",4))return 0;
-    memcpy(&ndoc,h+4,4);memcpy(&nterms,h+8,4);
+    unsigned char h[16];int n=sceIoRead(f,h,16);sceIoClose(f);if(n!=16||(memcmp(h,"PIA1",4)&&memcmp(h,"PIA2",4)))return 0;
+    fmt=h[3]=='2'?2:1;memcpy(&ndoc,h+4,4);memcpy(&nterms,h+8,4);if(fmt==2)memcpy(&nvol,h+12,4);
     snprintf(p,sizeof(p),"%s/ia.idx",dir);fidx=sceIoOpen(p,PSP_O_RDONLY,0);
     snprintf(p,sizeof(p),"%s/ia.pst",dir);fpst=sceIoOpen(p,PSP_O_RDONLY,0);
     snprintf(p,sizeof(p),"%s/ia.doc",dir);fdoc=sceIoOpen(p,PSP_O_RDONLY,0);
-    snprintf(p,sizeof(p),"%s/ia.txt",dir);ftxt=sceIoOpen(p,PSP_O_RDONLY,0);
-    if(fidx<0)return -1;if(fpst<0)return -2;if(fdoc<0)return -3;if(ftxt<0)return -4;
-    pcap=4<<20;pbuf=(unsigned char*)malloc(pcap);if(!pbuf){pcap=1<<20;pbuf=(unsigned char*)malloc(pcap);}
-    return pbuf?1:-5;
+    if(fmt==1){snprintf(p,sizeof(p),"%s/ia.txt",dir);ftxt=sceIoOpen(p,PSP_O_RDONLY,0);if(ftxt<0)return -4;}
+    else{if(nvol>8)nvol=8;for(int i=0;i<nvol;i++){snprintf(p,sizeof(p),"%s/ia%d.txt",dir,i);fvol[i]=sceIoOpen(p,PSP_O_RDONLY,0);if(fvol[i]<0)return -40-i;}}
+    if(fidx<0)return -1;if(fpst<0)return -2;if(fdoc<0)return -3;
+    pcap=2<<20;pbuf=(unsigned char*)malloc(pcap);if(!pbuf){pcap=1<<20;pbuf=(unsigned char*)malloc(pcap);}
+    zbuf=(unsigned char*)malloc(ZCAP);plain=(char*)malloc(PCAP);
+    return (pbuf&&zbuf&&plain)?1:-5;
 }
 unsigned kb_docs(void){return ndoc;}
 unsigned kb_terms(void){return nterms;}
@@ -142,13 +147,15 @@ int kb_search(const char *query,KbHit *hits,int max,char qwords[][24],int *nq){
     return nh;
 }
 int kb_doc(unsigned doc,char *title,int tcap,char *text,int cap){
-    unsigned char rec[7];
-    sceIoLseek(fdoc,(SceOff)doc*7,PSP_SEEK_SET);if(sceIoRead(fdoc,rec,7)!=7)return 0;
-    unsigned off;unsigned short len;memcpy(&off,rec,4);memcpy(&len,rec+4,2);
-    static unsigned char zbuf[65536];
-    sceIoLseek(ftxt,(SceOff)off,PSP_SEEK_SET);int got=sceIoRead(ftxt,zbuf,len);if(got!=len)return 0;
-    static char plain[8192];uLongf outLen=sizeof(plain)-1;
-    if(uncompress((Bytef*)plain,&outLen,zbuf,len)!=Z_OK)return 0;
+    unsigned off,len;SceUID f;
+    if(fmt==1){unsigned char rec[7];sceIoLseek(fdoc,(SceOff)doc*7,PSP_SEEK_SET);if(sceIoRead(fdoc,rec,7)!=7)return 0;unsigned short l16;memcpy(&off,rec,4);memcpy(&l16,rec+4,2);len=l16;f=ftxt;}
+    else{unsigned char rec[9];sceIoLseek(fdoc,(SceOff)doc*9,PSP_SEEK_SET);if(sceIoRead(fdoc,rec,9)!=9)return 0;int v=rec[0];memcpy(&off,rec+1,4);memcpy(&len,rec+5,4);if(v>=nvol)return 0;f=fvol[v];}
+    if(len>ZCAP)len=ZCAP; /* articulos gigantes: se lee lo que cabe (zlib descomprime hasta donde llega) */
+    sceIoLseek(f,(SceOff)off,PSP_SEEK_SET);int got=sceIoRead(f,zbuf,len);if(got<=0)return 0;
+    uLongf outLen=PCAP-1;int zr=uncompress((Bytef*)plain,&outLen,zbuf,got);
+    if(zr!=Z_OK&&zr!=Z_BUF_ERROR&&zr!=Z_DATA_ERROR)return 0;
+    if(zr!=Z_OK){ /* flujo truncado: descomprimir por partes con inflate */
+        z_stream zs;memset(&zs,0,sizeof(zs));if(inflateInit(&zs)!=Z_OK)return 0;zs.next_in=zbuf;zs.avail_in=got;zs.next_out=(Bytef*)plain;zs.avail_out=PCAP-1;inflate(&zs,Z_SYNC_FLUSH);outLen=PCAP-1-zs.avail_out;inflateEnd(&zs);if(outLen<2)return 0;}
     plain[outLen]=0;
     char *nl=strchr(plain,'\n');if(!nl)return 0;*nl=0;
     snprintf(title,tcap,"%s",plain);snprintf(text,cap,"%s",nl+1);
@@ -192,15 +199,15 @@ int kb_best_answer_t(const char *title,const char *text,char qwords[][24],int nq
     int qWhen=strstr(ql,"cuando")||strstr(ql,"cu\xc3\xa1ndo")||strstr(ql,"fecha")||strstr(ql,"a\xc3\xb1o");
     int qWhere=strstr(ql,"donde")||strstr(ql,"d\xc3\xb3nde")||strstr(ql,"ubica")||strstr(ql,"capital")||strstr(ql,"pais")||strstr(ql,"pa\xc3\xads");
     int qHow=strstr(ql,"cuanto")||strstr(ql,"cu\xc3\xa1nto")||strstr(ql,"cuantos")||strstr(ql,"poblacion")||strstr(ql,"habitantes")||strstr(ql,"altura")||strstr(ql,"medida");
-    const char *sent[48];int len[48];int ns=0;const char *s=text;
-    while(*s&&ns<48){const char *e=s;while(*e&&!((*e=='.'||*e=='!'||*e=='?')&&(e[1]==' '||e[1]==0)))e++;if(*e)e++;
+    static const char *sent[600];static int len[600];int ns=0;const char *s=text;
+    while(*s&&ns<600){const char *e=s;while(*e&&!((*e=='.'||*e=='!'||*e=='?')&&(e[1]==' '||e[1]==0)))e++;if(*e)e++;
         if(e-s>3){sent[ns]=s;len[ns]=(int)(e-s);ns++;}while(*e==' ')e++;s=e;}
     if(!ns){snprintf(out,cap,"%s",text);return 0;}
     int best=0;float bs=-1e9f;
     for(int i=0;i<ns;i++){char tmp[1024];int l=len[i]<1023?len[i]:1023;memcpy(tmp,sent[i],l);tmp[l]=0;
-        char sw[24][24];int nsw=kb_words(tmp,sw,24);int ov=0,ovAttr=0;
+        char sw[40][24];int nsw=kb_words(tmp,sw,40);int ov=0,ovAttr=0;
         for(int a=0;a<nq;a++)for(int b=0;b<nsw;b++){char v[24];if(!strcmp(qwords[a],sw[b])||(kb_variant(qwords[a],v)&&!strcmp(v,sw[b]))){ov++;if(isAttr[a])ovAttr++;break;}}
-        float sc=ov*6.f+ovAttr*14.f-i*.6f+(l<160?l:160)/80.f;
+        float sc=ov*6.f+ovAttr*14.f-(i<40?i*.6f:24+i*.02f)+(l<160?l:160)/80.f; /* mas alla de la intro, la posicion penaliza poco */
         if(i==0)sc+=nAttr?3:8;                  /* sin atributo, la definicion manda; con atributo, la frase que lo contiene */
         if(qWhen&&has_year(tmp))sc+=9;if(qWhere&&has_place(tmp))sc+=7;if(qHow&&has_digit(tmp))sc+=7;
         if(l<25)sc-=8;                          /* frases minusculas (abreviaturas) no responden nada */

@@ -79,11 +79,11 @@ static void gu_draw_buffer(unsigned *b){sceGuStart(GU_DIRECT,gulist);sceGuDrawBu
 
 /* ---------- estado ---------- */
 #define QMAX 160
-#define TXT 8192
+#define TXT (200*1024)
 static char question[QMAX]="";
 static KbHit hits[8];static int nhits=0,sel=0,scroll=0;
 static char qwords[12][24];static int nq=0;
-static char title[200],body[TXT],answer[1200];
+static char title[200],answer[1200];static char *body; /* TXT bytes, malloc */
 static int haveKB=0;static char status[120]="";
 static int history=0;
 static int reveal=0;static int showArticle=0; /* TRIANGULO: ver el articulo completo */
@@ -229,7 +229,7 @@ static void chat_run(void){
 }
 static void load_hit(int i){
     scroll=0;
-    if(!kb_doc(hits[i].doc,title,sizeof(title),body,sizeof(body))){snprintf(title,sizeof(title),"(error de lectura)");body[0]=0;answer[0]=0;return;}
+    if(!kb_doc(hits[i].doc,title,sizeof(title),body,TXT)){snprintf(title,sizeof(title),"(error de lectura)");body[0]=0;answer[0]=0;return;}
     kb_best_answer_t(title,body,qwords,nq,question,answer,sizeof(answer));reveal=0;showArticle=0;
 }
 /* Reordena los mejores candidatos leyendo sus titulos: premia que el titulo contenga las palabras de la pregunta
@@ -288,7 +288,7 @@ int main(void){
     sceGuOffset(2048-(W/2),2048-(H/2));sceGuViewport(2048,2048,W,H);sceGuScissor(0,0,W,H);sceGuEnable(GU_SCISSOR_TEST);
     sceGuFinish();sceGuSync(0,0);sceDisplayWaitVblankStart();sceGuDisplay(GU_TRUE);
     int index=0;fb=buffers[index];
-    gBuffers=buffers;gIndex=&index;
+    gBuffers=buffers;gIndex=&index;body=(char*)malloc(TXT);body[0]=0;
     haveKB=kb_open("ms0:/IA");haveLM=lm_load("ms0:/IA/lm.bin");
     if(haveKB!=1){snprintf(status,sizeof(status),"No encuentro la base de datos en ms0:/IA (codigo %d).",haveKB);haveKB=0;}
 #ifdef TEST_CHAT
