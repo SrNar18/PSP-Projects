@@ -191,26 +191,31 @@ static int osk(char *result,int cap,unsigned **buffers,int *index){
     p.datacount=1;p.data=&data;
     int rc=sceUtilityOskInitStart(&p);if(rc<0){snprintf(status,sizeof(status),"Teclado del sistema no disponible (%08x): teclado propio.",(unsigned)rc);return simple_kbd(result,cap,buffers,index);}
     /* un solo buffer visible mientras dura el dialogo; el GE dibuja en el */
-    /* El teclado de Sony repinta SOLO lo que cambia entre fotogramas (asume que el buffer persiste). Por eso ni el
-       doble buffer ni restaurar el fondo cada fotograma sirven: se ve medio teclado o parpadea al mover el cursor.
-       Solucion: UN buffer visible, fondo dibujado una vez, GE apuntando a ese buffer, y no tocarlo hasta que cierre. */
-    int back=*index;fb=buffers[back];draw_frame();
-    sceKernelDcacheWritebackAll();gu_draw_buffer(buffers[back]);
-    sceDisplaySetFrameBuf(buffers[back],STRIDE,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
+    /* Patron de los ejemplos del SDK (utility/osk): cada fotograma se dibuja el fondo en el buffer de DIBUJO del GU,
+       se deja que el dialogo pinte encima (dibuja con transparencia sobre lo que haya) y se hace sceGuSwapBuffers().
+       El dialogo obtiene el buffer del ESTADO interno de sceGu, por eso hay que fijarlo con sceGuDrawBuffer/DispBuffer
+       (no con las variantes ...List) y cambiarlo solo con sceGuSwapBuffers. Asi no quedan restos del resaltado. */
+    int cur=*index; /* buffer de dibujo = el que estabamos rellenando */
+    sceGuStart(GU_DIRECT,gulist);
+    sceGuDrawBuffer(GU_PSM_8888,(void*)((uintptr_t)buffers[cur]&0x001fffff),STRIDE);
+    sceGuDispBuffer(W,H,(void*)((uintptr_t)buffers[cur^1]&0x001fffff),STRIDE);
+    sceGuFinish();sceGuSync(0,0);
     int frames=0,seen=0;
     for(;;){
         if(!running)break;
+        fb=buffers[cur];draw_frame();sceKernelDcacheWritebackAll();  /* fondo por CPU en el buffer de dibujo */
+        sceGuStart(GU_DIRECT,gulist);sceGuFinish();sceGuSync(0,0);   /* lista vacia: el GE queda listo para el dialogo */
         int st=sceUtilityOskGetStatus();
         if(st==PSP_UTILITY_DIALOG_VISIBLE)seen=1;
         if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilityOskUpdate(1);
         else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilityOskShutdownStart();
         else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
         sceDisplayWaitVblankStart();
+        sceGuSwapBuffers();cur^=1;
         /* si en 4 s el teclado del sistema no se ha mostrado, se cierra y se usa el propio (nunca colgarse) */
-        if(++frames>240&&!seen){sceUtilityOskShutdownStart();for(int k=0;k<60&&sceUtilityOskGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();fb=buffers[*index];snprintf(status,sizeof(status),"Teclado del sistema no responde: teclado propio.");return simple_kbd(result,cap,buffers,index);}
+        if(++frames>240&&!seen){sceUtilityOskShutdownStart();for(int k=0;k<60&&sceUtilityOskGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();*index=cur;fb=buffers[*index];snprintf(status,sizeof(status),"Teclado del sistema no responde: teclado propio.");return simple_kbd(result,cap,buffers,index);}
     }
-    /* al volver, redibujar limpio en el otro buffer para no ver restos del teclado */
-    back^=1;
+    int back=cur;
     *index=back;fb=buffers[*index];
     if(data.result==PSP_UTILITY_OSK_RESULT_CHANGED){utf16_to_utf8(outtext,result,cap);return 1;}
     return 0;
