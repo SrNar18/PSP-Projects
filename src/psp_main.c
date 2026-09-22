@@ -14,7 +14,11 @@
 #include "render3d.h"
 PSP_MODULE_INFO("Narcade",0,2,11);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(4096);
+/* v2.13.1 (Claude): el juego NO usa malloc (0 llamadas en game.c/render3d.c/psp_main.c), pero reservaba 4 MB de heap.
+   Con 17,4 MB de datos estaticos (mesh 8 MB, overlay 1 MB, arte del titulo...) quedaban ~2,6 MB libres de los 24 MB
+   de la particion de usuario, y el dialogo de guardado de Sony necesita varios MB al CARGAR una partida: se quedaba
+   sin memoria y la PSP se reiniciaba (en PPSSPP no pasa porque no aplica ese limite). 1 MB basta para stdio. */
+PSP_HEAP_SIZE_KB(1024);
 static volatile int running=1;
 static int exit_cb(int a,int b,void *p){(void)a;(void)b;(void)p;running=0;sceKernelExitGame();return 0;} /* v2.9.1: salir siempre, aunque un dialogo este abierto */
 static int callbacks(SceSize n,void *p){(void)n;(void)p;int cb=sceKernelCreateCallback("Narcade exit",exit_cb,0);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
@@ -49,6 +53,8 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  static uint32_t background[512*272] __attribute__((aligned(64)));
  game_draw(buffers[*index],512);
  memcpy(background,buffers[*index],sizeof(background));
+ /* v2.13.1: si no hay memoria suficiente para el dialogo, avisar en vez de dejar que el sistema se caiga */
+ if(sceKernelMaxFreeMemSize()<1400*1024){game_set_lowmem(sceKernelMaxFreeMemSize()>>10);return 0;}
  if(sceUtilitySavedataInitStart(&sd)<0)return 0;
  int cur=*index;
  r3_gu_buffers(buffers[cur],buffers[cur^1]);

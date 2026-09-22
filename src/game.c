@@ -333,6 +333,7 @@ int game_save(void){
    dialogo de la Memory Stick (sceUtilitySavedata); los datos van y vienen con export/import. */
 static int nativeSave=0,saveRequest=0;
 void game_set_native_savedata(int on){nativeSave=on;}
+void game_set_lowmem(int kb){char b[96];snprintf(b,sizeof(b),"Sin memoria para el menu de la Memory Stick (%d KB libres).",kb);notice(b);} /* v2.13.1 */
 int game_take_request(void){int r=saveRequest;saveRequest=0;return r;}
 void game_request_result(int req,int ok){
  if(req==1)notice(ok?"Partida guardada en la Memory Stick.":"Guardado cancelado.");

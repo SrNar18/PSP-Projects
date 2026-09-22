@@ -11,6 +11,7 @@ int game_save(void);
 void game_set_save_path(const char *path);
 /* Guardado nativo PSP (dialogo de la Memory Stick). 1=guardar, 2=cargar, 3=guardar y salir al titulo. */
 void game_set_native_savedata(int on);
+void game_set_lowmem(int kb);
 int game_take_request(void);
 void game_request_result(int req,int ok);
 int game_export_save(void *buf,int cap);

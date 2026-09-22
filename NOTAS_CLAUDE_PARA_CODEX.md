@@ -422,3 +422,16 @@ QA: qa_weapons cubre los 8 sectores, centro, pausa, vehículo y congelación;
 qa_weapon_mesh cubre 504 poses y estabilidad geométrica. ISO estática PSP
 compilada sin flags de diagnóstico; SHA256 e0db79cb0dd8eb060fee8a6ee3f0787109543a07055e6b1a407ce843b0ae69f3.
 No hay aún prueba en PSP física.
+
+### 15.3 v2.13.1 (Claude) — la PSP se REINICIABA al cargar partida: memoria de la particion de usuario
+Sintoma: en la consola (no en PPSSPP) el dialogo de Sony se abria y mostraba la lista, pero al elegir la ranura la
+PSP se reiniciaba. Causa: la particion de usuario de un juego son **24 MB**. Estaticos actuales: text 6,65 MB +
+bss 10,76 MB = 17,4 MB (mesh 8,06 MB, overlay 1 MB, background del dialogo 0,56 MB, mapGrid 0,36 MB, commands
+0,26 MB, glow/shadow 0,21 MB, arte del titulo v2.13 ~1,3 MB en text). Con `PSP_HEAP_SIZE_KB(4096)` quedaban ~2,6 MB
+libres y **sceUtilitySavedata necesita varios MB al cargar** (modulos + descifrado + icono): se quedaba sin memoria
+y saltaba la excepcion. PPSSPP no aplica ese limite, por eso alli funcionaba.
+Arreglo: `PSP_HEAP_SIZE_KB(1024)` (el juego no llama a malloc ni una vez: 0 en game.c/render3d.c/psp_main.c) y un
+guardia `sceKernelMaxFreeMemSize()<1400 KB` que avisa por pantalla en vez de dejar caer el sistema.
+**Antes de anadir mas datos estaticos (arte, audio, texturas, mallas) comprueba `psp-size`: text+bss+heap debe
+quedar por debajo de ~20 MB.** Si hace falta espacio: `MAX_VERTICES` (8190) y `MAT_COUNT` (41) son los que mandan en
+`mesh` (8 MB); bajar MAX_VERTICES a 6144 libera 2 MB y solo descarta poligonos en escenas extremas.
