@@ -672,6 +672,11 @@ void r3_set_draw_buffer(uint32_t *fb){
     (void)fb;
 #endif
 }
+/* v2.13.4 (Claude): trazas por fase; psp_main instala un callback que escribe en ms0:/NARCADE_DEBUG.TXT durante los
+   primeros fotogramas tras cargar partida, para saber que subsistema se traga la consola. */
+static void (*traceFn)(const char*)=0;static int traceFrames=0;
+#define TRACE(s) do{if(traceFn&&traceFrames>0)traceFn(s);}while(0)
+void r3_trace(void (*fn)(const char*),int frames){traceFn=fn;traceFrames=frames;}
 int r3_overflow(void){return overflow;}
 int r3_used(int m){return m<MAT_COUNT?used[m]:0;}
 void r3_init(void){
@@ -708,15 +713,17 @@ static void horizon_build(void){
  }
 }
 void r3_draw(uint32_t *fb,const R3Scene *s){
-    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;camera(s);
+    TRACE("r3:inicio");
+    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
+    TRACE("r3:camara");camera(s);
 #ifndef AB_NOCITY
-    city();
+    TRACE("r3:ciudad");city();TRACE("r3:ciudad-ok");
 #endif
-    rigid=2;
+    TRACE("r3:coches");rigid=2;
 #ifndef AB_NOCARS
     for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
 #endif
-    rigid=1;
+    TRACE("r3:jugador");rigid=1;
     objectX=s->x;objectZ=s->z;objectYaw=s->angle;playerLift=s->lift;rigX=-1e9f; /* invalidar cache */
 #ifndef AB_NOPLAYER
     if(!s->driving&&!s->inMetro)person(s->x,s->z,s->angle,-1,s->moving);
@@ -726,17 +733,17 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
 #endif
     rigid=0;
-    landmarks();
+    TRACE("r3:hubs");landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
     if(!s->driving&&!s->inMetro&&s->lift<1)cast_shadow(s->x,s->z,3,17);
     for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
 #ifndef AB_NOFX
-    building_shadows();street_lamps_glow();clouds(s->time);
+    TRACE("r3:efectos");building_shadows();street_lamps_glow();clouds(s->time);
 #endif
     geographic=0;
 #ifndef R3_HOST
-    sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
+    TRACE("r3:ge-inicio");sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
     sceGuClearColor(skyColor);sceGuClearDepth(0);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
     sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuDisable(GU_BLEND);sceGuDisable(GU_LIGHTING);
@@ -779,6 +786,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     if(glowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_FIX,0,0xffffff);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,glowUsed,0,glowMesh);}
     sceGuDisable(GU_BLEND);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
     sceGuFinish();sceGuSync(0,0);
+    TRACE("r3:ge-fin");if(traceFrames>0)traceFrames--;
 #else
     (void)fb;
 #endif

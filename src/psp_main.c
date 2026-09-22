@@ -64,9 +64,12 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memcpy(background,buffers[*index],sizeof(background));
  /* v2.13.1: si no hay memoria suficiente para el dialogo, avisar en vez de dejar que el sistema se caiga */
  if(sceKernelMaxFreeMemSize()<1400*1024){game_set_lowmem(sceKernelMaxFreeMemSize()>>10);return 0;}
+ /* v2.13.4: el dialogo de Sony arranca sus propios hilos (grafico, acceso, fuente y SONIDO). Dejar nuestro callback
+    de audio vivo mientras el utility toma y suelta el canal es una fuente conocida de cuelgues en consola. */
+ pspAudioSetChannelCallback(0,0,0);
  dbg(mode?"dialogo-cargar-init":"dialogo-guardar-init");
  if(sceUtilitySavedataInitStart(&sd)<0)return 0;
- int cur=*index;
+ int cur=*index,finishing=0,idle=0;
  r3_gu_buffers(buffers[cur],buffers[cur^1]);
  while(running){
   memcpy(buffers[cur],background,sizeof(background));sceKernelDcacheWritebackAll();
@@ -74,15 +77,20 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
   int st=sceUtilitySavedataGetStatus();
   if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
   else if(st==PSP_UTILITY_DIALOG_QUIT)sceUtilitySavedataShutdownStart();
-  else if(st==PSP_UTILITY_DIALOG_FINISHED||st==PSP_UTILITY_DIALOG_NONE)break;
+  else if(st==PSP_UTILITY_DIALOG_FINISHED){sceUtilitySavedataShutdownStart();finishing=1;}
+  else if(st==PSP_UTILITY_DIALOG_NONE){if(finishing||++idle>120)break;}
   sceDisplayWaitVblankStart();
   r3_gu_swap();cur^=1;
  }
+ /* v2.13.4: esperar a que el modulo quede descargado (estado NONE) antes de volver a dibujar: salir en FINISHED
+    dejaba los hilos del utility vivos mientras el juego ya usaba el GE y la VRAM. */
+ for(int k=0;k<180&&sceUtilitySavedataGetStatus()!=PSP_UTILITY_DIALOG_NONE;k++)sceDisplayWaitVblankStart();
  dbg("dialogo-cerrado");
  /* devolver el control de la pantalla al juego (dibuja por CPU y presenta con sceDisplaySetFrameBuf) */
  r3_gu_display(0);
  sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
  *index=cur;
+ pspAudioSetChannelCallback(0,audio_cb,0); /* restaurar el audio del juego */
  if(sd.base.result!=0){dbg("dialogo-result-no-cero");return 0;}
  if(mode){
   dbg("import-inicio");
@@ -101,6 +109,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
     if(done)break;
    }
    dbg("carga-por-etapas-ok");
+   r3_trace(dbg,3); /* trazas por fase en los 3 primeros fotogramas */
   }
   return ok;
  }
@@ -124,11 +133,11 @@ int main(void){
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
   int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();postLoad=req==2?3:0;continue;}
-  if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-mundo-%d",4-postLoad);dbg(m);}
+  if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-tick",4-postLoad);dbg(m);}
 #ifdef NARCADE_PROFILE
   uint64_t p0=sceKernelGetSystemTimeWide();
 #endif
-  if(postLoad>0){postLoad--;if(!postLoad)dbg("mundo-estable");}
+  if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-dibujado",4-postLoad);dbg(m);postLoad--;if(!postLoad)dbg("mundo-estable");}
   game_draw(buffers[index],512);
 #ifdef NARCADE_PROFILE
   game_set_profile((sceKernelGetSystemTimeWide()-p0)/1000.0f);
