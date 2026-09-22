@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 /* World X/Z use the same units as the original game X/Y. Height is Y. */
-typedef struct { float x,z,angle,speed; int type,police; } R3Car;
+typedef struct { float x,z,angle,speed; int type,police,paint; } R3Car;
 typedef struct { float x,z,angle; int style; } R3Person;
 typedef struct {
     float x,z,angle,yaw,time,cameraDistance,gaitPhase,motion;

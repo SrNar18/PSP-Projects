@@ -483,3 +483,10 @@ al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layo
 - `tools/extra_textures.py` dibuja cuatro rótulos distintos por familia de tienda, restaurante y taller. `street_front()` usa UV directas para que los nombres se lean desde la calle sin reflejo horizontal.
 - `src/shapes.inc` añade ramas y una copa frondosa irregular a los árboles cercanos; `src/daylight.inc` mejora silueta y sombreado inferior de las nubes.
 - `Save` y su versión siguen intactos. Los materiales sustituyen ranuras ya existentes, sin aumentar el presupuesto de RAM/VRAM.
+
+### 18. Narcade 2.17 (Codex) — caminar/trotar, estabilidad del suelo y pintura de coches
+
+- `src/game.c`: zona muerta del joystick con histéresis, cámara con margen angular al caminar y seguimiento más lento a velocidades bajas. El paso usa velocidad recorrida filtrada y tolera breves interrupciones de un fotograma; se ajustan el apoyo, la zancada y la elevación del pie al caminar y trotar. El estado transitorio se reinicia al cargar, sin modificar `Save`.
+- `src/render3d.c`: UV de carretera y andén ancladas a coordenadas del mundo y tamaño físico constante. Los dos materiales usan mipmap RGB565 de 64×64 en RAM (16 KB nuevos, sin consumo adicional de VRAM), para reducir el centelleo al avanzar. `tools/road_materials.py` suaviza el ruido de píxel del asfalto.
+- `tools/car_materials.py`: pintura metálica con reflejos y árido fino; laterales con nervio de chapa, umbrales y pasos de rueda. `src/shapes.inc` conserva el patrón longitudinal a través de las piezas de la carrocería y da marco a las ventanillas. Doce acabados de color estables por vehículo; los detalles menores se simplifican si el lote PSP llega al límite de vértices.
+- Pruebas nuevas: `tools/qa_gait_v217.c` (caminata/trote continuos y cámara estable) y `tools/qa_cars_v217.c` (24 coches cercanos sin desbordar materiales). La prueba de tráfico v2.16, la campaña, el guardado y las 512 vistas de ciudad también deben seguir pasando.

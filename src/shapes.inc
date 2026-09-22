@@ -78,14 +78,25 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
         uint32_t tc=lit_color(tm==GLASS?glass:paint,nx*ca,ny,nx*sa);
         litAlready=1;
         Vertex top[4]={{0,0,tc,tl0.x,tl0.y,tl0.z},{1,0,tc,tr0.x,tr0.y,tr0.z},{1,1,tc,tr1.x,tr1.y,tr1.z},{0,1,tc,tl1.x,tl1.y,tl1.z}};polygon(tm,top,4);
-        /* Painted sheet metal is continuous. The old CAR_SIDE bitmap carried
-           a complete door/window and skewed badly on tapered body sections. */
-        int sideMat=CAR_PAINT;
+        /* CAR_SIDE now contains continuous paint and a subtle pressed panel
+           crease; windows and doors are geometric, never a stretched photo. */
+        int sideMat=CAR_SIDE;
         uint32_t lc=lit_color(paint,-sa,.3f,ca),rc=lit_color(paint,sa,.3f,-ca);
-        float u0=0,u1=1;
+        /* Shared longitudinal UVs keep paint detail aligned across doors,
+           bonnet and rear quarter instead of restarting each section. */
+        float u0=(a->x+20)/40.f,u1=(b->x+20)/40.f;
         Vertex left[4]={{u0,0,lc,tl0.x,tl0.y,tl0.z},{u1,0,lc,tl1.x,tl1.y,tl1.z},{u1,1,lc,bl1.x,bl1.y,bl1.z},{u0,1,lc,bl0.x,bl0.y,bl0.z}};polygon(sideMat,left,4);
         Vertex right[4]={{u1,0,rc,tr1.x,tr1.y,tr1.z},{u0,0,rc,tr0.x,tr0.y,tr0.z},{u0,1,rc,br0.x,br0.y,br0.z},{u1,1,rc,br1.x,br1.y,br1.z}};polygon(sideMat,right,4);
         litAlready=0;
+        for(int side=-1;side<=1;side+=2){
+            float y0=floor+2.4f,y1=y0+.45f;
+            float a0=a->w*(1-.14f*(y0-floor)/fmaxf(a->y-floor,1))+.08f;
+            float b0=b->w*(1-.14f*(y0-floor)/fmaxf(b->y-floor,1))+.08f;
+            float a1=a->w*(1-.14f*(y1-floor)/fmaxf(a->y-floor,1))+.08f;
+            float b1=b->w*(1-.14f*(y1-floor)/fmaxf(b->y-floor,1))+.08f;
+            quad(METAL,local(a->x,y1,side*a1,cx,cz,angle),local(b->x,y1,side*b1,cx,cz,angle),
+                local(b->x,y0,side*b0,cx,cz,angle),local(a->x,y0,side*a0,cx,cz,angle),shade(paint,.48f),1,1);
+        }
         if(cabin&&(a->y>12||b->y>12))for(int side=-1;side<=1;side+=2){
             float ya=fminf(a->y-.35f,11.5f),yb=fminf(b->y-.35f,11.5f);
             float wa=a->w*(.86f+.14f*(a->y-ya)/fmaxf(a->y-floor,1))+.13f;
@@ -94,7 +105,13 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
             Point p1=local(b->x,b->y-.15f,side*(b->w*.86f+.13f),cx,cz,angle);
             Point p2=local(b->x,yb,side*wb,cx,cz,angle);
             Point p3=local(a->x,ya,side*wa,cx,cz,angle);
-            quad(GLASS,p0,p1,p2,p3,lit_color(COLOR(139,190,209),side*-sa,.2f,side*ca),1,1);
+            quad(METAL,p0,p1,p2,p3,lit_color(COLOR(35,45,49),side*-sa,.2f,side*ca),1,1);
+            float inset=fminf(.42f,(b->x-a->x)*.15f);
+            Point g0=local(a->x+inset,a->y-.48f,side*(a->w*.86f+.22f),cx,cz,angle);
+            Point g1=local(b->x-inset,b->y-.48f,side*(b->w*.86f+.22f),cx,cz,angle);
+            Point g2=local(b->x-inset,yb+.22f,side*(wb+.10f),cx,cz,angle);
+            Point g3=local(a->x+inset,ya+.22f,side*(wa+.10f),cx,cz,angle);
+            quad(GLASS,g0,g1,g2,g3,lit_color(COLOR(139,190,209),side*-sa,.2f,side*ca),1,1);
         }
     }
     /* tapas delantera y trasera */

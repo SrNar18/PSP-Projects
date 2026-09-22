@@ -35,11 +35,11 @@ def asphalt():
             v = coarse[y][x] + medium[y][x] + fine[y][x] + rng.gauss(0, 4)
             pix[x, y] = tuple(max(0, min(255, int(base + v))) for base in (86, 88, 87))
     draw = ImageDraw.Draw(img, 'RGBA')
-    for _ in range(2300):
+    for _ in range(1250):
         x, y = rng.randrange(128), rng.randrange(128)
         q = rng.randrange(18, 46)
         draw.point((x, y), fill=(q, q + 2, q + 1, rng.randrange(25, 85)))
-    for _ in range(850):
+    for _ in range(500):
         x, y = rng.randrange(128), rng.randrange(128)
         q = rng.randrange(147, 203)
         draw.point((x, y), fill=(q, q - 1, q - 4, rng.randrange(45, 105)))
@@ -48,7 +48,7 @@ def asphalt():
         y = (j * 47 + 13) % 128
         points = [((x + j * 29) % 128, y + int(2 * math.sin(x * .11 + j))) for x in range(0, 27, 3)]
         draw.line(points, fill=(27, 28, 28, 55), width=1)
-    return img
+    return img.filter(ImageFilter.GaussianBlur(radius=.55))
 
 def pavement():
     rng = random.Random(21502)

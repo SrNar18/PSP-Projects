@@ -253,6 +253,10 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
             uint32_t lc=lit_color(color,0,1,0);float ou=0,ov=0;if(mat==WATER){ou=view->time*.045f;ov=view->time*.11f;} /* v2.7: el agua fluye */
             Vertex v[4]={{(xx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,xx,y,zz},{(endx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,endx,y,zz},
                          {(endx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,endx,y,endz},{(xx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,xx,y,endz}};
+            /* World-space phase and fixed tile size prevent adjacent parcels
+               from changing the apparent paving scale as the camera moves. */
+            if(mat==ROAD||mat==SIDEWALK){float scale=mat==ROAD?36.f:28.f;
+                for(int k=0;k<4;k++){v[k].u=v[k].x/scale;v[k].v=v[k].z/scale;}}
             litAlready=1;polygon(mat,v,4);litAlready=0;xx=endx;
         }zz=endz;
     }
@@ -280,8 +284,9 @@ static void car(const R3Car *c){
     if(!nearby(c->x,c->z,500))return;
     if(!sphere_visible(c->x,c->z,30))return;
     float dist=view_distance(c->x,c->z);
-    static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182)};
-    uint32_t paint=c->police?COLOR(207,226,229):colors[c->type%6];
+    static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182),
+        COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
+    uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
     if(dist>380){ /* LOD lejano: dos cajas */
         box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);return;
@@ -319,25 +324,26 @@ static void car(const R3Car *c){
     }
     hull(c->x,c->z,c->angle,prof,n,mats,floor,paint);
     /* bajos oscuros */
-    box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(40,40,42));
+    box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,METAL,METAL,COLOR(40,40,42));
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
     float spin=view->time*c->speed*.08f;
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
+    if(used[METAL]>4750)return; /* keep the 6K/material PSP budget in dense jams */
     for(int s=-1;s<=1;s+=2){
         Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
-        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,244,192));
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,244,192));
         p=local(prof[0].x-.3f,0,s*5.5f,c->x,c->z,c->angle);
-        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(255,61,42));
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,61,42));
     }
     /* retrovisores y matricula */
-    for(int s=-1;s<=1;s+=2){Point p=local(6,0,s*(prof[0].w+1.2f),c->x,c->z,c->angle);box(p.x,p.z,11.5f,1.8f,2.2f,1.2f,c->angle,CAR_PAINT,CAR_PAINT,paint);}
+    for(int s=-1;s<=1;s+=2){Point p=local(6,0,s*(prof[0].w+1.2f),c->x,c->z,c->angle);box(p.x,p.z,11.5f,1.8f,2.2f,1.2f,c->angle,METAL,METAL,paint);}
     /* Modelled bumpers, grille, plates and handles remain straight when the
        body narrows; their details no longer depend on a stretched door bitmap. */
     for(int end=-1;end<=1;end+=2){
         Point bumper=local(end*18.5f,0,0,c->x,c->z,c->angle);
-        box(bumper.x,bumper.z,3.3f,1.6f,15.8f,2.1f,c->angle,CAR_PAINT,CAR_PAINT,shade(paint,.72f));
+        box(bumper.x,bumper.z,3.3f,1.6f,15.8f,2.1f,c->angle,METAL,METAL,shade(paint,.72f));
         Point plate=local(end*19.5f,0,0,c->x,c->z,c->angle);
-        box(plate.x,plate.z,5.8f,.55f,4.7f,1.5f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(219,219,201));
+        box(plate.x,plate.z,5.8f,.55f,4.7f,1.5f,c->angle,METAL,METAL,COLOR(219,219,201));
     }
     Point grille=local(19.1f,0,0,c->x,c->z,c->angle);
     box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,METAL,METAL,COLOR(56,62,65));
@@ -491,11 +497,11 @@ static void pose_prepare(void){
     for(int i=0;i<2;i++){
         float phase=fmodf(view->gaitPhase/(2*PI)+i*.5f,1);
         if(phase<0)phase+=1;
-        float support=.62f-.16f*poseRun,stride=(4.2f+3.5f*poseRun)*moving;
+        float support=.59f-.13f*poseRun,stride=(5.7f+1.8f*poseRun)*moving;
         if(phase<support){footStep[i]=stride*(1-2*phase/support);footLift[i]=0;}
         else{float t=(phase-support)/(1-support),ease=t*t*(3-2*t);
             footStep[i]=stride*(-1+2*ease);
-            footLift[i]=sinf(PI*t)*(1.5f+3.8f*poseRun)*moving;
+            footLift[i]=sinf(PI*t)*(1.15f+4.1f*poseRun)*moving;
         }
     }
 }
@@ -805,8 +811,12 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #endif
 #ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
+        int streetMip=m==ROAD||m==SIDEWALK;
+        sceGuTexMode(GU_PSM_5650,streetMip,0,1);
+        sceGuTexFilter(streetMip?GU_LINEAR_MIPMAP_LINEAR:GU_LINEAR,GU_LINEAR);
         if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
         else sceGuTexImage(0,64,64,64,textures3d_data+VRAM_MATERIALS*128*128*2+(m-VRAM_MATERIALS)*64*64*2);
+        if(streetMip)sceGuTexImage(1,64,64,64,textures3d_data+753664+12*8192+m*64*64*2);
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,used[m],0,mesh[m]);
     }
 #endif

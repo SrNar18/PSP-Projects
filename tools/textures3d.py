@@ -73,7 +73,14 @@ def main():
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664+12*8192
+    # One RAM mip level for the frequently viewed road and sidewalk. The main
+    # 128px tiles stay in VRAM; only these two 64px filtered levels add 16KB.
+    for name in ('asphalt','sidewalk'):
+        tile=Image.open(ROOT/'assets/textures3d'/f'{name}.png').convert('RGB').resize((64,64),Image.Resampling.LANCZOS)
+        raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
+        result.extend(swizzle(raw,128,64))
+    assert len(result)==753664+14*8192
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('21 VRAM materials + 8 pedestrian + 12 extra RAM materials:',len(result),'bytes')
+    print('21 VRAM materials + 8 pedestrian + 12 extra RAM materials + 2 street mips:',len(result),'bytes')
 
 if __name__=='__main__':main()

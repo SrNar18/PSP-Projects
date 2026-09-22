@@ -49,7 +49,7 @@ static struct {
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
  float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
- float tapAge,sprintTime,footSpeed,footTravel,moveGap;int runTaps;
+ float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
  int pauseTab,pauseBack;
@@ -167,11 +167,12 @@ static int foot_free(float x,float y){
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
 static void camera_follow(float target,float dt){
  /* Critically damped heading in rendered world space, bounded turn speed. */
- float omega=g.car>=0?6.5f:5.5f; /* v2.9: mas agil (antes 4.5); en coche aun mas para no quedarse atras al girar */
+ if(g.car<0&&fabsf(angle_delta(target,g.viewYaw))<.10f){g.cameraVelocity*=expf(-dt*9);return;}
+ float omega=g.car>=0?6.5f:g.footSpeed<56?3.1f:g.footSpeed<86?4.1f:5.2f;
  float d=angle_delta(g.viewYaw,target),decay=expf(-omega*dt),v=g.cameraVelocity;
  float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
  g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
- float limit=(g.car>=0?3.6f:3.0f)*dt; /* v2.9: antes 2.1 rad/s, mas lento que el giro del coche */
+ float limit=(g.car>=0?3.6f:g.footSpeed<56?2.2f:g.footSpeed<86?2.6f:3.0f)*dt;
  if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
  g.viewYaw+=change;
 }
@@ -397,7 +398,7 @@ void game_save_summary(char *title,int titlecap,char *detail,int detailcap){
 static int apply_save(const Save *sp){Save s=*sp;g.lift=0;g.inMetro=0;
  if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
- g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;return 1;}
+ g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.motion=0;g.moveActive=0;return 1;}
 /* v2.13.6 (Claude): el tamano debe coincidir EXACTAMENTE. Una partida guardada por una version con otro formato
    pasaba las comprobaciones de rango y se cargaba con estado incoherente; en la consola eso acabo reiniciandola
    al dibujar la ciudad (en el emulador no). Mejor rechazarla con un aviso claro. */
@@ -419,7 +420,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -620,7 +621,11 @@ static void world_tick(float ax,float ay,float dt){
      Lo que evita las "vueltas locas" es que el RUMBO del personaje gira con una velocidad limitada (g.moveYaw) y la
      camara lo sigue con retardo; el anclaje anterior hacia que al girar en carrera el personaje no respondiera. */
   float sx=dx,sy=dy;
-  if(sx*sx+sy*sy>.04f){g.stickActive=1;}else{g.stickActive=0;sx=sy=0;}
+  float rawStick=hypotf(sx,sy);
+  if(rawStick>.24f)g.stickActive=1;else if(rawStick<.12f)g.stickActive=0;
+  if(!g.stickActive)sx=sy=0;
+  else{float amount=clampf((rawStick-.10f)/.90f,0,1);
+       sx=sx/fmaxf(rawStick,.001f)*amount;sy=sy/fmaxf(rawStick,.001f)*amount;}
   dx=-sinf(g.viewYaw)*sx-cosf(g.viewYaw)*sy;dy=cosf(g.viewYaw)*sx-sinf(g.viewYaw)*sy;
   float inputLength=sqrtf(dx*dx+dy*dy);dx/=fmaxf(1,inputLength);dy/=fmaxf(1,inputLength);
   if(inputLength>.2f){
@@ -655,7 +660,7 @@ static void world_tick(float ax,float ay,float dt){
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
-  camera_follow(desiredYaw,dt);
+  if(inputLength>.29f)camera_follow(desiredYaw,dt);
 #endif
   }
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
@@ -721,16 +726,20 @@ static void world_tick(float ax,float ay,float dt){
  /* Animate distance actually travelled: pushing into a wall no longer runs
     the feet in place. Keep phase continuous through all three gaits. */
  stamina_tick(dt);
- float motionTarget=g.car<0?clampf(g.footTravel/(dt*42),0,2.1f):0;
- g.motion+=(motionTarget-g.motion)*(1-expf(-dt*12));
- if(g.footTravel>.0001f)g.gaitPhase=fmodf(g.gaitPhase+g.footTravel*(.255f-.045f*clampf(g.motion-1,0,1.1f)),2*PI);
+ float actualSpeed=g.footTravel/dt;
+ g.footFiltered+=(actualSpeed-g.footFiltered)*(1-expf(-dt*7));
+ if(g.footTravel<.005f)g.footStall+=dt;else g.footStall=0;
+ float motionTarget=g.car<0?clampf(g.footFiltered/42,0,2.1f):0;
+ g.motion+=(motionTarget-g.motion)*(1-expf(-dt*9));
+ if(g.car<0&&g.footFiltered>.2f&&g.footStall<.11f)
+  g.gaitPhase=fmodf(g.gaitPhase+g.footFiltered*dt*(.275f-.055f*clampf(g.motion-1,0,1.1f)),2*PI);
  if(pressed(B_UP)&&g.car>=0)interact();
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
- if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
+ if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.weaponWheel=0;g.weaponHold=0;
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
@@ -1109,7 +1118,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  scene.metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
- for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police};
+ for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police,(i*7+g.cars[i].type*3)%12};
  for(int i=0;i<42;i++)scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,g.peds[i].v>0?PI*.5f:-PI*.5f,i};
  for(int i=0;i<30;i++){scene.hubs[i][0]=locations[i].x;scene.hubs[i][1]=locations[i].y;}
  scene.target=g.raceTime>0?g.route[g.checkpoint]:g.mission<36?step_now()->loc:-1;
