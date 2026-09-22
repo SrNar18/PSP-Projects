@@ -290,8 +290,12 @@ static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)r
 static const char *districts[]={"SAN JAVIER / COMUNA 13","LAURELES / ESTADIO","BELEN","ARANJUEZ / CASTILLA","EL POBLADO","VILLA HERMOSA / BUENOS AIRES","LA CANDELARIA / RIO","POPULAR / SANTO DOMINGO","ROBLEDO / DOCE DE OCTUBRE"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
 static void map_grid_build(void);
+static void world_cars_init(void);static void world_peds_init(void);
 static void world_init(void){
  map_grid_build();
+ world_cars_init();world_peds_init();
+}
+static void world_cars_init(void){
  rng=729;for(int i=0;i<CAR_COUNT;i++){
   Car *c=&g.cars[i];int bx=random_u()%8,by=random_u()%7;
   c->type=i%6;c->police=i>=60;c->hp=100;c->speed=0;c->parked=i<38;
@@ -313,6 +317,8 @@ static void world_init(void){
   }
  }
  g.cars[1].type=0;
+}
+static void world_peds_init(void){
  for(int i=0;i<42;i++){
   for(int k=0;k<12;k++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);if(!cm_solid(g.peds[i].x,g.peds[i].y))break;} /* v2.6: acera real */
   g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
@@ -335,14 +341,31 @@ static int nativeSave=0,saveRequest=0;
 void game_set_native_savedata(int on){nativeSave=on;}
 void game_set_lowmem2(const char *msg){notice(msg);} /* diagnostico */
 /* v2.13.2: pantalla de carga (dibujo directo, sin depender del bucle principal) y reinicio del mundo tras cargar. */
-void game_loading_screen(uint32_t *pixels,int stride){
+/* v2.13.3 (Claude): carga por ETAPAS. Cada llamada hace un trozo de trabajo acotado y dibuja la barra; asi ninguna
+   llamada monopoliza la CPU varios segundos (el hilo de audio y el sistema siguen atendidos) y, si algo falla, el
+   registro de psp_main dice exactamente en que etapa. Devuelve 0 mientras queda trabajo, 1 cuando termina. */
+static const char *LOAD_STEPS[]={"Leyendo la partida","Trazando calles y manzanas","Repartiendo el trafico",
+    "Colocando peatones","Dibujando el mapa de la ciudad","Preparando la camara","Listo"};
+int game_load_stage(uint32_t *pixels,int stride,int stage){
+ switch(stage){
+  case 0: break;                                   /* la partida ya esta aplicada */
+  case 1: cm_build(); break;                       /* parcelas de las 56 celdas (cache) */
+  case 2: world_cars_init(); break;                /* coches */
+  case 3: world_peds_init(); break;                /* peatones */
+  case 4: map_grid_build(); break;                 /* rejilla del minimapa (640x560) */
+  case 5: g.cameraDistance=0;g.cameraVelocity=0;g.moveActive=0;g.stickActive=0;g.noticeT=0;g.screenT=0;break;
+  default: return 1;
+ }
+ /* pintar el progreso */
  fb=pixels;pitch=stride;
- rect(0,0,W,H,INK);
- rect(0,0,W,3,LIME);
- text(W/2-8*6,H/2-30,"NARCADE",LIME,1);
- text(W/2-11*7,H/2-6,"CARGANDO MEDELLIN...",WHITE,1);
- text(W/2-14*7,H/2+18,"Preparando la ciudad y tu partida",MUTED,1);
- rect(W/2-90,H/2+44,180,6,PANEL);rect(W/2-90,H/2+44,120,6,LIME);
+ rect(0,0,W,H,INK);rect(0,0,W,3,LIME);
+ text(W/2-8*6,60,"NARCADE",LIME,1);
+ text(W/2-11*7,92,"CARGANDO MEDELLIN...",WHITE,1);
+ int total=6,done=stage+1;if(done>total)done=total;
+ text(W/2-((int)strlen(LOAD_STEPS[stage<6?stage:6])*7)/2,140,LOAD_STEPS[stage<6?stage:6],MUTED,1);
+ rect(W/2-100,170,200,8,PANEL);rect(W/2-100,170,200*done/total,8,LIME);
+ char b[32];snprintf(b,sizeof(b),"%d%%",100*done/total);text(W/2-12,190,b,MUTED,1);
+ return 0;
 }
 void game_world_reset(void){world_init();}
 void game_set_lowmem(int kb){char b[96];snprintf(b,sizeof(b),"Sin memoria para el menu de la Memory Stick (%d KB libres).",kb);notice(b);} /* v2.13.1 */

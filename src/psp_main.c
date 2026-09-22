@@ -89,15 +89,18 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
   int ok=game_import_save(saveBuf,(int)sd.dataSize);
   dbg(ok?"import-ok":"import-fallo");
   if(ok){
-   /* Pantalla de carga: el primer fotograma tras cargar construye toda la ciudad en la posicion guardada (la zona
-      mas densa cuesta ~35 ms) y ademas se reinicia el mundo. Mostrarla evita el paron en negro y da tiempo al
-      sistema a liberar lo que uso el dialogo. */
-   game_loading_screen(buffers[*index],512);
-   sceDisplaySetFrameBuf(buffers[*index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
-   for(int k=0;k<6;k++)sceDisplayWaitVblankStart();
-   dbg("mundo-init-inicio");
-   game_world_reset();
-   dbg("mundo-init-ok");
+   /* v2.13.3: carga por etapas. Cada etapa hace un trozo acotado, se dibuja el progreso y se registra: si la consola
+      se reinicia, la ultima linea del registro dice en que etapa exacta ocurrio. */
+   for(int stage=0;stage<8;stage++){
+    char m[40];snprintf(m,sizeof(m),"etapa-%d-inicio",stage);dbg(m);
+    int done=game_load_stage(buffers[*index],512,stage);
+    snprintf(m,sizeof(m),"etapa-%d-ok",stage);dbg(m);
+    sceKernelDcacheWritebackAll();
+    sceDisplaySetFrameBuf(buffers[*index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
+    sceDisplayWaitVblankStart();sceDisplayWaitVblankStart();
+    if(done)break;
+   }
+   dbg("carga-por-etapas-ok");
   }
   return ok;
  }
@@ -116,14 +119,16 @@ int main(void){
  uint32_t *buffers[2];buffers[0]=(uint32_t*)((uintptr_t)sceGeEdramGetAddr()|0x40000000);buffers[1]=buffers[0]+512*272;
  r3_init();game_init();game_set_native_savedata(1);sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
  pspAudioInit();pspAudioSetChannelCallback(0,audio_cb,0);
- uint64_t before=sceKernelGetSystemTimeWide();int index=0;
+ uint64_t before=sceKernelGetSystemTimeWide();int index=0;int postLoad=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
-  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();continue;}
+  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();postLoad=req==2?3:0;continue;}
+  if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-mundo-%d",4-postLoad);dbg(m);}
 #ifdef NARCADE_PROFILE
   uint64_t p0=sceKernelGetSystemTimeWide();
 #endif
+  if(postLoad>0){postLoad--;if(!postLoad)dbg("mundo-estable");}
   game_draw(buffers[index],512);
 #ifdef NARCADE_PROFILE
   game_set_profile((sceKernelGetSystemTimeWide()-p0)/1000.0f);
