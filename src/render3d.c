@@ -269,6 +269,8 @@ static void tree(float x,float z){
 }
 static void (*phaseFn2)(const char*)=0;
 static void r3_phase(const char *s){if(phaseFn2)phaseFn2(s);}
+static void (*traceFn2)(const char*)=0;static int *traceFrames2=0;
+static void r3_trace_cell(const char *s){if(traceFn2&&traceFrames2&&*traceFrames2>0)traceFn2(s);}
 #include "city3d.inc"
 #include "city26.inc"
 #include "shapes.inc"
@@ -681,7 +683,7 @@ static void (*phaseFn)(const char*)=0;
 void r3_phase_hook(void (*fn)(const char*)){phaseFn=fn;phaseFn2=fn;}
 #define PHASE(s) do{if(phaseFn)phaseFn(s);}while(0)
 #define TRACE(s) do{PHASE(s);if(traceFn&&traceFrames>0)traceFn(s);}while(0)
-void r3_trace(void (*fn)(const char*),int frames){traceFn=fn;traceFrames=frames;}
+void r3_trace(void (*fn)(const char*),int frames){traceFn=fn;traceFrames=frames;traceFn2=fn;traceFrames2=&traceFrames;}
 int r3_overflow(void){return overflow;}
 int r3_used(int m){return m<MAT_COUNT?used[m]:0;}
 void r3_init(void){

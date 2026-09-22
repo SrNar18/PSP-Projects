@@ -368,6 +368,7 @@ int game_load_stage(uint32_t *pixels,int stride,int stage){
  return 0;
 }
 void game_world_reset(void){world_init();}
+void game_player_pos(int *x,int *y){*x=(int)g.x;*y=(int)g.y;}
 void game_set_lowmem(int kb){char b[96];snprintf(b,sizeof(b),"Sin memoria para el menu de la Memory Stick (%d KB libres).",kb);notice(b);} /* v2.13.1 */
 int game_take_request(void){int r=saveRequest;saveRequest=0;return r;}
 void game_request_result(int req,int ok){
@@ -385,7 +386,13 @@ static int apply_save(const Save *sp){Save s=*sp;g.lift=0;g.inMetro=0;
  if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
  g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;return 1;}
-int game_import_save(const void *buf,int len){if(len<(int)sizeof(Save))return 0;if(!apply_save((const Save*)buf))return 0;g.screen=WORLD;notice("Partida cargada desde la Memory Stick.");return 1;}
+/* v2.13.6 (Claude): el tamano debe coincidir EXACTAMENTE. Una partida guardada por una version con otro formato
+   pasaba las comprobaciones de rango y se cargaba con estado incoherente; en la consola eso acabo reiniciandola
+   al dibujar la ciudad (en el emulador no). Mejor rechazarla con un aviso claro. */
+int game_import_save(const void *buf,int len){
+ if(len!=(int)sizeof(Save)){notice("Esa partida es de una version anterior del juego y no se puede cargar.");return 0;}
+ if(!apply_save((const Save*)buf)){notice("Los datos de la partida estan danados.");return 0;}
+ g.screen=WORLD;notice("Partida cargada desde la Memory Stick.");return 1;}
 static int loadfile(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return 0;size_t n=fread(&s,1,sizeof(s),f);fclose(f);
  if(n!=sizeof(s))return 0;return apply_save(&s);}
 #if 0

@@ -435,3 +435,37 @@ guardia `sceKernelMaxFreeMemSize()<1400 KB` que avisa por pantalla en vez de dej
 **Antes de anadir mas datos estaticos (arte, audio, texturas, mallas) comprueba `psp-size`: text+bss+heap debe
 quedar por debajo de ~20 MB.** Si hace falta espacio: `MAX_VERTICES` (8190) y `MAT_COUNT` (41) son los que mandan en
 `mesh` (8 MB); bajar MAX_VERTICES a 6144 libera 2 MB y solo descarta poligonos en escenas extremas.
+
+### 15.4 v2.13.2 a v2.13.6 (Claude) — la PSP se REINICIABA al cargar partida: diagnostico completo y lecciones
+**Sintoma**: en la consola (nunca en PPSSPP) al elegir la ranura en el dialogo de Sony la PSP se reiniciaba. La misma
+partida copiada a PPSSPP cargaba perfectamente.
+
+**Como se diagnostico** (herramientas que quedan en el codigo y conviene reutilizar):
+- `dbg()` en psp_main.c escribe pasos con marca de tiempo y memoria libre en `ms0:/NARCADE_DEBUG.TXT`. **Solo escribe
+  si existe el fichero vacio `ms0:/NARCADE_DEBUG.ON`**: crealo para depurar en consola, borralo para jugar normal.
+- Carga por etapas (`game_load_stage`) con barra de progreso: partida -> parcelas -> trafico -> peatones -> minimapa
+  -> camara. Cada etapa se registra por separado.
+- `r3_trace()` traza las fases del render (`r3:camara`, `r3:ciudad`, `r3:coches`, `r3:jugador`, `r3:hubs`,
+  `r3:efectos`, `r3:ge-inicio`, `r3:ge-fin`) y cada celda de ciudad (`c3,4c`) en los primeros fotogramas.
+- Hilo `watchdog` (prioridad 0x08) que vuelca la fase actual si se queda congelada: distingue CUELGUE de CRASH.
+
+**Lo que dijeron los registros**: memoria libre 7,9 MB en todo momento (NO era falta de RAM), la partida se importaba
+bien, todas las etapas terminaban y la consola moria siempre dentro de `city()` del primer fotograma, en menos de
+0,6 s (crash, no cuelgue).
+
+**Causa real**: la partida guardada provenia de una version anterior del juego. Pasaba las comprobaciones de rango y
+se cargaba, dejando un estado incoherente que en la consola reventaba al dibujar la ciudad (PPSSPP lo toleraba).
+Al empezar una partida nueva y sobrescribir el guardado, todo funciona.
+
+**Blindaje anadido**: `game_import_save()` ahora exige que el tamano del bloque coincida EXACTAMENTE con
+`sizeof(Save)` y avisa "Esa partida es de una version anterior del juego y no se puede cargar" en vez de cargarla.
+**Si cambias la estructura `Save`, sube tambien `version` y manten este rechazo**: una partida vieja nunca debe llegar
+al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layout si los campos cuadran por casualidad.
+
+**Otros arreglos de la tanda** (mantener):
+- `PSP_HEAP_SIZE_KB(1024)` (el juego no usa malloc) y `MAX_VERTICES` 8190 -> 6144: de 21,4 MB a 16,4 MB de los 24 MB
+  de la particion de usuario. Antes de anadir arte/audio/mallas, comprobar `psp-size` (text+bss+heap < ~20 MB).
+- El audio del juego se detiene durante los dialogos de sceUtility y se restaura al cerrarlos.
+- El dialogo se espera hasta el estado NONE (descarga completa del modulo) antes de que el juego vuelva a dibujar.
+- Plugin RemoteJoyLite desactivado en la Memory Stick del usuario (`seplugins/game.txt` y `pops.txt`, copia en
+  `game.txt.bak`): engancha el cambio de framebuffer y es un riesgo con los dialogos del sistema.

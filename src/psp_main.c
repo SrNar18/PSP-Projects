@@ -36,6 +36,7 @@ extern const unsigned char icon0_png[],icon0_png_end[];
    no ocurre, asi que hay que saber en que paso exacto muere: el fichero conserva la ultima linea escrita. */
 /* v2.13.5 (Claude): fase actual (sin escribir a disco) + hilo vigilante que la vuelca cada 200 ms. Permite saber si
    la consola se CUELGA (la fase se repite) o se ESTRELLA (el registro para), y en que celda de la ciudad. */
+static int dbgOn=-1;
 static volatile const char *gPhase="arranque";static volatile unsigned gPhaseSeq=0;
 static void phase(const char *p){gPhase=p;gPhaseSeq++;}
 static int watchdog(SceSize a,void *v){(void)a;(void)v;
@@ -45,6 +46,7 @@ static int watchdog(SceSize a,void *v){(void)a;(void)v;
         unsigned seq=gPhaseSeq;const char *ph=(const char*)gPhase;
         if(seq==last){
             if(++same>2){
+                if(!dbgOn)continue;
                 char m[128];int n=snprintf(m,sizeof(m),"VIGILANTE: atascado en '%s' (%d)%c",ph,same,10);
                 SceUID f=sceIoOpen("ms0:/NARCADE_DEBUG.TXT",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND,0777);
                 if(f>=0){sceIoWrite(f,m,n);sceIoClose(f);}
@@ -55,6 +57,8 @@ static int watchdog(SceSize a,void *v){(void)a;(void)v;
     return 0;
 }
 static void dbg(const char *msg){
+    if(dbgOn<0){SceUID t=sceIoOpen("ms0:/NARCADE_DEBUG.ON",PSP_O_RDONLY,0);dbgOn=t>=0;if(t>=0)sceIoClose(t);}
+    if(!dbgOn)return; /* v2.13.6: diagnostico solo si existe ms0:/NARCADE_DEBUG.ON */
     SceUID f=sceIoOpen("ms0:/NARCADE_DEBUG.TXT",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND,0777);
     if(f<0)return;
     char line[160];int n=snprintf(line,sizeof(line),"%u %s free=%dKB max=%dKB\n",(unsigned)(sceKernelGetSystemTimeLow()/1000),msg,
@@ -92,7 +96,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  int cur=*index,finishing=0,idle=0;
  r3_gu_buffers(buffers[cur],buffers[cur^1]);
  while(running){
-  memcpy(buffers[cur],background,sizeof(background));sceKernelDcacheWritebackAll();
+  phase("dialogo");memcpy(buffers[cur],background,sizeof(background));sceKernelDcacheWritebackAll();
   r3_gu_idle();
   int st=sceUtilitySavedataGetStatus();
   if(st==PSP_UTILITY_DIALOG_INIT||st==PSP_UTILITY_DIALOG_VISIBLE)sceUtilitySavedataUpdate(1);
@@ -115,7 +119,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  if(mode){
   dbg("import-inicio");
   int ok=game_import_save(saveBuf,(int)sd.dataSize);
-  dbg(ok?"import-ok":"import-fallo");
+  if(ok){char m[64];int px,py;game_player_pos(&px,&py);snprintf(m,sizeof(m),"import-ok pos=%d,%d celda=%d,%d",px,py,px/320,py/320);dbg(m);}else dbg("import-fallo");
   if(ok){
    /* v2.13.3: carga por etapas. Cada etapa hace un trozo acotado, se dibuja el progreso y se registra: si la consola
       se reinicia, la ultima linea del registro dice en que etapa exacta ocurrio. */
