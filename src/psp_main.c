@@ -32,6 +32,15 @@ static SceUtilitySavedataParam sd;
 extern const unsigned char icon0_png[],icon0_png_end[];
 /* mode 0 = LISTSAVE, 1 = LISTLOAD. Devuelve 1 si termino bien, 0 si cancelado/error.
    Mientras el dialogo esta abierto seguimos dibujando el juego debajo con el mismo doble buffer. */
+/* v2.13.2 (Claude): registro de pasos en ms0:/NARCADE_DEBUG.TXT. La PSP se reinicia al cargar partida y en PPSSPP
+   no ocurre, asi que hay que saber en que paso exacto muere: el fichero conserva la ultima linea escrita. */
+static void dbg(const char *msg){
+    SceUID f=sceIoOpen("ms0:/NARCADE_DEBUG.TXT",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND,0777);
+    if(f<0)return;
+    char line[160];int n=snprintf(line,sizeof(line),"%u %s free=%dKB max=%dKB\n",(unsigned)(sceKernelGetSystemTimeLow()/1000),msg,
+        (int)(sceKernelTotalFreeMemSize()>>10),(int)(sceKernelMaxFreeMemSize()>>10));
+    sceIoWrite(f,line,n);sceIoClose(f);
+}
 static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memset(&sd,0,sizeof(sd));sd.base.size=sizeof(sd);
  sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_LANGUAGE,&sd.base.language);
@@ -55,6 +64,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memcpy(background,buffers[*index],sizeof(background));
  /* v2.13.1: si no hay memoria suficiente para el dialogo, avisar en vez de dejar que el sistema se caiga */
  if(sceKernelMaxFreeMemSize()<1400*1024){game_set_lowmem(sceKernelMaxFreeMemSize()>>10);return 0;}
+ dbg(mode?"dialogo-cargar-init":"dialogo-guardar-init");
  if(sceUtilitySavedataInitStart(&sd)<0)return 0;
  int cur=*index;
  r3_gu_buffers(buffers[cur],buffers[cur^1]);
@@ -68,12 +78,29 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
   sceDisplayWaitVblankStart();
   r3_gu_swap();cur^=1;
  }
+ dbg("dialogo-cerrado");
  /* devolver el control de la pantalla al juego (dibuja por CPU y presenta con sceDisplaySetFrameBuf) */
  r3_gu_display(0);
  sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
  *index=cur;
- if(sd.base.result!=0)return 0;
- if(mode)return game_import_save(saveBuf,(int)sd.dataSize);
+ if(sd.base.result!=0){dbg("dialogo-result-no-cero");return 0;}
+ if(mode){
+  dbg("import-inicio");
+  int ok=game_import_save(saveBuf,(int)sd.dataSize);
+  dbg(ok?"import-ok":"import-fallo");
+  if(ok){
+   /* Pantalla de carga: el primer fotograma tras cargar construye toda la ciudad en la posicion guardada (la zona
+      mas densa cuesta ~35 ms) y ademas se reinicia el mundo. Mostrarla evita el paron en negro y da tiempo al
+      sistema a liberar lo que uso el dialogo. */
+   game_loading_screen(buffers[*index],512);
+   sceDisplaySetFrameBuf(buffers[*index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
+   for(int k=0;k<6;k++)sceDisplayWaitVblankStart();
+   dbg("mundo-init-inicio");
+   game_world_reset();
+   dbg("mundo-init-ok");
+  }
+  return ok;
+ }
  return 1;
 }
 static void handle_save_request(int req,uint32_t **buffers,int *index){

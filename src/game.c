@@ -333,6 +333,18 @@ int game_save(void){
    dialogo de la Memory Stick (sceUtilitySavedata); los datos van y vienen con export/import. */
 static int nativeSave=0,saveRequest=0;
 void game_set_native_savedata(int on){nativeSave=on;}
+void game_set_lowmem2(const char *msg){notice(msg);} /* diagnostico */
+/* v2.13.2: pantalla de carga (dibujo directo, sin depender del bucle principal) y reinicio del mundo tras cargar. */
+void game_loading_screen(uint32_t *pixels,int stride){
+ fb=pixels;pitch=stride;
+ rect(0,0,W,H,INK);
+ rect(0,0,W,3,LIME);
+ text(W/2-8*6,H/2-30,"NARCADE",LIME,1);
+ text(W/2-11*7,H/2-6,"CARGANDO MEDELLIN...",WHITE,1);
+ text(W/2-14*7,H/2+18,"Preparando la ciudad y tu partida",MUTED,1);
+ rect(W/2-90,H/2+44,180,6,PANEL);rect(W/2-90,H/2+44,120,6,LIME);
+}
+void game_world_reset(void){world_init();}
 void game_set_lowmem(int kb){char b[96];snprintf(b,sizeof(b),"Sin memoria para el menu de la Memory Stick (%d KB libres).",kb);notice(b);} /* v2.13.1 */
 int game_take_request(void){int r=saveRequest;saveRequest=0;return r;}
 void game_request_result(int req,int ok){

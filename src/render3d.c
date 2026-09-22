@@ -17,7 +17,8 @@
 #define PI 3.14159265358979323846f
 #define MAT_COUNT 41 /* 21 VRAM + 8 NPC + 12 urban/detail materials in RAM */
 #define VRAM_MATERIALS 21
-#define MAX_VERTICES 8190
+#define MAX_VERTICES 6144 /* v2.13.2 (Claude): 8190 -> 6144 = 2 MB menos de RAM estatica (mesh). El pico medido
+                                por material es ~5.000; si algun material se pasa solo se descartan poligonos. */
 #include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
 enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,CAR_SIDE,CAR_PAINT,GLASS,MURAL,JACKET_BACK,SLEEVE,SKIN,HAIR };
