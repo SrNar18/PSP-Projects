@@ -1,0 +1,26 @@
+NARCADE 3D v2.10 - made by Naresz
+
+Instalacion: copia Narcade_v2.10.iso a /ISO en tu Memory Stick con CFW.
+Alternativa EBOOT: copia PSP/GAME/NARCADE/EBOOT.PBP a la misma ruta.
+
+Caminar: joystick sin X. Trotar: mantener X. Correr: tres pulsaciones
+seguidas de X y continuar pulsando; ahora admite un ritmo irregular.
+Si dejas de pulsar, vuelve al trote cuando mantienes X o a caminar al soltarla.
+La carrera sigue consumiendo estamina y no atraviesa paredes ni coches.
+
+Cambios:
+- Lectura de pulsaciones cortas de X entre fotogramas de PSP.
+- Carrera estable con pausas de hasta aproximadamente un segundo entre taps
+  una vez iniciada; tolera breves perdidas de senal del joystick.
+- Los coches frenan si bloqueas su carril y pitan despues de 0,65 s.
+  Cada coche espera 7-11 segundos antes de repetir el aviso.
+- Bocina de doble tono con entrada/salida gradual y posicion estereo.
+- Ambiente original de ciudad: rodadura, motores, murmullo y aves lejanas.
+- Texturas nuevas de denim, mangas, cristales, ladrillo, estuco, tejado y acera.
+- Niebla desactivada; horizonte de montanas y edificios simplificados.
+
+Validacion: pruebas automaticas de campaña, movimiento, estamina, entradas
+irregulares a 20-60 Hz, trafico/bocinas y escenas 3D. Arranque, paseo y panel
+Sony inspeccionados en PPSSPP con renderizador por software.
+No probado en PSP fisica. El fondo es decorativo y no amplia el mapa jugable;
+el detalle cercano sigue cargandose por distancia para ajustarse a PSP.

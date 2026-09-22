@@ -12,7 +12,7 @@ int main(void){
  setup();move(B_CROSS,90);assert(g.footSpeed>73&&g.footSpeed<75);assert(!g.sprintTime);float trot=g.x-700;assert(trot>walk*1.4f);
  setup();for(int i=0;i<90;i++)move(i%12==0?B_CROSS:0,1);
  assert(g.sprintTime>0&&g.footSpeed>98);assert(g.x-700>trot);
- move(B_CROSS,75);assert(g.sprintTime==0&&g.footSpeed>73&&g.footSpeed<75);
+ move(B_CROSS,120);assert(g.sprintTime==0&&g.footSpeed>73&&g.footSpeed<75);
  move(0,75);assert(g.footSpeed>41&&g.footSpeed<43);
  puts("PASS: walking < held-X jogging < repeated-X sprint; hold never auto-sprints; rhythm expiry returns to jogging/walking.");
  setup();for(int i=0;i<120;i++)move(i%40==0?B_CROSS:0,1);assert(!g.sprintTime);

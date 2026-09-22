@@ -42,7 +42,7 @@ static void day_update(float time){
     float r=lerpf(lerpf(155,236,dusk),14,night),g=lerpf(lerpf(189,140,dusk),18,night),b=lerpf(lerpf(192,110,dusk),40,night);
     skyColor=COLOR((int)r,(int)g,(int)b);
     /* horizonte: bruma clara de dia, naranja intenso al amanecer/atardecer, gris-azul apagado de noche */
-    float hr=lerpf(lerpf(215,250,dusk),40,night),hg=lerpf(lerpf(226,170,dusk),46,night),hb=lerpf(lerpf(222,120,dusk),70,night);
+    float hr=lerpf(lerpf(128,239,dusk),22,night),hg=lerpf(lerpf(180,143,dusk),30,night),hb=lerpf(lerpf(218,104,dusk),58,night);
     horizonColor=COLOR((int)hr,(int)hg,(int)hb);
 }
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){

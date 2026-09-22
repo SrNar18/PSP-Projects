@@ -48,9 +48,9 @@ static struct {
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
  float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
- float tapAge,sprintTime,footSpeed,footTravel;int runTaps;
+ float tapAge,sprintTime,footSpeed,footTravel,moveGap;int runTaps;
  float stamina;int exhausted;
- float trafficYield[CAR_COUNT];
+ float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
  int pauseTab,pauseBack;
  float lift,metroZ,metroWait;int metroDir,inMetro;float moveYaw,steerSmooth;int moveActive; /* v2.9: rumbo suavizado a pie */int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
@@ -62,7 +62,15 @@ static uint32_t *fb;static int pitch;
 static uint32_t *renderTarget;
 #endif
 static volatile int audioStation=0,audioEnabled=0,audioAmbient=0;
+static volatile unsigned hornEvent=0;
+static volatile int hornGain=0,hornPan=0,trafficGain=0,crowdGain=0;
+extern const short city_bed[],city_engine[],city_horn[];
+#define CITY_BED_SAMPLES 352800
+#define CITY_ENGINE_SAMPLES 22050
+#define CITY_HORN_SAMPLES 12127
 static unsigned audioPos=0;static int audioLast=-1;
+static unsigned pendingCross=0;
+void game_latch_cross(unsigned buttons){pendingCross|=buttons&B_CROSS;}
 static uint32_t rng=137;
 static uint32_t random_u(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 static float clampf(float a,float lo,float hi){return a<lo?lo:(a>hi?hi:a);}
@@ -329,7 +337,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -427,13 +435,17 @@ static void enter_exit(void){
 }
 static void foot_pace(int moving,float dt){
  g.tapAge+=dt;g.sprintTime=fmaxf(0,g.sprintTime-dt);
- if(!moving){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;return;}
+ if(!moving){g.moveGap+=dt;if(g.moveGap>.16f){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}return;}
+ g.moveGap=0;
  if(pressed(B_CROSS)){
-  if(g.tapAge>=.035f&&g.tapAge<=.60f)g.runTaps++;else g.runTaps=1;
+  /* Once running, an irregular tap renews the sprint directly. Previously
+     a single missed interval forced three new presses and repeated slowdown. */
+  if(g.sprintTime>0)g.runTaps=3;
+  else if(g.tapAge<=.60f)g.runTaps++;else g.runTaps=1;
   g.runTaps=g.runTaps>3?3:g.runTaps;g.tapAge=0;
-  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=.70f;
+  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=1.05f;
  }
- if(g.tapAge>.60f)g.runTaps=0;
+ if(g.tapAge>.60f&&g.sprintTime<=0)g.runTaps=0;
  float wanted=g.exhausted?74.f:g.sprintTime>0?105.f:held(B_CROSS)?74.f:42.f; /* v2.9: trote mas distinto del paso */
  g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
 }
@@ -445,6 +457,26 @@ static void stamina_tick(float dt){
   g.stamina=fminf(100,g.stamina+dt*(g.footTravel>.01f?12.5f:18.f));
   if(g.exhausted&&g.stamina>=100){g.exhausted=0;g.runTaps=0;g.tapAge=10;notice("Estamina recuperada. Pulsa X repetidamente para correr.");}
  }
+}
+static int traffic_blocked(const Car *c){
+ if(g.lift>8||g.inMetro)return 0;
+ float cx,cz,px,pz;physics_project(c->x,c->y,&cx,&cz);physics_project(g.x,g.y,&px,&pz);
+ float a=physics_heading(c),dx=px-cx,dz=pz-cz;
+ float forward=dx*cosf(a)+dz*sinf(a),side=-dx*sinf(a)+dz*cosf(a);
+ return forward>4&&forward<(g.car<0?62:78)&&fabsf(side)<(g.car<0?13:21);
+}
+static void request_horn(int i){
+ float cx,cz,px,pz;physics_project(g.cars[i].x,g.cars[i].y,&cx,&cz);physics_project(g.x,g.y,&px,&pz);
+ float d=hypotf(cx-px,cz-pz);
+ hornGain=(int)(220*clampf(1-d/240,.1f,1));
+ hornPan=(int)(100*clampf((-(cx-px)*sinf(g.viewYaw)+(cz-pz)*cosf(g.viewYaw))/fmaxf(d,1),-1,1));
+ hornEvent++;
+}
+static void city_audio_update(void){
+ float traffic=0,crowd=0;
+ for(int i=0;i<CAR_COUNT;i++)if(!g.cars[i].parked)traffic+=clampf(1-dist(g.x,g.y,g.cars[i].x,g.cars[i].y)/180,0,1)*(.3f+fabsf(g.cars[i].speed)/200);
+ for(int i=0;i<42;i++)crowd+=clampf(1-dist(g.x,g.y,g.peds[i].x,g.peds[i].y)/100,0,1);
+ trafficGain=(int)(clampf(traffic,0,2)*90);crowdGain=(int)(clampf(crowd,0,3)*20);
 }
 static void world_tick(float ax,float ay,float dt){
  g.footTravel=0;
@@ -511,7 +543,14 @@ static void world_tick(float ax,float ay,float dt){
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
  for(int i=0;i<CAR_COUNT;i++){
+  g.hornCooldown[i]=fmaxf(0,g.hornCooldown[i]-dt);
   if(i==g.car)continue;Car *c=&g.cars[i];if(c->parked&&!c->police)continue;
+  if(traffic_blocked(c)){
+   g.blockedTime[i]+=dt;c->speed=0;
+   if(g.blockedTime[i]>.65f&&g.hornCooldown[i]<=0){request_horn(i);g.hornCooldown[i]=7+(i%5);}
+   continue;
+  }
+  g.blockedTime[i]=0;
   if(g.trafficYield[i]>0){g.trafficYield[i]=fmaxf(0,g.trafficYield[i]-dt);c->speed=0;continue;}
   if(c->police&&g.heat>0){
    float dd=dist(g.x,g.y,c->x,c->y);
@@ -531,6 +570,7 @@ static void world_tick(float ax,float ay,float dt){
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a+=PI*.5f;}
  }
  separate_cars();
+ city_audio_update();
  metro_update(dt);
 #ifdef NARCADE_3D
  if(g.car>=0)camera_follow(physics_heading(&g.cars[g.car]),dt);
@@ -555,7 +595,7 @@ static void world_tick(float ax,float ay,float dt){
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
- dt=clampf(dt,.001f,.05f);g.pressed=buttons&~g.prev;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
+ dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
@@ -742,7 +782,7 @@ static void title_draw(void){
  for(int x=-80+(int)fmodf(g.clock*19,640);x<W;x+=160){for(int i=0;i<36;i++)px(x+i,239-i/3,RGB(35,104+i*2,145+i*2));}
  for(int i=0;i<3;i++){int r=3+i*4+(int)(2*sinf(g.clock*2+i));outline(72-r,67-r,r*2,r*2,i==0?LIME:TEAL);}
  rect(0,0,W,29,RGB(7,12,20));label(16,8,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
- text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.9.1",WHITE);
+ text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.10",WHITE);
  rect(12,166,231,78,RGB(7,12,20));outline(12,166,231,78,RGB(49,102,116));
  text(25,178,g.menu==0?"> CONTINUAR PARTIDA":"  CONTINUAR PARTIDA",g.menu==0?LIME:MUTED,1);text(25,202,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(25,226,"X confirmar",TEAL,1);
  rect(300,181,169,63,RGB(7,12,20));text(321,187,"made by",WHITE,1);signature(292,190);
@@ -876,15 +916,22 @@ void game_draw(uint32_t *pixels,int stride){
 }
 void game_audio(short *stereo,unsigned frames){
  int station=audioStation;if(station>3)station=0;if(station!=audioLast){audioPos=0;audioLast=station;}
- static unsigned cityPhase=0,cityNoise=0x61289u;static int air=0;
+ static unsigned bedPos=0,enginePos=0,hornPos=CITY_HORN_SAMPLES*2,seenHorn=0;
+ static int hGain=0,hPan=0,fade=0,engineLevel=0;
+ if(seenHorn!=hornEvent){seenHorn=hornEvent;if(audioAmbient){hornPos=0;hGain=hornGain;hPan=hornPan;}}
  for(unsigned i=0;i<frames;i++){
   int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;
   if(audioEnabled){audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
-  cityNoise=cityNoise*1664525u+1013904223u;int raw=(int)((cityNoise>>20)&4095)-2048;air+=(raw-air)>>7;
-  cityPhase++;int traffic=((int)((cityPhase*29u)&65535)-32768);traffic=32768-abs(traffic);
-  int hornPhase=cityPhase%(44100u*17u);int horn=(hornPhase<18000)?(((int)((hornPhase*503u)&65535)-32768)/20):0;
-  int ambience=audioAmbient?(air*2+traffic/34+horn):0;
-  int l=music+ambience,r=music+ambience+(audioAmbient?air/3:0);l=l<-32768?-32768:l>32767?32767:l;r=r<-32768?-32768:r>32767?32767:r;
-  stereo[i*2]=(short)l;stereo[i*2+1]=(short)r;
+  int target=audioAmbient?256:0;if(fade<target)fade++;else if(fade>target)fade--;
+  if((i&127)==0){if(engineLevel<trafficGain)engineLevel++;else if(engineLevel>trafficGain)engineLevel--;}
+  int base=city_bed[bedPos/4]*(110+crowdGain)/256;
+  int baseRight=city_bed[((bedPos/4)+137)%CITY_BED_SAMPLES]*(110+crowdGain)/256;
+  int engine=city_engine[enginePos/4]*engineLevel/256;
+  int horn=hornPos<CITY_HORN_SAMPLES*2?city_horn[hornPos++/2]*hGain/256:0;
+  bedPos=(bedPos+1)%(CITY_BED_SAMPLES*4);enginePos=(enginePos+1)%(CITY_ENGINE_SAMPLES*4);
+  int l=music+(base+engine+horn*(128-hPan)/128)*fade/256;
+  int r=music+(baseRight+engine+horn*(128+hPan)/128)*fade/256;
+  stereo[i*2]=(short)(l<-32768?-32768:l>32767?32767:l);
+  stereo[i*2+1]=(short)(r<-32768?-32768:r>32767?32767:r);
  }
 }

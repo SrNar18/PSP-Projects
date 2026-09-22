@@ -367,3 +367,43 @@ los ejemplos del SDK: (1) `sceGuDrawBuffer`/`sceGuDispBuffer` (no las variantes 
 Restaurar el buffer visible, alternar buffers a mano o no restaurar dejaban el slot anterior pegado, medio dialogo
 invisible o parpadeo. Helpers en render3d.c: `r3_gu_buffers`, `r3_gu_idle`, `r3_gu_swap`. `exit_cb` llama a
 `sceKernelExitGame()` directamente para que HOME funcione aunque haya un dialogo abierto.
+
+
+## v2.10 — Codex, 22 septiembre 2026
+
+Carrera: se lee uiMake de sceCtrlReadLatch y se entrega via game_latch_cross;
+recoge pulsaciones completas entre fotogramas. Una carrera activa se renueva
+con cada tap hasta 1,05 s; solo para iniciarla se piden tres taps cercanos.
+El estado tolera 0,16 s de perdida de movimiento. No se ignoran colisiones ni
+estamina. QA nuevo tools/qa_city210.c cubre ritmo irregular 20-60 Hz, latch,
+obstaculos delante/lateral/altura y bocinas con cooldown.
+
+Audio: tools/city_audio.py genera PCM original integrado por assets.S.
+Capa ciudad 32 s/11025 Hz, motor 2 s/11025 Hz y bocina 0,55 s/22050 Hz.
+Mezcla entera, estereo, volumen segun proximidad; sin bocina periodica.
+Los NPC frenan ante el jugador en el carril y pitan tras 0,65 s, cooldown
+7-11 s por coche. No se altera el formato de guardado.
+
+Visuales: assets/materials-v210.png generado con image_gen; prompt completo
+en assets/materials-v210-prompt.txt. tools/textures3d.py compila siete tiles
+actualizados sin aumentar el layout de VRAM (819200 bytes). Conserva la
+chaqueta principal, rostro y colores de carroceria. GU_FOG desactivado y
+horizon_build dibuja 384 triangulos opacos de montanas/edificios tras el cielo,
+sin escribir profundidad. Es decorado, no extension jugable.
+
+Validacion: qa_city210, qa_locomotion, qa_regression3d y qa_city28 pasaron.
+PPSSPP v1.20.4: arranque, paseo y dialogo Sony inspeccionados por capturas
+VRAM usando configuracion aislada qa-software.ini. OpenGL oculto producia
+capturas parciales; no se cuentan como validacion. PSP fisica no probada.
+ISO de produccion sin flags de perfil/spawn/hora, 14473216 bytes.
+SHA256 f19b0e951eb995f6ee07a32595fc7c0aeb33b06c618826e092adbf62114e50d5.
+Entrega en release/Narcade_v2.10_PSP.zip y release/Narcade_v2.10/.
+
+### 15.2 v2.10.1 (Claude) — la pieza que faltaba en el dialogo de guardado: sceGuDisplay(GU_TRUE)
+El patron del SDK (§15.1) era correcto pero NO bastaba en la consola: `r3_init()` nunca habilita la salida del GU
+(el juego dibuja por CPU y presenta con `sceDisplaySetFrameBuf`), y **sin `sceGuDisplay(GU_TRUE)` la llamada
+`sceGuSwapBuffers()` no cambia lo que se ve**: el dialogo de Sony pintaba en un buffer que jamas llegaba a pantalla,
+de ahi el menu "a medias" o con el fotograma anterior pegado. Diferencia exacta con el teclado OSK de PSP-IA, que si
+lo habilita en su init. Ahora `r3_gu_buffers()` fija draw/disp + offset/viewport/scissor y habilita la salida; al
+cerrar el dialogo, `r3_gu_display(0)` y un `sceDisplaySetFrameBuf` devuelven el control al bucle del juego.
+No quitar `sceGuDisplay(GU_TRUE)` de ahi.

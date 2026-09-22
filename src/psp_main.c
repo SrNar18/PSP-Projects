@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include "game.h"
 #include "render3d.h"
-PSP_MODULE_INFO("Narcade",0,2,9);
+PSP_MODULE_INFO("Narcade",0,2,10);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 static volatile int running=1;
@@ -62,6 +62,9 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
   sceDisplayWaitVblankStart();
   r3_gu_swap();cur^=1;
  }
+ /* devolver el control de la pantalla al juego (dibuja por CPU y presenta con sceDisplaySetFrameBuf) */
+ r3_gu_display(0);
+ sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
  *index=cur;
  if(sd.base.result!=0)return 0;
  if(mode)return game_import_save(saveBuf,(int)sd.dataSize);
@@ -82,8 +85,9 @@ int main(void){
  pspAudioInit();pspAudioSetChannelCallback(0,audio_cb,0);
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
+  SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
   game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
-  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);before=sceKernelGetSystemTimeWide();continue;}
+  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();continue;}
 #ifdef NARCADE_PROFILE
   uint64_t p0=sceKernelGetSystemTimeWide();
 #endif

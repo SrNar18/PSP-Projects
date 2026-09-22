@@ -26,6 +26,7 @@ def main():
     streetwear=Image.open(ROOT/'assets/streetwear-atlas.png').convert('RGB')
     urban=Image.open(ROOT/'assets/urban-atlas-v28.png').convert('RGB')
     detail=Image.open(ROOT/'assets/urban-detail-atlas-v28.png').convert('RGB')
+    refreshed=Image.open(ROOT/'assets/materials-v210.png').convert('RGB')
     (ROOT/'assets/textures3d').mkdir(exist_ok=True)
     result=bytearray()
     for i,name in enumerate(NAMES):
@@ -38,6 +39,10 @@ def main():
         if i<8:
             w,h=urban.size;x,y=i%4,i//4
             tile=urban.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
+        replacements={'glass':1,'brick':2,'stucco':3,'jeans':4,'sleeve':5,'roof':6,'sidewalk':7}
+        if name in replacements:
+            j=replacements[name];w,h=refreshed.size;x,y=j%4,j//4
+            tile=refreshed.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
         tile=tile.resize((128,128),Image.Resampling.LANCZOS)
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())

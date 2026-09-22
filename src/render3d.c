@@ -11,6 +11,7 @@
 #include <pspgu.h>
 #include <pspgum.h>
 #include <pspge.h>
+#include <pspdisplay.h>
 #endif
 
 #define PI 3.14159265358979323846f
@@ -34,6 +35,10 @@ static const R3Scene *view;
 static float planes[6][4];
 static Point eye,target;
 static int overflow;
+/* Opaque horizon silhouettes, rendered behind the playable city. They hide
+   the empty far plane without washing out world textures with distance fog. */
+static Vertex __attribute__((aligned(16))) horizonMesh[96*12];
+static void horizon_build(void);
 static int clipEnabled=1;
 static int geographic=0,rigid=0;
 static float objectX,objectZ,objectYaw;
@@ -593,9 +598,22 @@ void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
 #ifndef R3_HOST
     sceGuStart(GU_DIRECT,commands);
     sceGuDrawBuffer(GU_PSM_8888,(void*)((uintptr_t)draw&0x001fffff),512);sceGuDispBuffer(480,272,(void*)((uintptr_t)disp&0x001fffff),512);
-    sceGuFinish();sceGuSync(0,0);
+    sceGuOffset(2048-240,2048-136);sceGuViewport(2048,2048,480,272);sceGuScissor(0,0,480,272);sceGuEnable(GU_SCISSOR_TEST);
+    sceGuFinish();sceGuSync(0,0);sceDisplayWaitVblankStart();
+    /* v2.10.1 (Claude): CLAVE. El juego dibuja por CPU y presenta con sceDisplaySetFrameBuf, asi que r3_init nunca
+       habilito la salida del GU. Sin sceGuDisplay(GU_TRUE), sceGuSwapBuffers() no cambia lo que se ve: el dialogo de
+       Sony pintaba en un buffer que nunca llegaba a pantalla y quedaba el fotograma anterior "pegado". Es justo lo
+       que faltaba respecto al teclado de PSP-IA, que si lo habilita. */
+    sceGuDisplay(GU_TRUE);
 #else
     (void)draw;(void)disp;
+#endif
+}
+void r3_gu_display(int on){
+#ifndef R3_HOST
+    sceGuDisplay(on?GU_TRUE:GU_FALSE);
+#else
+    (void)on;
 #endif
 }
 void r3_gu_idle(void){
@@ -633,6 +651,22 @@ void r3_init(void){
     sceGuEnable(GU_CLIP_PLANES);sceGuDisable(GU_CULL_FACE);
     sceGuFinish();sceGuSync(0,0);
 #endif
+}
+static void horizon_build(void){
+ for(int k=0;k<96;k++){
+  float a=k*2*PI/96,b=(k+1)*2*PI/96;
+  float h0=18+42*powf(fabsf(cosf(a)),2)+12*sinf(a*7)+5*cosf(a*13);
+  float h1=18+42*powf(fabsf(cosf(b)),2)+12*sinf(b*7)+5*cosf(b*13);
+  float x0=eye.x+cosf(a)*300,z0=eye.z+sinf(a)*300,x1=eye.x+cosf(b)*300,z1=eye.z+sinf(b)*300;
+  uint32_t mountain=day_scale(COLOR(47,85,67));
+  Vertex *v=horizonMesh+k*12;
+  v[0]=(Vertex){0,0,mountain,x0,eye.y-220,z0};v[1]=(Vertex){0,0,mountain,x1,eye.y-220,z1};v[2]=(Vertex){0,0,mountain,x1,eye.y+h1,z1};
+  v[3]=v[0];v[4]=v[2];v[5]=(Vertex){0,0,mountain,x0,eye.y+h0,z0};
+  float top=eye.y-9+(k*37%23),bottom=eye.y-220;
+  uint32_t building=day_scale(COLOR(74+(k%4)*10,78+(k%3)*8,83));
+  v[6]=(Vertex){0,0,building,x0,bottom,z0};v[7]=(Vertex){0,0,building,x1,bottom,z1};v[8]=(Vertex){0,0,building,x1,top,z1};
+  v[9]=v[6];v[10]=v[8];v[11]=(Vertex){0,0,building,x0,top,z0};
+ }
 }
 void r3_draw(uint32_t *fb,const R3Scene *s){
     view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;camera(s);
@@ -674,8 +708,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     ScePspFVector3 e={eye.x,eye.y,eye.z},t={target.x,target.y,target.z};
     ScePspFVector3 up={0,1,0};sceGumMatrixMode(GU_VIEW);sceGumLoadIdentity();sceGumLookAt(&e,&t,&up);
     sceGumMatrixMode(GU_MODEL);sceGumLoadIdentity();
-    /* v2.6: cielo con degradado (bruma clara en el horizonte, cenit = color de fondo). Cilindro alrededor de la camara,
-       sin escribir profundidad y antes de la niebla; la niebla toma el color del horizonte para que lo lejano se funda en el. */
+    /* Clear sky and an opaque mountain/city backdrop. No distance fog. */
     {
         static Vertex __attribute__((aligned(16))) skyMesh[16*6];
         for(int k=0;k<16;k++){float a0=k*2*PI/16,a1=(k+1)*2*PI/16;float R=270;
@@ -687,10 +720,12 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
         sceKernelDcacheWritebackRange(skyMesh,sizeof(skyMesh));
         sceGuDisable(GU_TEXTURE_2D);sceGuDepthMask(GU_TRUE);sceGuDisable(GU_DEPTH_TEST);
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,16*6,0,skyMesh);
+        horizon_build();sceKernelDcacheWritebackRange(horizonMesh,sizeof(horizonMesh));
+        sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,96*12,0,horizonMesh);
         sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
     }
 #ifndef NARCADE_TOPVIEW
-    sceGuEnable(GU_FOG);sceGuFog(280,640,horizonColor);
+    sceGuDisable(GU_FOG);
 #endif
 #ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
