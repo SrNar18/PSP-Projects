@@ -182,17 +182,20 @@ static void headlights(float x,float z,float angle){
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
 static void clouds(float time){
     float wind=time*3.5f;
-    for(int i=0;i<18;i++){
+    for(int i=0;i<22;i++){
         unsigned h=city_hash(i*7,13,3);
         float cx=fmodf((h&1023)*3.2f+wind*(1+(h>>10&3)*.2f),3600.0f)-500,cz=(h>>12&1023)*2.4f-200;
-        float y=260+(h>>22&63),w=120+(h>>5&127),d=70+(h>>9&63);
+        float y=290+(h>>22&63),w=145+(h>>5&127),d=75+(h>>9&63);
         if(!nearby(cx,cz,1100))continue;
         float bright=lerpf(1,.30f,night);int a=(int)(lerpf(150,110,night));
         uint32_t col=(a<<24)|COLOR((int)(255*bright),(int)(250*bright),(int)(252*bright))&0x00ffffff;
         float gx,gz;geo_project(cx,cz,&gx,&gz);
-        sky_disc(point(gx,y,gz),w*.45f,d*.20f,col);
-        sky_disc(point(gx-w*.2f,y+8,gz),w*.24f,d*.24f,col);
-        sky_disc(point(gx+w*.18f,y+10,gz),w*.22f,d*.25f,col);
+        uint32_t underside=((a/3)<<24)|COLOR((int)(183*bright),(int)(192*bright),(int)(203*bright))&0x00ffffff;
+        sky_disc(point(gx,y-11,gz),w*.51f,d*.17f,underside);
+        sky_disc(point(gx-w*.21f,y+4,gz),w*.26f,d*.23f,col);
+        sky_disc(point(gx+w*.19f,y+8,gz),w*.24f,d*.24f,col);
+        sky_disc(point(gx,y+15,gz),w*.30f,d*.29f,col);
+        sky_disc(point(gx+w*.37f,y+1,gz),w*.15f,d*.16f,col);
     }
     /* disco solar / luna */
     float sx=eye.x+sunX*600,sy=eye.y+sunY*600,sz=eye.z+sunZ*600;

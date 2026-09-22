@@ -304,7 +304,7 @@ static void world_cars_init(void){
   if(c->parked){c->x=bx*320+70;c->y=by*320+145+(i%3)*37;c->a=PI*.5f;}
  }
  // One car beside every mission hub: progression never depends on a random spawn.
- for(int i=0;i<30;i++){g.cars[i].x=locations[i].x+54;g.cars[i].y=locations[i].y-31;g.cars[i].a=0;g.cars[i].parked=1;}
+ for(int i=0;i<30;i++){g.cars[i].x=locations[i].x+54;g.cars[i].y=locations[i].y+18;g.cars[i].a=0;g.cars[i].parked=1;}
  for(int i=0;i<CAR_COUNT;i++)if(!car_free_at(&g.cars[i],g.cars[i].x,g.cars[i].y)){
   Car *c=&g.cars[i];float bx=floorf(c->x/320)*320,by=floorf(c->y/320)*320;int found=0;
   for(int k=0;k<10&&!found;k++){
@@ -317,6 +317,18 @@ static void world_cars_init(void){
   }
  }
  g.cars[1].type=0;
+ /* Ten long, obstruction-free two-way corridors. Keep civilian traffic on
+    the right-hand lane, with several car lengths of initial separation. */
+ for(int i=30;i<60;i++){
+  Car *c=&g.cars[i];int route=(i-30)%10,place=(i-30)/10;
+  static const int rows[2]={0,3},cols[3]={0,3,5};
+  if(route<4){int row=rows[route/2],east=(route&1)==0;
+   c->a=east?0:PI;c->x=170+place*790;c->y=row*320+42+(east?14:-14);
+  }else{int col=cols[(route-4)/2],south=(route&1)==0;
+   c->a=south?PI*.5f:-PI*.5f;c->x=col*320+42+(south?-14:14);c->y=170+place*690;
+  }
+  c->parked=0;c->speed=0;
+ }
 }
 static void world_peds_init(void){
  for(int i=0;i<42;i++){
@@ -505,7 +517,7 @@ static void enter_exit(void){
 }
 static void foot_pace(int moving,float dt){
  g.tapAge+=dt;g.sprintTime=fmaxf(0,g.sprintTime-dt);
- if(!moving){g.moveGap+=dt;if(g.moveGap>.16f){g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}return;}
+ if(!moving){g.moveGap+=dt;g.footSpeed*=expf(-dt*7);if(g.moveGap>.38f){g.runTaps=0;g.tapAge=10;g.sprintTime=0;}return;}
  g.moveGap=0;
  if(pressed(B_CROSS)){
   /* Once running, an irregular tap renews the sprint directly. Previously
@@ -513,11 +525,12 @@ static void foot_pace(int moving,float dt){
   if(g.sprintTime>0)g.runTaps=3;
   else if(g.tapAge<=.60f)g.runTaps++;else g.runTaps=1;
   g.runTaps=g.runTaps>3?3:g.runTaps;g.tapAge=0;
-  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=1.05f;
+  if(g.runTaps>=3&&!g.exhausted&&g.stamina>0)g.sprintTime=1.55f;
  }
  if(g.tapAge>.60f&&g.sprintTime<=0)g.runTaps=0;
- float wanted=g.exhausted?74.f:g.sprintTime>0?105.f:held(B_CROSS)?74.f:42.f; /* v2.9: trote mas distinto del paso */
- g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*10));
+ float wanted=g.exhausted?74.f:g.sprintTime>0?105.f:(held(B_CROSS)||(g.runTaps>=2&&g.tapAge<.6f))?74.f:42.f;
+ if(g.footSpeed<24)g.footSpeed=24; /* no step-frame stall after a brief stick release */
+ g.footSpeed+=(wanted-g.footSpeed)*(1-expf(-dt*7));
 }
 static void stamina_tick(float dt){
  if(g.car<0&&!g.inMetro&&g.footTravel>.01f&&g.sprintTime>0&&!g.exhausted){
@@ -547,6 +560,45 @@ static void city_audio_update(void){
  for(int i=0;i<CAR_COUNT;i++)if(!g.cars[i].parked)traffic+=clampf(1-dist(g.x,g.y,g.cars[i].x,g.cars[i].y)/180,0,1)*(.3f+fabsf(g.cars[i].speed)/200);
  for(int i=0;i<42;i++)crowd+=clampf(1-dist(g.x,g.y,g.peds[i].x,g.peds[i].y)/100,0,1);
  trafficGain=(int)(clampf(traffic,0,2)*90);crowdGain=(int)(clampf(crowd,0,3)*20);
+}
+/* Fixed lane corridors avoid impossible turns through merged blocks and the
+   small roundabouts. Signals alternate every four seconds at every junction. */
+static int traffic_red(const Car *c,float *stopDistance){
+ int horizontal=fabsf(cosf(c->a))>.7f;
+ float pos=horizontal?c->x:c->y,dir=horizontal?cosf(c->a):sinf(c->a);
+ float n=(pos-42)/320.f;
+ int next=dir>0?(int)floorf(n)+1:(int)ceilf(n)-1;
+ float junction=next*320.f+42.f,dist=(junction-pos)*dir;
+ int bx=horizontal?next:(int)floorf(c->x/320),bz=horizontal?(int)floorf(c->y/320):next;
+ *stopDistance=dist-29.f;
+ if(bx<0||bx>7||bz<0||bz>6||dist<29||dist>110)return 0;
+ int horizontalGreen=(((int)(g.clock/4)+bx+bz)&1)==0;
+ return horizontal?!horizontalGreen:horizontalGreen;
+}
+static int traffic_ahead(int index,float distance){
+ const Car *c=&g.cars[index];float a=physics_heading(c),gx,gz;physics_project(c->x,c->y,&gx,&gz);
+ for(int j=0;j<CAR_COUNT;j++)if(j!=index){float x,z;physics_project(g.cars[j].x,g.cars[j].y,&x,&z);
+  float dx=x-gx,dz=z-gz,forward=dx*cosf(a)+dz*sinf(a),side=-dx*sinf(a)+dz*cosf(a);
+  if(forward>8&&forward<distance&&fabsf(side)<19)return 1;
+ }
+ return 0;
+}
+static void civilian_traffic_tick(int i,float dt){
+ Car *c=&g.cars[i];float stopDist=0;int red=traffic_red(c,&stopDist);
+ int blocked=traffic_blocked(c)||traffic_ahead(i,52+fmaxf(0,c->speed)*.18f);
+ float target=(red||blocked)?0:64+(i%4)*6;
+ c->speed+=clampf(target-c->speed,-210*dt,85*dt);
+ if(c->speed<.05f)c->speed=0;
+ float distance=c->speed*dt;
+ if(red&&stopDist>=0&&distance>stopDist){distance=stopDist;c->speed=0;}
+ float xx=c->x+cosf(c->a)*distance,yy=c->y+sinf(c->a)*distance;
+ if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else c->speed=0;
+ /* Loop at the outside edge only when the entry lane is clear. */
+ if(c->x<22||c->x>2538||c->y<22||c->y>2218){
+  Car next=*c;if(cosf(c->a)>.7f)next.x=70;else if(cosf(c->a)<-.7f)next.x=2490;
+  else if(sinf(c->a)>.7f)next.y=70;else next.y=2170;
+  if(car_free_at(&next,next.x,next.y)&&!traffic_ahead(i,55)){c->x=next.x;c->y=next.y;c->speed=0;}
+ }
 }
 static void world_tick(float ax,float ay,float dt){
  g.footTravel=0;
@@ -579,7 +631,6 @@ static void world_tick(float ax,float ay,float dt){
    dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
   }else g.moveActive=0;
   float desiredYaw=g.moveYaw;
-  float gx,gz,lx,lz;geo_project(g.x,g.y,&gx,&gz);geo_unproject(gx+dx,gz+dy,&lx,&lz);dx=lx-g.x;dy=lz-g.y;
 #endif
   float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;foot_pace(g.walking,dt);if(n>.1f){
 #ifndef NARCADE_3D
@@ -587,13 +638,16 @@ static void world_tick(float ax,float ay,float dt){
 #endif
   g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*12));float speed=g.footSpeed;
   float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
-  float grade=(geo_height(g.x+dx*4,g.y+dy*4)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+grade*grade);
+  float lookX,lookY;physics_unproject(beforeX+dx*4,beforeY+dy*4,&lookX,&lookY);
+  float grade=(geo_height(lookX,lookY)-geo_height(g.x,g.y))/4;
+  speed/=sqrtf(1+fminf(grade*grade,.35f));
   /* Sweep short steps through the collision map. A long frame or a sprint
      must not jump over the narrow frontage of a building. */
   float mx=dx*speed*dt,my=dy*speed*dt;
   int steps=(int)ceilf(fmaxf(fabsf(mx),fabsf(my))/4.f);if(steps<1)steps=1;
   for(int step=0;step<steps;step++){
-   float tx=g.x+mx/steps,ty=g.y+my/steps;
+   float gx,gz,tx,ty;physics_project(g.x,g.y,&gx,&gz);
+   physics_unproject(gx+mx/steps,gz+my/steps,&tx,&ty);
    if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
    if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
   }
@@ -630,6 +684,7 @@ static void world_tick(float ax,float ay,float dt){
   }
   g.blockedTime[i]=0;
   if(g.trafficYield[i]>0){g.trafficYield[i]=fmaxf(0,g.trafficYield[i]-dt);c->speed=0;continue;}
+  if(!c->police){civilian_traffic_tick(i,dt);continue;}
   if(c->police&&g.heat>0){
    float dd=dist(g.x,g.y,c->x,c->y);
    // Pursuers use the street grid, choosing the next junction toward the player.

@@ -331,6 +331,29 @@ static void car(const R3Car *c){
     }
     /* retrovisores y matricula */
     for(int s=-1;s<=1;s+=2){Point p=local(6,0,s*(prof[0].w+1.2f),c->x,c->z,c->angle);box(p.x,p.z,11.5f,1.8f,2.2f,1.2f,c->angle,CAR_PAINT,CAR_PAINT,paint);}
+    /* Modelled bumpers, grille, plates and handles remain straight when the
+       body narrows; their details no longer depend on a stretched door bitmap. */
+    for(int end=-1;end<=1;end+=2){
+        Point bumper=local(end*18.5f,0,0,c->x,c->z,c->angle);
+        box(bumper.x,bumper.z,3.3f,1.6f,15.8f,2.1f,c->angle,CAR_PAINT,CAR_PAINT,shade(paint,.72f));
+        Point plate=local(end*19.5f,0,0,c->x,c->z,c->angle);
+        box(plate.x,plate.z,5.8f,.55f,4.7f,1.5f,c->angle,CAR_PAINT,CAR_PAINT,COLOR(219,219,201));
+    }
+    Point grille=local(19.1f,0,0,c->x,c->z,c->angle);
+    box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,METAL,METAL,COLOR(56,62,65));
+    for(int side=-1;side<=1;side+=2){
+        Point handle=local(-2,0,side*8.95f,c->x,c->z,c->angle);
+        box(handle.x,handle.z,10.6f,2.6f,.5f,.45f,c->angle,METAL,METAL,COLOR(76,82,83));
+        if(type==0||type==5){handle=local(7,0,side*8.95f,c->x,c->z,c->angle);
+            box(handle.x,handle.z,10.6f,2.6f,.5f,.45f,c->angle,METAL,METAL,COLOR(76,82,83));}
+    }
+    if(type==2){ /* bed rails give the pickup a distinct open cargo section */
+        for(int side=-1;side<=1;side+=2){Point rail=local(-12,0,side*8.3f,c->x,c->z,c->angle);
+            box(rail.x,rail.z,11,12,1,1.2f,c->angle,METAL,METAL,shade(paint,.65f));}
+    }else if(type==5){for(int side=-1;side<=1;side+=2){Point rail=local(0,0,side*6.2f,c->x,c->z,c->angle);
+        box(rail.x,rail.z,19,19,.75,.75,c->angle,METAL,METAL,COLOR(74,82,84));}}
+    else if(type==4){Point spoiler=local(-16,0,0,c->x,c->z,c->angle);
+        box(spoiler.x,spoiler.z,12.5f,2,14,1,c->angle,CAR_PAINT,CAR_PAINT,shade(paint,.8f));}
     if(c->police)box(c->x,c->z,prof[3].y+.6f,3,13,2,c->angle,CAR_PAINT,CAR_PAINT,((int)(view->time*5)&1)?COLOR(255,65,49):COLOR(45,147,255));
 }
 static const float ringC[9]={1,.7071068f,0,-.7071068f,-1,-.7071068f,0,.7071068f,1};

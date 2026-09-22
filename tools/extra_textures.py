@@ -6,10 +6,29 @@ import math, random
 NAMES = ['bark','leaves','metal','concrete','curtain','awning','cobble','modern',
          'retail','eatery','office-front','workshop-front']
 
+def shop_sheet(index):
+    names={8:('MUSA','NARES','SOL','PATIO'),9:('MIGA','SOMA','BARRA','CAFE'),11:('RUTA','MOTOR','AZUL','NODO')}[index]
+    backgrounds={8:(38,126,125),9:(162,77,56),11:(55,106,155)}
+    im=Image.new('RGB',(64,64));d=ImageDraw.Draw(im)
+    for slot,name in enumerate(names):
+        x=(slot%2)*32;y=(slot//2)*32;accent=backgrounds[index]
+        d.rectangle((x,y,x+31,y+31),fill=(207,201,177))
+        d.rectangle((x,y,x+31,y+10),fill=accent)
+        d.text((x+max(1,(32-len(name)*6)//2),y+1),name,fill=(252,243,204))
+        if index==11:
+            d.rectangle((x+3,y+13,x+28,y+30),fill=(76,91,106),outline=(235,217,174))
+            for line in range(y+16,y+29,4):d.line((x+5,line,x+26,line),fill=(133,152,161))
+        else:
+            d.rectangle((x+2,y+13,x+21,y+29),fill=(41,78,88),outline=(237,218,169))
+            d.polygon(((x+4,y+16),(x+18,y+14),(x+8,y+25)),fill=(112,169,183))
+            d.rectangle((x+23,y+13,x+30,y+30),fill=(57,72,75),outline=(236,211,166))
+    return im
+
 def noise(seed):
     r=random.Random(seed);return lambda: r.random()
 
 def create(index):
+    if index in (8,9,11):return shop_sheet(index)
     rnd=noise(1000+index);im=Image.new('RGB',(64,64));px=im.load();d=ImageDraw.Draw(im)
     if index==0:  # corteza: vetas verticales marrones
         for y in range(64):

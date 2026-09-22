@@ -469,3 +469,17 @@ al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layo
 - El dialogo se espera hasta el estado NONE (descarga completa del modulo) antes de que el juego vuelva a dibujar.
 - Plugin RemoteJoyLite desactivado en la Memory Stick del usuario (`seplugins/game.txt` y `pops.txt`, copia en
   `game.txt.bak`): engancha el cambio de framebuffer y es un riesgo con los dialogos del sistema.
+### 16. Narcade 2.15 (Codex) — materiales viales y bordillos
+
+- `tools/road_materials.py` genera de forma determinista dos materiales sin recursos externos: asfalto con ruido periódico a varias escalas, árido fino y parches discretos; y losas de andén con juntas, variación entre piezas y desgaste. `tools/textures3d.py` los inserta en los dos materiales existentes del atlas PSP (128×128 RGB565), sin añadir mallas ni texturas nuevas en memoria.
+- `src/city26.inc`: los andenes rectangulares ahora llevan caras verticales de hormigón sobre todo su perímetro, subdivididas para seguir la malla de relieve. Conservan la cota transitable 1.2 y no alteran la lógica de colisiones ni el formato de partida. Los andenes poligonales ya tenían faldón mediante `slab_draped`/`prism`.
+- Versión de ISO 2.15 en `tools/package_iso.py`. Se mantienen intactos el guardado nativo y el rechazo de partidas incompatibles.
+
+### 17. Narcade 2.16 (Codex) — movimiento, tráfico y mundo visual
+
+- `src/game.c`: el desplazamiento a pie ahora se integra en coordenadas proyectadas, de manera que caminar cuesta arriba mantiene una velocidad coherente; la penalización por desnivel está limitada. La velocidad de caminar/trotar/correr no cae a cero por una breve pérdida de entrada y el margen de la secuencia de pulsaciones X es más tolerante.
+- El tráfico civil ocupa corredores de doble sentido con carriles separados, conserva la dirección en ellos, frena por coches delante y alterna el paso en los semáforos cada cuatro segundos. Los vehículos aparcados de misión se apartaron del carril de circulación. La patrulla policial conserva su lógica de persecución. `tools/qa_traffic_v216.c` prueba 80 s sin solapamientos entre coches civiles y un tramo de ascenso a pie.
+- `tools/car_materials.py` sustituye la antigua puerta/ventana dibujada que se deformaba sobre carrocerías. `src/shapes.inc` dibuja ventanillas 3D sobre paneles de pintura continuos; `src/render3d.c` añade parachoques, parrilla, matrícula, manillas y detalles distintos para pickup, SUV y deportivo.
+- `tools/extra_textures.py` dibuja cuatro rótulos distintos por familia de tienda, restaurante y taller. `street_front()` usa UV directas para que los nombres se lean desde la calle sin reflejo horizontal.
+- `src/shapes.inc` añade ramas y una copa frondosa irregular a los árboles cercanos; `src/daylight.inc` mejora silueta y sombreado inferior de las nubes.
+- `Save` y su versión siguen intactos. Los materiales sustituyen ranuras ya existentes, sin aumentar el presupuesto de RAM/VRAM.

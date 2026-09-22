@@ -59,6 +59,27 @@ static void slab_draped(const CmParcel *p,float y,int mat,uint32_t color){
     }
     litAlready=0;fixedGround=savedGround;
 }
+/* Exposed, terrain-following curb for rectangular parcels. The sidewalk top
+   remains at 1.2 so existing pedestrian and vehicle heights stay unchanged. */
+static void rect_curbs(const CmParcel *p){
+    float x0=p->x[0]-8,x1=p->x[1]+8,z0=p->z[0]-8,z1=p->z[2]+8;
+    float sx[4]={x0,x1,x1,x0},sz[4]={z0,z0,z1,z1};
+    float saved=fixedGround;fixedGround=-1000000;
+    litAlready=1;
+    for(int e=0;e<4;e++){
+        int next=(e+1)&3;
+        float ax=sx[e],az=sz[e],bx=sx[next],bz=sz[next];
+        int parts=(int)(hypotf(bx-ax,bz-az)/40)+1;
+        for(int k=0;k<parts;k++){
+            float t=(float)k/parts,u=(float)(k+1)/parts;
+            float x=ax+(bx-ax)*t,z=az+(bz-az)*t;
+            float xx=ax+(bx-ax)*u,zz=az+(bz-az)*u;
+            uint32_t c=lit_color(COLOR(221,211,193),az==bz?0:1,0,ax==bx?0:1);
+            quad(CONCRETE,point(x,1.24f,z),point(xx,1.24f,zz),point(xx,-.12f,zz),point(x,-.12f,z),c,1,1);
+        }
+    }
+    litAlready=0;fixedGround=saved;
+}
 /* Caja con altura ABSOLUTA (no relativa al terreno): cabinas y colgadores del Metrocable. */
 static void abox(float x,float z,float y,float length,float width,float height,float angle,int mat,uint32_t color){
     float savedGround=fixedGround;fixedGround=0;
@@ -85,10 +106,18 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
     if(far||w<26)return;
     uint32_t trim=(mat==EATERY)?COLOR(181,68,55):(mat==WORKSHOP_FRONT)?COLOR(51,113,165):
                   (mat==OFFICE_FRONT)?COLOR(66,145,173):COLOR(36,161,150);
-    box(cx,z0+3,6,w-4,4,18,0,mat,mat,0xffffffffu);
+    box(cx,z0+3,6,w-4,4,18,0,CONCRETE,CONCRETE,COLOR(215,209,193));
     if(cityMid)return;
-    box(cx,z0+4.5f,21.5f,w-3,5,1.4f,0,AWNING,AWNING,trim);
-    box(cx,z0+1.4f,23,w-7,1.5f,2.4f,0,CAR_PAINT,CAR_PAINT,trim);
+    /* Four distinct storefronts per material. Explicit front-face UV order
+       makes the names readable from the street, without mirrored box faces. */
+    float u=(h&1)?.5f:0,v=(h&2)?.5f:0,eps=.007f;
+    uint32_t tint=lit_color(0xffffffffu,0,0,-1);
+    Vertex sign[4]={{u+eps,v+eps,tint,cx-w*.5f+2,23.8f,z0+.85f},
+        {u+.5f-eps,v+eps,tint,cx+w*.5f-2,23.8f,z0+.85f},
+        {u+.5f-eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.85f},
+        {u+eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.85f}};
+    litAlready=1;polygon(mat,sign,4);litAlready=0;
+    box(cx,z0+4.5f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim);
     if(w>42){
         float xx=cx+w*.23f-5;
         box(xx,z0+1.5f,7,2,1,13,0,METAL,METAL,COLOR(225,210,175));
@@ -538,7 +567,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+191.4f,z+k,1.2f,19,.5f,white,1);
         if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.5f,white,1);
         if(h&128)for(int k=0;k<5;k++){ground(CAR_PAINT,x+9+k*13,z+75,7,5,.6f,white,1);ground(CAR_PAINT,x+75,z+9+k*13,5,7,.6f,white,1);}
-        if(!cityMid){if(h&256)traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
+        if(!cityMid){if((bx==0||bx==3||bx==5)&&(bz==0||bz==3))traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
         if(cityMid){box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
         else lamp_post(x+84,z+59,PI);
         if(!cityMid&&(h&1024))cylinder(x+90,z+70,1.2f,2.2f,5,6,0,METAL,METAL,COLOR(70,120,80)); /* v2.7: papelera */
@@ -547,7 +576,10 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
     for(int i=0;i<n;i++){
         const CmParcel *p=&ps[i];uint32_t swc=((f&CM_PLAZA)||type==CB_TOWER)?COLOR(226,222,214):white;
         /* acera: sigue el terreno (ground) en parcelas rectangulares; prisma en las poligonales */
-        if(cm_is_rect(p))ground(SIDEWALK,p->x[0]-8,p->z[0]-8,p->x[1]-p->x[0]+16,p->z[2]-p->z[0]+16,1.2f,swc,8);
+        if(cm_is_rect(p)){
+            ground(SIDEWALK,p->x[0]-8,p->z[0]-8,p->x[1]-p->x[0]+16,p->z[2]-p->z[0]+16,1.2f,swc,8);
+            if(!far)rect_curbs(p);
+        }
         else{CmParcel sw;parcel_shrunk(p,-8,&sw);if(p->kind==1)slab_draped(&sw,1.2f,SIDEWALK,swc);else prism(&sw,0,1.2f,SIDEWALK,SIDEWALK,swc);}
         /* parcelas edificadas: todo comparte el nivel del podio (sin z-fighting en ladera). Las transitables (parques,
            plazas) siguen el terreno, porque el jugador camina sobre ellas a la altura del terreno. */

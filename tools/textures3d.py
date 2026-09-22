@@ -8,6 +8,8 @@ import struct
 from PIL import Image
 from npc_textures import create, NAMES as NPC_NAMES
 from extra_textures import create as create_extra, NAMES as EXTRA_NAMES
+from road_materials import create as create_road
+from car_materials import create as create_car
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['asphalt','sidewalk','brick','stucco','shop','roof','grass','water',
@@ -43,6 +45,10 @@ def main():
         if name in replacements:
             j=replacements[name];w,h=refreshed.size;x,y=j%4,j//4
             tile=refreshed.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
+        if name in ('asphalt','sidewalk'):
+            tile=create_road(name)
+        if name in ('car-side','car-paint'):
+            tile=create_car(name)
         tile=tile.resize((128,128),Image.Resampling.LANCZOS)
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())

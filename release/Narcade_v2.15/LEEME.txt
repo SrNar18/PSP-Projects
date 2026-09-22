@@ -1,0 +1,4 @@
+Narcade 3D v2.15 - Calles y andenes
+Copia Narcade_v2.15.iso a ms0:/ISO/ o PSP/GAME/NARCADE a ms0:/PSP/GAME/.
+Asfalto, losas y bordillos nuevos. El formato de guardado no cambia.
+Made by Naresz.

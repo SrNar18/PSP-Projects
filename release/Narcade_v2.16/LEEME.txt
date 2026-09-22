@@ -1,0 +1,4 @@
+Narcade 3D v2.16 - Movimiento y ciudad
+Copia Narcade_v2.16.iso a ms0:/ISO/ o PSP/GAME/NARCADE a ms0:/PSP/GAME/.
+Mejoras: movimiento en pendientes, tráfico por carriles y semáforos, coches, árboles, comercios y nubes.
+El formato de guardado no ha cambiado. Made by Naresz.

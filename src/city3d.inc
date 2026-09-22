@@ -80,7 +80,12 @@ static void garden(float x,float z,float w,float d,unsigned h,int far){
 static void traffic_light(float x,float z,float angle){
     box(x,z,0,1.2f,1.2f,28,angle,CAR_PAINT,CAR_PAINT,COLOR(70,74,76));
     box(x,z,22,3,3,9,angle,CAR_PAINT,CAR_PAINT,COLOR(40,40,40));
-    box(x,z-1.7f,28,1.5f,.4f,1.5f,angle,CAR_PAINT,CAR_PAINT,COLOR(255,60,40));box(x,z-1.7f,24,1.5f,.4f,1.5f,angle,CAR_PAINT,CAR_PAINT,COLOR(60,220,80));
+    int bx=(int)floorf(x/320),bz=(int)floorf(z/320);
+    int horizontalGreen=(((int)(view->time/4)+bx+bz)&1)==0;
+    box(x,z-1.7f,28,1.5f,.4f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(68,62,56):COLOR(255,60,40));
+    box(x,z-1.7f,24,1.5f,.4f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(60,220,80):COLOR(46,65,48));
+    box(x-1.7f,z,28,.4f,1.5f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(255,60,40):COLOR(68,62,56));
+    box(x-1.7f,z,24,.4f,1.5f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(46,65,48):COLOR(60,220,80));
 }
 /* Parada de bus: marquesina sobre postes (visual, en la acera). */
 static void bus_stop(float x,float z){

@@ -78,12 +78,24 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
         uint32_t tc=lit_color(tm==GLASS?glass:paint,nx*ca,ny,nx*sa);
         litAlready=1;
         Vertex top[4]={{0,0,tc,tl0.x,tl0.y,tl0.z},{1,0,tc,tr0.x,tr0.y,tr0.z},{1,1,tc,tr1.x,tr1.y,tr1.z},{0,1,tc,tl1.x,tl1.y,tl1.z}};polygon(tm,top,4);
-        int sideMat=cabin?CAR_SIDE:CAR_PAINT;
+        /* Painted sheet metal is continuous. The old CAR_SIDE bitmap carried
+           a complete door/window and skewed badly on tapered body sections. */
+        int sideMat=CAR_PAINT;
         uint32_t lc=lit_color(paint,-sa,.3f,ca),rc=lit_color(paint,sa,.3f,-ca);
         float u0=0,u1=1;
         Vertex left[4]={{u0,0,lc,tl0.x,tl0.y,tl0.z},{u1,0,lc,tl1.x,tl1.y,tl1.z},{u1,1,lc,bl1.x,bl1.y,bl1.z},{u0,1,lc,bl0.x,bl0.y,bl0.z}};polygon(sideMat,left,4);
         Vertex right[4]={{u1,0,rc,tr1.x,tr1.y,tr1.z},{u0,0,rc,tr0.x,tr0.y,tr0.z},{u0,1,rc,br0.x,br0.y,br0.z},{u1,1,rc,br1.x,br1.y,br1.z}};polygon(sideMat,right,4);
         litAlready=0;
+        if(cabin&&(a->y>12||b->y>12))for(int side=-1;side<=1;side+=2){
+            float ya=fminf(a->y-.35f,11.5f),yb=fminf(b->y-.35f,11.5f);
+            float wa=a->w*(.86f+.14f*(a->y-ya)/fmaxf(a->y-floor,1))+.13f;
+            float wb=b->w*(.86f+.14f*(b->y-yb)/fmaxf(b->y-floor,1))+.13f;
+            Point p0=local(a->x,a->y-.15f,side*(a->w*.86f+.13f),cx,cz,angle);
+            Point p1=local(b->x,b->y-.15f,side*(b->w*.86f+.13f),cx,cz,angle);
+            Point p2=local(b->x,yb,side*wb,cx,cz,angle);
+            Point p3=local(a->x,ya,side*wa,cx,cz,angle);
+            quad(GLASS,p0,p1,p2,p3,lit_color(COLOR(139,190,209),side*-sa,.2f,side*ca),1,1);
+        }
     }
     /* tapas delantera y trasera */
     for(int e=0;e<2;e++){const HullSec *a=e?&s[n-1]:&s[0];float ca=cosf(angle),sa=sinf(angle);uint32_t c=lit_color(paint,e?ca:-ca,.2f,e?sa:-sa);
@@ -115,10 +127,23 @@ static void tree_shape(float x,float z,int kind,int simple){
         if(!simple)frustum(x,z,13*s,4*s,0,10*s,6,rot+.3f,LEAVES,COLOR(90,150,85));else frustum(x,z,13*s,3.2f*s,0,9*s,6,rot,LEAVES,COLOR(90,150,85));
         return;
     }
-    /* frondoso */
-    cylinder(x,z,0,1.6f*s,12*s,simple?4:5,rot,BARK,BARK,COLOR(150,125,95));
-    frustum(x,z,10*s,9.5f*s,6.5f*s,8*s,simple?5:6,rot,LEAVES,COLOR(140,200,120));
-    if(!simple){frustum(x,z,17.5f*s,7*s,2.5f*s,6*s,6,rot+.4f,LEAVES,COLOR(160,215,130));frustum(x,z,23*s,3*s,0,3*s,4,rot,LEAVES,COLOR(175,225,140));}
-    else frustum(x,z,17.5f*s,6.5f*s,0,7*s,5,rot,LEAVES,COLOR(160,215,130));
-    if(!simple)frustum(x,z,8*s,3.5f*s,9.5f*s,2.5f*s,6,rot,LEAVES,COLOR(120,180,105)); /* parte baja de la copa */
+    /* Frondoso: tronco expuesto, ramas diagonales y copa irregular formada
+       por grupos de hojas, no por un unico cono verde. */
+    cylinder(x,z,0,1.55f*s,15*s,simple?4:6,rot,BARK,BARK,COLOR(135,107,77));
+    if(simple){frustum(x,z,11*s,8*s,6*s,9*s,6,rot,LEAVES,COLOR(92,146,73));frustum(x,z,19*s,6*s,1*s,7*s,6,rot,LEAVES,COLOR(116,164,88));return;}
+    for(int k=0;k<5;k++){
+        float a=rot+k*2*PI/5,ex=cosf(a),ez=sinf(a),r=(6+(k&1)*2)*s;
+        Point base=point(x+ex*.8f*s,(10+(k%2)*2)*s,z+ez*.8f*s);
+        Point tip=point(x+ex*r,(17+(k%3)*2)*s,z+ez*r);
+        uint32_t bark=lit_color(COLOR(105,79,55),ex,.2f,ez);
+        quad(BARK,point(base.x-ez*s,base.y,base.z+ex*s),point(base.x+ez*s,base.y,base.z-ex*s),
+             point(tip.x+ez*.35f*s,tip.y,tip.z-ex*.35f*s),point(tip.x-ez*.35f*s,tip.y,tip.z+ex*.35f*s),bark,1,1);
+        quad(BARK,point(base.x,base.y-s,base.z),point(base.x,base.y+s,base.z),
+             point(tip.x,tip.y+.35f*s,tip.z),point(tip.x,tip.y-.35f*s,tip.z),bark,1,1);
+        uint32_t leaf=k&1?COLOR(87,150,77):COLOR(114,174,91);
+        frustum(tip.x,tip.z,tip.y-4*s,4.1f*s,5.5f*s,4.5f*s,6,a,LEAVES,leaf);
+        frustum(tip.x,tip.z,tip.y+.5f*s,5.5f*s,2.0f*s,5*s,6,a+.3f,LEAVES,leaf);
+    }
+    frustum(x,z,16*s,6.2f*s,7.2f*s,5*s,7,rot,LEAVES,COLOR(91,155,75));
+    frustum(x,z,21*s,7.2f*s,2.4f*s,7*s,7,rot+.2f,LEAVES,COLOR(119,177,92));
 }
