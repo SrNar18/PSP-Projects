@@ -34,6 +34,26 @@ extern const unsigned char icon0_png[],icon0_png_end[];
    Mientras el dialogo esta abierto seguimos dibujando el juego debajo con el mismo doble buffer. */
 /* v2.13.2 (Claude): registro de pasos en ms0:/NARCADE_DEBUG.TXT. La PSP se reinicia al cargar partida y en PPSSPP
    no ocurre, asi que hay que saber en que paso exacto muere: el fichero conserva la ultima linea escrita. */
+/* v2.13.5 (Claude): fase actual (sin escribir a disco) + hilo vigilante que la vuelca cada 200 ms. Permite saber si
+   la consola se CUELGA (la fase se repite) o se ESTRELLA (el registro para), y en que celda de la ciudad. */
+static volatile const char *gPhase="arranque";static volatile unsigned gPhaseSeq=0;
+static void phase(const char *p){gPhase=p;gPhaseSeq++;}
+static int watchdog(SceSize a,void *v){(void)a;(void)v;
+    unsigned last=0;int same=0;
+    for(;;){
+        sceKernelDelayThread(200000);
+        unsigned seq=gPhaseSeq;const char *ph=(const char*)gPhase;
+        if(seq==last){
+            if(++same>2){
+                char m[128];int n=snprintf(m,sizeof(m),"VIGILANTE: atascado en '%s' (%d)%c",ph,same,10);
+                SceUID f=sceIoOpen("ms0:/NARCADE_DEBUG.TXT",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND,0777);
+                if(f>=0){sceIoWrite(f,m,n);sceIoClose(f);}
+            }
+        }
+        else{last=seq;same=0;}
+    }
+    return 0;
+}
 static void dbg(const char *msg){
     SceUID f=sceIoOpen("ms0:/NARCADE_DEBUG.TXT",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND,0777);
     if(f<0)return;
@@ -109,7 +129,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
     if(done)break;
    }
    dbg("carga-por-etapas-ok");
-   r3_trace(dbg,3); /* trazas por fase en los 3 primeros fotogramas */
+   r3_trace(dbg,3);
   }
   return ok;
  }
@@ -122,6 +142,8 @@ static void handle_save_request(int req,uint32_t **buffers,int *index){
 }
 int main(void){
  int th=sceKernelCreateThread("Narcade callbacks",callbacks,0x11,0x1000,0,0);if(th>=0)sceKernelStartThread(th,0,0);
+ int wd=sceKernelCreateThread("Narcade watchdog",watchdog,0x08,0x2000,0,0);if(wd>=0)sceKernelStartThread(wd,0,0);
+ r3_phase_hook(phase);
  scePowerSetClockFrequency(333,333,166);
  sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
  sceDisplaySetMode(0,480,272);
@@ -131,7 +153,8 @@ int main(void){
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;int postLoad=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
-  game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
+  phase("tick");game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
+  phase("draw");
   int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();postLoad=req==2?3:0;continue;}
   if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-tick",4-postLoad);dbg(m);}
 #ifdef NARCADE_PROFILE

@@ -582,6 +582,7 @@ static void city_v26(void){
         if(!nearby(x+160,z+160,720))continue;
         if(!nearby(x+160,z+160,400)&&!sphere_visible(x+160,z+160,460))continue;
         float dist=view_distance(x+160,z+160);int far=dist>380;cityMid=dist>230;
+        {static char cellTag[20];cellTag[0]='c';cellTag[1]='0'+bx;cellTag[2]=',';cellTag[3]='0'+bz;cellTag[4]=far?'L':'c';cellTag[5]=0;r3_phase(cellTag);}
         city_cell_v26(bx,bz,far,white);cityMid=0;
     }
     diagonal_avenue();

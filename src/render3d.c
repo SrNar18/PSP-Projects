@@ -267,6 +267,8 @@ static void tree(float x,float z){
     if(kind<0){unsigned h=(unsigned)(x*1.7f)*2654435761u^(unsigned)(z*2.3f)*40503u;h^=h>>11;unsigned r=h%100;kind=r<58?0:r<80?1:2;}
     tree_shape(x,z,kind,cityMid||view_distance(x,z)>170);
 }
+static void (*phaseFn2)(const char*)=0;
+static void r3_phase(const char *s){if(phaseFn2)phaseFn2(s);}
 #include "city3d.inc"
 #include "city26.inc"
 #include "shapes.inc"
@@ -675,7 +677,10 @@ void r3_set_draw_buffer(uint32_t *fb){
 /* v2.13.4 (Claude): trazas por fase; psp_main instala un callback que escribe en ms0:/NARCADE_DEBUG.TXT durante los
    primeros fotogramas tras cargar partida, para saber que subsistema se traga la consola. */
 static void (*traceFn)(const char*)=0;static int traceFrames=0;
-#define TRACE(s) do{if(traceFn&&traceFrames>0)traceFn(s);}while(0)
+static void (*phaseFn)(const char*)=0;
+void r3_phase_hook(void (*fn)(const char*)){phaseFn=fn;phaseFn2=fn;}
+#define PHASE(s) do{if(phaseFn)phaseFn(s);}while(0)
+#define TRACE(s) do{PHASE(s);if(traceFn&&traceFrames>0)traceFn(s);}while(0)
 void r3_trace(void (*fn)(const char*),int frames){traceFn=fn;traceFrames=frames;}
 int r3_overflow(void){return overflow;}
 int r3_used(int m){return m<MAT_COUNT?used[m]:0;}

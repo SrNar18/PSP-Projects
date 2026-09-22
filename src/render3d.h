@@ -21,7 +21,7 @@ typedef struct {
 void r3_init(void);
 void r3_set_draw_buffer(uint32_t *fb);
 void r3_gu_buffers(uint32_t *draw,uint32_t *disp);void r3_gu_display(int on);void r3_gu_idle(void);void r3_gu_swap(void); /* v2.9.1: dialogos del sistema */ /* v2.9: buffer de dibujo del GE para los dialogos del sistema */
-void r3_trace(void (*fn)(const char*),int frames); /* v2.13.4: trazas de diagnostico */
+void r3_trace(void (*fn)(const char*),int frames);void r3_phase_hook(void (*fn)(const char*)); /* v2.13.4: trazas de diagnostico */
 int r3_overflow(void);int r3_used(int m); /* diagnostico: poligonos descartados por presupuesto y vertices usados por material */
 void r3_draw(uint32_t *framebuffer, const R3Scene *scene);
 void r3_overlay(uint32_t *framebuffer,const uint32_t *rgba);
