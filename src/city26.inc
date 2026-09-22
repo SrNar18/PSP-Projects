@@ -384,9 +384,36 @@ static void bench(float x,float z,float angle){
     Point b=local(0,0,-1.9f,x,z,angle);box(b.x,b.z,4,10,.7f,3.6f,angle,ROOF,ROOF,COLOR(120,85,50));
     for(int e=-1;e<=1;e+=2){Point p=local(e*4.2f,0,0,x,z,angle);box(p.x,p.z,0,.8f,3,3.2f,angle,METAL,METAL,COLOR(60,62,66));}
 }
+/* Two pedestrian crossings link the riverside promenades between the road
+   bridges. Their clear centre and parapets share citymap.h collision bounds. */
+static void river_footbridge(int bz){
+    float cz=cm_footbridge_z(bz);if(cz<0)return;
+    box(1428,cz,-5,72,32,7,0,SIDEWALK,SIDEWALK,COLOR(202,194,177));
+    ground(COBBLE,1392,cz-13,72,26,2.1f,COLOR(226,217,194),4);
+    for(int side=-1;side<=1;side+=2){
+        float zz=cz+side*14.5f;
+        box(1428,zz,2,72,2,2,0,CONCRETE,CONCRETE,COLOR(200,191,170));
+        for(int k=0;k<7;k++)box(1394+k*11,zz,4,1.5f,1.5f,7,0,METAL,METAL,COLOR(64,74,77));
+        box(1428,zz,11,72,1.5f,1.5f,0,METAL,METAL,COLOR(72,81,84));
+    }
+    box(1400,cz,-12,6,34,7,0,BRICK,BRICK,COLOR(185,175,158));
+    box(1456,cz,-12,6,34,7,0,BRICK,BRICK,COLOR(185,175,158));
+}
 static void city_cell_v26(int bx,int bz,int far,uint32_t white){
     float x=bx*320,z=bz*320;unsigned f=cm_flags(bx,bz),h=city_hash(bx,bz,7);int type=city_block_type(bx,bz);
     ground(ROAD,x,z,320,320,0,white,12);
+    if(cm_roundabout(bx,bz)){
+        float cx=x+42,cz=z+42;
+        /* The surrounding 86-unit junction remains a usable driving lane. */
+        cylinder(cx,cz,.6f,12,2.2f,16,0,SIDEWALK,SIDEWALK,COLOR(216,207,187));
+        cylinder(cx,cz,2.8f,9,1.5f,16,0,GRASS,GRASS,COLOR(95,147,84));
+        if(!far){
+            for(int k=0;k<8;k++){
+                float a=(k+.5f)*PI*.25f;
+                cylinder(cx+cosf(a)*8,cz+sinf(a)*8,4.3f,1.2f,2.2f,6,0,GRASS,GRASS,COLOR(48,108,55));
+            }
+        }
+    }
     int westMerged=(cm_flags(bx-1,bz)&CM_MERGE_E)!=0,northMerged=(cm_flags(bx,bz-1)&CM_MERGE_S)!=0;
     if(!far){
         /* Leave junctions and diagonal crossings clear. Stable dash phase
@@ -449,6 +476,7 @@ static void city_v26(void){
     for(int bz=0;bz<7;bz++)if(nearby(1428,bz*320+160,850)){
         ground(WATER,1396,bz*320+86,64,234,1.4f,white,7);
         river_bridge(bz,white);
+        river_footbridge(bz);
         box(1395,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);box(1461,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
         ground(SIDEWALK,1462,bz*320+86,44,234,1.2f,COLOR(226,222,214),6);
         int far=view_distance(1428,bz*320+160)>430;

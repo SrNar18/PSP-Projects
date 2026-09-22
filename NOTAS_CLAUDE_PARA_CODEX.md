@@ -407,3 +407,18 @@ de ahi el menu "a medias" o con el fotograma anterior pegado. Diferencia exacta 
 lo habilita en su init. Ahora `r3_gu_buffers()` fija draw/disp + offset/viewport/scissor y habilita la salida; al
 cerrar el dialogo, `r3_gu_display(0)` y un `sceDisplaySetFrameBuf` devuelven el control al bucle del juego.
 No quitar `sceGuDisplay(GU_TRUE)` de ahi.
+
+
+## v2.11 — rueda de armas, 22 septiembre 2026
+A pie, mantener L 0,18 s abre rueda de ocho opciones. Joystick selecciona
+por ángulo con zona muerta central; soltar L equipa. Un toque corto no abre.
+La rueda congela el avance/estamina y Start la cierra para pausar. En coche
+y Metro no abre. Arma en memoria transitoria: no cambia formato de partida.
+Puños ocupan índice 0 arriba; índices 1..7 son pistola, revólver, subfusil,
+AK, escopeta, rifle y bate. La mano derecha y el codo adoptan una pose de
+sujeción; modelos de geometría ligera siguen la mano al caminar/correr.
+No se ha implementado uso/disparo, munición ni daños.
+QA: qa_weapons cubre los 8 sectores, centro, pausa, vehículo y congelación;
+qa_weapon_mesh cubre 504 poses y estabilidad geométrica. ISO estática PSP
+compilada sin flags de diagnóstico; SHA256 e0db79cb0dd8eb060fee8a6ee3f0787109543a07055e6b1a407ce843b0ae69f3.
+No hay aún prueba en PSP física.

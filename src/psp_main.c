@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include "game.h"
 #include "render3d.h"
-PSP_MODULE_INFO("Narcade",0,2,10);
+PSP_MODULE_INFO("Narcade",0,2,11);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(4096);
 static volatile int running=1;

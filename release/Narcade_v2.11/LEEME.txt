@@ -1,0 +1,8 @@
+NARCADE 3D v2.11 - made by Naresz
+Instala Narcade_v2.11.iso en /ISO de la Memory Stick.
+A pie, mantén L durante un instante para abrir la rueda. Mueve el joystick
+hacia una de las ocho opciones y suelta L para equiparla. Arriba: puños.
+Opciones: puños, pistola, revólver, subfusil, AK, escopeta, rifle y bate.
+La rueda funciona caminando, trotando, corriendo o quieto, fuera de vehículos.
+Por ahora las armas se equipan visualmente; todavía no hay mecánica de disparo.
+Probada automáticamente y compilada para PSP. Falta prueba en PSP física.

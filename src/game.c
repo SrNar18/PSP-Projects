@@ -52,6 +52,7 @@ static struct {
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
  int pauseTab,pauseBack;
+ int weapon,weaponChoice,weaponWheel;float weaponHold;
  float lift,metroZ,metroWait;int metroDir,inMetro;float moveYaw,steerSmooth;int moveActive; /* v2.9: rumbo suavizado a pie */int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
  int hudDistrict,hudStepKey; float hudDistrictT,hudObjectiveT;
  char notice[160],dialog[640],speaker[60],savepath[256];
@@ -79,6 +80,22 @@ static int wrapi(int x,int n){return (x%n+n)%n;}
 static int pressed(int b){return (g.pressed&b)!=0;}
 static int held(int b){return (g.held&b)!=0;}
 static void notice(const char *s){snprintf(g.notice,sizeof(g.notice),"%s",s);g.noticeT=4;}
+static const char *weaponNames[8]={"PUNOS","PISTOLA","REVOLVER","SUBFUSIL","AK","ESCOPETA","RIFLE","BATE"};
+static int weapon_menu(float ax,float ay,float dt){
+ if(g.screen!=WORLD||g.car>=0||g.inMetro){g.weaponWheel=0;g.weaponHold=0;return 0;}
+ if(held(B_L)){
+  g.weaponHold+=dt;
+  if(!g.weaponWheel&&g.weaponHold>=.18f){g.weaponWheel=1;g.weaponChoice=g.weapon;}
+  if(g.weaponWheel){
+   if(ax*ax+ay*ay>.30f*.30f){float a=atan2f(ax,-ay);g.weaponChoice=wrapi((int)floorf(a/(PI/4)+.5f),8);}
+   return 1;
+  }
+ }else{
+  g.weaponHold=0;
+  if(g.weaponWheel){g.weapon=g.weaponChoice;g.weaponWheel=0;g.moveActive=0;g.stickActive=0;notice(weaponNames[g.weapon]);return 1;}
+ }
+ return 0;
+}
 /* v1.1: dibujo optimizado para PSP real: recorrido por filas y trazado de pixel sin recorte por llamada. */
 static inline void px(int x,int y,uint32_t c){if((unsigned)x<(unsigned)W&&(unsigned)y<(unsigned)H)fb[y*pitch+x]=c;}
 static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;if(x1<=x0||y1<=y0)return;int n=x1-x0;for(int j=y0;j<y1;j++){uint32_t *row=fb+j*pitch+x0;for(int i=0;i<n;i++)row[i]=c;}}
@@ -95,11 +112,20 @@ static int parkblock(int bx,int by){return cm_park(bx,by);}
 static int solid(float x,float y){
  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8)return 1;
  int ly=(int)y%320;
- if(x>1396&&x<1460&&ly>86)return 1;
+ if(x>1396&&x<1460&&ly>86){
+  int bridge=0;for(int row=0;row<7;row++)if(fabsf(y-cm_footbridge_z(row))<13.f)bridge=1;
+  if(!bridge)return 1;
+ }
  /* v2.6: manzanas irregulares (fusionadas, partidas, triangulares): la huella la define citymap.h */
  return cm_solid(x,y)||cm_obstacle(x,y);
 }
-static int free_at(float x,float y,int radius){return !solid(x-radius,y-radius)&&!solid(x+radius,y-radius)&&!solid(x-radius,y+radius)&&!solid(x+radius,y+radius);}
+static int free_at(float x,float y,int radius){
+ /* Check the entire contact footprint, including its centre and side
+    midpoints: thin walls and triangular corners must not be walk-through. */
+ for(int iz=-1;iz<=1;iz++)for(int ix=-1;ix<=1;ix++)
+  if(solid(x+ix*radius,y+iz*radius))return 0;
+ return 1;
+}
 static void physics_project(float x,float y,float *a,float *b){
 #ifdef NARCADE_3D
  geo_project(x,y,a,b);
@@ -337,7 +363,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT mapa / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){snprintf(g.speaker,sizeof(g.speaker),"%s",who);snprintf(g.dialog,sizeof(g.dialog),"%s",s);g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -518,7 +544,15 @@ static void world_tick(float ax,float ay,float dt){
   g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*12));float speed=g.footSpeed;
   float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
   float grade=(geo_height(g.x+dx*4,g.y+dy*4)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+grade*grade);
-  if(foot_free(g.x+dx*speed*dt,g.y)&&lift_ok(g.x+dx*speed*dt,g.y))g.x+=dx*speed*dt;if(foot_free(g.x,g.y+dy*speed*dt)&&lift_ok(g.x,g.y+dy*speed*dt))g.y+=dy*speed*dt;
+  /* Sweep short steps through the collision map. A long frame or a sprint
+     must not jump over the narrow frontage of a building. */
+  float mx=dx*speed*dt,my=dy*speed*dt;
+  int steps=(int)ceilf(fmaxf(fabsf(mx),fabsf(my))/4.f);if(steps<1)steps=1;
+  for(int step=0;step<steps;step++){
+   float tx=g.x+mx/steps,ty=g.y+my/steps;
+   if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
+   if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
+  }
   g.lift=cm_lift(g.x,g.y,g.lift>15);
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
@@ -599,11 +633,12 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
+  g.weaponWheel=0;g.weaponHold=0;
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
  if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
- else if(g.screen==WORLD){g.playtime+=dt;world_tick(ax,ay,dt);}
+ else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);}}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
@@ -782,7 +817,7 @@ static void title_draw(void){
  for(int x=-80+(int)fmodf(g.clock*19,640);x<W;x+=160){for(int i=0;i<36;i++)px(x+i,239-i/3,RGB(35,104+i*2,145+i*2));}
  for(int i=0;i<3;i++){int r=3+i*4+(int)(2*sinf(g.clock*2+i));outline(72-r,67-r,r*2,r*2,i==0?LIME:TEAL);}
  rect(0,0,W,29,RGB(7,12,20));label(16,8,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
- text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.10",WHITE);
+ text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.11",WHITE);
  rect(12,166,231,78,RGB(7,12,20));outline(12,166,231,78,RGB(49,102,116));
  text(25,178,g.menu==0?"> CONTINUAR PARTIDA":"  CONTINUAR PARTIDA",g.menu==0?LIME:MUTED,1);text(25,202,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(25,226,"X confirmar",TEAL,1);
  rect(300,181,169,63,RGB(7,12,20));text(321,187,"made by",WHITE,1);signature(292,190);
@@ -879,11 +914,40 @@ static void pause_draw(void){
  if(g.noticeT>0&&g.pauseTab>=2){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
  footer(g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
 }
+static void weapon_icon(int x,int y,int id,uint32_t color){
+ if(id==0){rect(x-8,y-3,16,10,color);for(int k=0;k<4;k++)rect(x-8+k*4,y-8,3,6,color);rect(x+7,y,4,5,color);return;}
+ if(id==7){line(x-11,y+9,x+10,y-9,color);line(x-10,y+10,x+11,y-8,color);line(x-2,y+2,x+12,y-8,color);return;}
+ int len=id<3?15:id==3?21:30;
+ rect(x-len/2,y-4,len,5,color);rect(x-5,y,4,9,color);
+ if(id>=3)rect(x-12,y,8,3,color);
+ if(id==2)circle(x,y-2,4,color);
+ if(id==3||id==4)rect(x+2,y,4,8,color);
+ if(id==6){rect(x-3,y-9,12,3,color);rect(x,y-6,2,3,color);}
+ if(id==5)rect(x+3,y+1,10,3,color);
+}
+static void weapon_wheel_draw(void){
+ /* Solid, high-contrast sectors remain legible on the 480x272 display. */
+ for(int y=-105;y<=105;y++)for(int x=-105;x<=105;x++){
+  int r=x*x+y*y;if(r<42*42||r>105*105)continue;
+  int slot=wrapi((int)floorf(atan2f((float)x,(float)-y)/(PI/4)+.5f),8);
+  px(240+x,133+y,slot==g.weaponChoice?RGB(51,94,92):RGB(16,28,36));
+ }
+ for(int i=0;i<8;i++){
+  float a=i*PI/4;int x=240+(int)(sinf(a)*77),y=133-(int)(cosf(a)*77);
+  weapon_icon(x,y,i,i==g.weaponChoice?LIME:WHITE);
+  float edge=a+PI/8;line(240+(int)(sinf(edge)*43),133-(int)(cosf(edge)*43),240+(int)(sinf(edge)*105),133-(int)(cosf(edge)*105),MUTED);
+ }
+ circle(240,133,40,INK);text_center(240,125,weaponNames[g.weaponChoice],LIME,1);
+ text_center(240,142,"L",TEAL,1);
+ label(153,8,"SELECCIONAR ARMA",WHITE);
+ footer("MANTEN L + JOYSTICK elegir / SUELTA L equipar");
+}
 static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
+ scene.weapon=g.weapon;
  scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
  scene.metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
@@ -897,6 +961,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
 #else
  world_draw();
 #endif
+ if(g.weaponWheel){weapon_wheel_draw();return;}
  hud();
  if(g.screen==DIALOG){rect(16,70,448,144,INK);outline(16,70,448,144,RGB(67,92,93));rect(16,70,4,144,LIME);text(31,83,g.speaker,TEAL,1);textwrap(31,106,416,g.dialog,WHITE);text(31,196,g.dialogAction==3?"X empezar de nuevo  O cancelar":"X continuar",LIME,1);}
  if(g.screen==CHOICE){rect(16,62,448,173,INK);text(30,76,"TU DECISION / EL FUTURO DEL EXPEDIENTE",TEAL,1);textwrap(30,98,412,"Las dos opciones protegen los datos privados. Elige quien llevara las pruebas a la ciudad.",MUTED);const char *items[]={"VERA: entregar el expediente a la justicia","MARA: publicar tambien una memoria vecinal"};for(int i=0;i<2;i++){rect(25,146+i*35,429,28,i==g.menu?PANEL:INK);text(31,154+i*35,items[i],i==g.menu?LIME:WHITE,1);}text(31,219,"ARRIBA/ABAJO elegir  X confirmar",MUTED,1);}

@@ -16,6 +16,7 @@ typedef struct {
     float lift,metroZ;int metroDir,inMetro;
     float metroDoors; /* 0 closed, 1 open; driven by the station dwell timer */
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
+    int weapon; /* 0 fists; 1..7 handheld models */
 } R3Scene;
 void r3_init(void);
 void r3_set_draw_buffer(uint32_t *fb);

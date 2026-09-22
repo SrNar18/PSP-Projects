@@ -5,7 +5,18 @@
 /* Save positions and mission routes retain their original logical coordinates.
    Rendering, navigation maps and altitude share this one geographic transform. */
 static inline float geo_clamp(float x,float a,float b){return fminf(b,fmaxf(a,x));}
+/* Hold the valley outline steady across each built block.  The transition is
+   made inside the east/west street, so building facades stay straight while
+   the avenues still follow Medellin's changing valley width. */
+static inline float geo_shape_z(float z){
+    float row=floorf(z/320.f),local=z-row*320.f;
+    float here=row*320.f+203.f;
+    if(local>=86.f)return geo_clamp(here,0.f,2239.f);
+    float t=geo_clamp(local/86.f,0.f,1.f);t=t*t*(3.f-2.f*t);
+    return geo_clamp(here-320.f*(1.f-t),0.f,2239.f);
+}
 static inline void geo_row(float z,float *left,float *river,float *right){
+    z=geo_shape_z(z);
     float v=geo_clamp(z/70,0,31.99999f);int i=(int)v;float t=v-i;
     *left=medellin_profile[i][0]*(1-t)+medellin_profile[i+1][0]*t;
     *river=medellin_profile[i][1]*(1-t)+medellin_profile[i+1][1]*t;

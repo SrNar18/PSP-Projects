@@ -452,6 +452,7 @@ static void pose_prepare(void){
     poseMotion=geo_clamp(view->motion,0,2.1f);poseWave=sinf(view->gaitPhase);
     poseRun=geo_clamp((poseMotion-1)/1.08f,0,1);
     elbowSin=sinf(poseRun*1.05f);elbowCos=cosf(poseRun*1.05f);
+    if(view->weapon>0){elbowSin=sinf(1.12f);elbowCos=cosf(1.12f);}
     float moving=geo_clamp(poseMotion,0,1);
     poseBreath=sinf(view->time*2.2f)*.08f*(1-moving);
     poseBob=(1-cosf(view->gaitPhase*2))*(.13f+.22f*poseRun)*moving;
@@ -487,6 +488,7 @@ static Point player_pose(Point p,int bone){
         float weight=geo_clamp((24-p.y)/12,0,1);
         /* Brazo: balanceo opuesto a la pierna, mas amplio al correr; el codo se dobla y sube (antebrazo adelantado). */
         float swing=-footStep[(bone-3)&1]*.62f;
+        if(view->weapon>0)swing*=.12f;
         /* Rotate the forearm around the elbow instead of stretching it up. */
         if(p.y<16.5f){float dy=p.y-16.5f,xx=p.x;
             p.x=xx*elbowCos-dy*elbowSin;p.y=16.5f+xx*elbowSin+dy*elbowCos;
@@ -521,6 +523,39 @@ static void player_index_build(void){
         }
         playerIndex[i]=(unsigned short)found;
     }
+}
+static void weapon_part(Point grip,float fx,float fy,float fz,float length,float height,float width,uint32_t color,float x,float z,float angle){
+ Point p[8];
+ for(int i=0;i<8;i++){
+  float xx=fx+((i&1)?1:-1)*length*.5f;
+  float yy=fy+((i&2)?1:-1)*height*.5f;
+  float zz=fz+((i&4)?1:-1)*width*.5f;
+  p[i]=local(grip.x+xx,grip.y+yy,grip.z+zz,x,z,angle);
+ }
+ const int faces[6][4]={{0,1,3,2},{4,6,7,5},{0,4,5,1},{2,3,7,6},{0,2,6,4},{1,5,7,3}};
+ for(int f=0;f<6;f++)quad(20,p[faces[f][0]],p[faces[f][1]],p[faces[f][2]],p[faces[f][3]],shade(color,f==3?1:.72f+.04f*f),1,1);
+}
+static void equipped_weapon(float x,float z,float angle){
+ int id=view->weapon;if(id<1||id>7)return;
+ Point grip=player_pose(point(.95f,12.8f,-3.95f),3);
+ uint32_t steel=COLOR(105,115,123),dark=COLOR(41,45,49),wood=COLOR(145,89,48);
+ if(id==7){
+  weapon_part(grip,0,2.2f,0,.65f,5,.65f,wood,x,z,angle);
+  weapon_part(grip,0,9,0,1.25f,9,1.25f,wood,x,z,angle);return;
+ }
+ weapon_part(grip,0,-.2f,0,1.15f,2.2f,1.0f,dark,x,z,angle);
+ if(id<3){
+  weapon_part(grip,1.2f,1.1f,0,id==1?4:4.8f,.95f,.85f,steel,x,z,angle);
+  if(id==2)weapon_part(grip,.7f,.7f,0,1.5f,1.4f,1.4f,dark,x,z,angle);
+ }else{
+  float len=id==3?6:id==5?13:id==6?15:11;
+  weapon_part(grip,2,1,0,5,1.6f,1.3f,steel,x,z,angle);
+  weapon_part(grip,len*.55f,1.25f,0,len*.70f,.48f,.48f,dark,x,z,angle);
+  weapon_part(grip,-2.7f,.5f,0,3.2f,1.9f,1.3f,id==4||id==5?wood:dark,x,z,angle);
+  weapon_part(grip,4,.55f,0,3.5f,1.05f,1.4f,id==4||id==5?wood:dark,x,z,angle);
+  if(id==3||id==4)weapon_part(grip,1.8f,-1,0,1.1f,3.8f,.85f,dark,x,z,angle);
+  if(id==6)weapon_part(grip,2,2.5f,0,4.5f,.8f,.8f,dark,x,z,angle);
+ }
 }
 static void person(float x,float z,float angle,int style,int walking){
     if(style>=0){simple_person(x,z,angle,style,walking);return;}
@@ -568,6 +603,7 @@ static void person(float x,float z,float angle,int style,int walking){
                     local(xx+.12f,yy,lateral+.66f,x,z,angle),local(xx,yy,lateral+.66f,x,z,angle),COLOR(80,84,83),1,1);
         }
     }
+    equipped_weapon(x,z,angle);
     localScale=1;
 }
 static void landmarks(void){

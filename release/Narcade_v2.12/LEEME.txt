@@ -1,0 +1,12 @@
+NARCADE 3D v2.12 - made by Naresz
+
+Para cargar la ISO en una PSP con CFW, copia Narcade_v2.12.iso a /ISO de la Memory Stick.
+Como alternativa homebrew, copia PSP/GAME/NARCADE a /PSP/GAME.
+
+Ciudad renovada: las fachadas y manzanas principales ahora son rectas, las parcelas
+alternan tamaños y divisiones, y hay tres rotondas con islas sólidas. Los puentes
+sobre el río y el Metro siguen presentes. Las colisiones del jugador muestrean
+la huella completa y avanzan en pasos pequeños para impedir atravesar edificios.
+
+Compilado con el SDK de PSP y comprobado con pruebas automáticas del mapa y
+512 escenas de render. Pendiente de probar en una PSP física.

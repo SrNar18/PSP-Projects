@@ -32,16 +32,22 @@
 #define CM_NONE 0
 /* Flags por celda [bz][bx]. (Parques originales: (2,3) Nutibara, (2,1), (0,2), (4,5), (4,6).) */
 static const unsigned short cm_cells[7][8]={
-/* bz=0 */ {CM_SPLIT_X,           CM_SPLIT_Z,          CM_NONE,             CM_SPLIT_X,          CM_NONE,   CM_SPLIT_X,           CM_SPLIT_Z,          CM_SPLIT_X},
-/* bz=1 */ {CM_SPLIT_Z,           CM_SPLIT_X|CM_SPLIT_Z,CM_PARK,            CM_NONE,             CM_NONE,   CM_SPLIT_X|CM_SPLIT_Z,CM_SPLIT_X,          CM_SPLIT_Z},
-/* bz=2 */ {CM_PARK,              CM_SPLIT_X,          CM_NONE,             CM_SPLIT_Z,          CM_NONE,   CM_SPLIT_Z,           CM_SPLIT_X,          CM_NONE},
+/* bz=0 */ {CM_NONE,              CM_SPLIT_Z,          CM_NONE,             CM_SPLIT_X,          CM_NONE,   CM_NONE,              CM_SPLIT_Z,          CM_NONE},
+/* bz=1 */ {CM_SPLIT_Z,           CM_NONE,             CM_PARK,            CM_NONE,             CM_NONE,   CM_SPLIT_X,           CM_NONE,             CM_SPLIT_Z},
+/* bz=2 */ {CM_PARK,              CM_SPLIT_X,          CM_NONE,             CM_NONE,             CM_NONE,   CM_SPLIT_Z,           CM_NONE,             CM_NONE},
 /* bz=3 */ {CM_MERGE_E|CM_TUNNEL, CM_NONE,             CM_PUEBLITO,         CM_PLAZA,            CM_NONE,   CM_NONE,              CM_NONE,             CM_MERGE_S},
 /* bz=4 */ {CM_NONE,              CM_MERGE_E|CM_STADIUM,CM_NONE,            CM_SPLIT_Z,          CM_NONE,   CM_MERGE_E|CM_TUNNEL, CM_NONE,             CM_NONE},
 /* bz=5 */ {CM_SPLIT_X,           CM_NONE,             CM_MERGE_S,          CM_NONE,             CM_PARK,   CM_NONE,              CM_MERGE_E,          CM_NONE},
-/* bz=6 */ {CM_NONE,              CM_SPLIT_Z,          CM_NONE,             CM_SPLIT_X,          CM_PARK,   CM_NONE,              CM_NONE,             CM_SPLIT_Z},
+/* bz=6 */ {CM_NONE,              CM_SPLIT_Z,          CM_NONE,             CM_NONE,             CM_PARK,   CM_NONE,              CM_NONE,             CM_SPLIT_Z},
 };
 static inline unsigned cm_flags(int bx,int bz){if(bx<0||bx>7||bz<0||bz>6)return 0;return cm_cells[bz][bx];}
 static inline int cm_park(int bx,int bz){return (cm_flags(bx,bz)&(CM_PARK|CM_PLAZA))!=0;}
+/* Intersections reserved for small, drivable roundabouts. The island is
+   represented by the same footprint in the renderer and collision code. */
+static inline int cm_roundabout(int bx,int bz){
+    return (bx==1&&bz==2)||(bx==6&&bz==1)||(bx==6&&bz==5);
+}
+static inline float cm_footbridge_z(int bz){return bz==2||bz==5?bz*320.f+190.f:-10000.f;}
 /* Avenida diagonal (Av. Oriental): de (1010,700) a (1330,1560), anchura 56. */
 #define CM_DIAG_X0 1010.f
 #define CM_DIAG_Z0 700.f
@@ -91,7 +97,11 @@ static inline int cm_parcels_compute(int bx,int bz,CmParcel *out){
     if(bx>0&&(cm_flags(bx-1,bz)&CM_MERGE_E))return 0;   /* absorbida por la celda oeste */
     if(bz>0&&(cm_flags(bx,bz-1)&CM_MERGE_S))return 0;   /* absorbida por la celda norte */
     float x=bx*320,z=bz*320;int kind=(f&(CM_PARK|CM_PLAZA))?1:0;
-    float x0=x+94,z0=z+94,x1=x+288,z1=z+280;
+    /* Unequal setbacks break the repeated square silhouette while leaving
+       the public road corridor and existing save coordinates untouched. */
+    unsigned shape=(unsigned)(bx*73+bz*41+bx*bz*17);
+    float x0=x+90+(shape%4)*3,z0=z+90+((shape>>2)%4)*3;
+    float x1=x+278+((shape>>4)%5)*3,z1=z+270+((shape>>7)%5)*3;
     if(bx==4)x0=1506;                                  /* orilla este del rio: paseo + viaducto del Metro */
     if(f&CM_MERGE_E)x1=x+320+288;
     if(f&CM_MERGE_S)z1=z+320+280;
@@ -181,6 +191,15 @@ static inline void cm_shrunk(const CmParcel *p,float inset,CmParcel *out){
 /* Obstaculos menores que tambien son solidos (mismas posiciones que dibuja city26.inc): pilares y escaleras del
    Metro, pedestales y fuente de Plaza Botero, fuentes de los parques. */
 static inline int cm_obstacle(float x,float z){
+    if(x>=1392.f&&x<=1464.f)
+        for(int row=0;row<7;row++){
+            float dz=fabsf(z-cm_footbridge_z(row));
+            if(dz>=13.f&&dz<=16.f)return 1; /* parapet */
+        }
+    for(int k=0;k<3;k++){static const int bx[3]={1,6,6},bz[3]={2,1,5};
+        float dx=x-(bx[k]*320+42),dz=z-(bz[k]*320+42);
+        if(dx*dx+dz*dz<12.f*12.f)return 1;
+    }
     if(fabsf(x-CM_METRO_X)<5.f){float lz=fmodf(z,64.f);if(lz<0)lz+=64;if(fabsf(lz-32)<5.f)return 1;}   /* pilares */
     int bx=(int)floorf(x/320),bzc=(int)floorf(z/320);
     for(int dz=-1;dz<=0;dz++)for(int dx=-1;dx<=0;dx++){
