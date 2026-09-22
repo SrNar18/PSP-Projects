@@ -57,15 +57,17 @@ def main():
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664
-    # v2.7 (Claude): 8 materiales 64px mas en RAM para las formas nuevas (arboles, coches, torres, plazas).
+    # Eight established detail tiles plus four distinct street-facing facades.
     for i,name in enumerate(EXTRA_NAMES):
-        w,h=detail.size;x,y=i%4,i//4
-        tile=detail.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2)).resize((64,64),Image.Resampling.LANCZOS)
+        if i<8:
+            w,h=detail.size;x,y=i%4,i//4
+            tile=detail.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2)).resize((64,64),Image.Resampling.LANCZOS)
+        else:tile=create_extra(i)
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
-    assert len(result)==753664+8*8192
+    assert len(result)==753664+12*8192
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('21 VRAM materials + 8 pedestrian + 8 extra RAM materials:',len(result),'bytes')
+    print('21 VRAM materials + 8 pedestrian + 12 extra RAM materials:',len(result),'bytes')
 
 if __name__=='__main__':main()

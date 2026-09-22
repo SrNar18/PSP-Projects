@@ -3,7 +3,8 @@ corteza, follaje, metal, hormigon con juntas, muro cortina, toldo a rayas, adoqu
 from PIL import Image, ImageDraw
 import math, random
 
-NAMES = ['bark','leaves','metal','concrete','curtain','awning','cobble','modern']
+NAMES = ['bark','leaves','metal','concrete','curtain','awning','cobble','modern',
+         'retail','eatery','office-front','workshop-front']
 
 def noise(seed):
     r=random.Random(seed);return lambda: r.random()
@@ -76,4 +77,33 @@ def create(index):
             d.rectangle((4,row,59,row+14),fill=(40,52,66));d.rectangle((4,row,59,row+14),outline=(90,96,104))
             for k in range(4,60,14):d.line((k,row,k,row+14),fill=(90,96,104))
             d.line((6,row+2,57,row+2),fill=(120,150,175))
+    elif index==8:  # local de barrio: banda de color, escaparate y puerta
+        d.rectangle((0,0,63,63),fill=(200,224,214))
+        d.rectangle((0,0,63,15),fill=(22,111,119));d.text((8,2),'TIENDA',fill=(244,247,223))
+        d.rectangle((3,19,44,55),fill=(34,61,72),outline=(235,218,171),width=2)
+        d.polygon([(6,25),(30,20),(39,21),(13,37)],fill=(100,166,185))
+        d.rectangle((47,18,61,62),fill=(58,75,76),outline=(239,209,150),width=2)
+        d.ellipse((56,39,58,41),fill=(248,203,98))
+        d.rectangle((0,56,63,63),fill=(39,119,127))
+    elif index==9:  # restaurante: azulejo terracota y ventanas iluminadas
+        d.rectangle((0,0,63,63),fill=(227,181,133))
+        d.rectangle((0,0,63,16),fill=(153,49,43));d.text((13,2),'SABOR',fill=(255,233,173))
+        d.rectangle((4,20,59,55),fill=(92,50,44),outline=(245,208,142),width=2)
+        for x in (13,31,49):
+            d.rectangle((x-7,25,x+5,49),fill=(220,137,70));d.line((x-7,25,x+5,49),fill=(250,190,103))
+        d.rectangle((0,56,63,63),fill=(136,66,51))
+    elif index==10:  # oficina: montantes, reflejos y plantas acristaladas
+        d.rectangle((0,0,63,63),fill=(44,78,108))
+        for y in (1,32):
+            for x in (1,32):
+                d.rectangle((x,y,x+29,y+29),fill=(56,109,142),outline=(184,207,211),width=2)
+                d.polygon([(x+3,y+4),(x+18,y+3),(x+7,y+22)],fill=(102,158,183))
+                d.rectangle((x+21,y+7,x+25,y+16),fill=(236,192,111))
+        d.rectangle((0,29,63,33),fill=(32,53,72))
+    elif index==11:  # taller: porton metalico y pintura viva
+        d.rectangle((0,0,63,63),fill=(226,194,128))
+        d.rectangle((0,0,63,14),fill=(43,91,145));d.text((9,2),'TALLER',fill=(253,232,154))
+        d.rectangle((5,18,58,61),fill=(94,115,130),outline=(40,57,70),width=3)
+        for y in range(22,59,6):d.line((8,y,55,y),fill=(156,177,184),width=2)
+        d.rectangle((0,60,63,63),fill=(38,78,125))
     return im

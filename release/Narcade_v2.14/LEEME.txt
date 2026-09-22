@@ -1,0 +1,19 @@
+NARCADE 3D v2.14 - made by Naresz
+
+Instalación ISO: copia Narcade_v2.14.iso a /ISO de la Memory Stick en una PSP con CFW.
+Alternativa homebrew: copia PSP/GAME/NARCADE a /PSP/GAME de la Memory Stick.
+El identificador de partida no cambió, para conservar las partidas anteriores.
+
+Ciudad v2.14: comercios, restaurantes, oficinas y talleres con fachadas y formas
+nuevas; más color en los barrios; calles interiores de 52 unidades y túneles
+de 64. Las estaciones del Metrocable reemplazan los edificios de sus parcelas;
+las pilonas están en espacios libres y son sólidas. Las cabinas tienen suelo,
+carrocería, ventanas y colores distintos. El Metro tiene cubiertas visibles
+por arriba y por abajo.
+
+Los comercios y restaurantes son por ahora fachadas visuales: no tienen aún
+interiores ni sistema de compras.
+
+Compilado para PSP; arrancó y fue inspeccionado en PPSSPP. Pasaron las pruebas
+de 36 misiones, 146 objetivos y 448 vistas de la ciudad. Pendiente de prueba
+en una PSP física.

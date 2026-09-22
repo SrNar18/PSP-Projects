@@ -15,13 +15,14 @@
 #endif
 
 #define PI 3.14159265358979323846f
-#define MAT_COUNT 37 /* 21 VRAM + 8 NPC + 8 extra (v2.7) */
+#define MAT_COUNT 41 /* 21 VRAM + 8 NPC + 12 urban/detail materials in RAM */
 #define VRAM_MATERIALS 21
 #define MAX_VERTICES 8190
 #include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
 enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,CAR_SIDE,CAR_PAINT,GLASS,MURAL,JACKET_BACK,SLEEVE,SKIN,HAIR };
 enum { BARK=29,LEAVES,METAL,CONCRETE,CURTAIN,AWNING,COBBLE,MODERN }; /* v2.7: materiales 64px en RAM (tools/extra_textures.py) */
+enum { RETAIL=37,EATERY,OFFICE_FRONT,WORKSHOP_FRONT };
 typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;
 typedef struct { float x,y,z; } Point;
 static Vertex __attribute__((aligned(16))) mesh[MAT_COUNT][MAX_VERTICES];
@@ -223,7 +224,8 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     if(length>height*2.2f)ul=length/(height>8?height:8)*.5f;if(height>length*2.2f)vl=height/(length>3?length:3)*.5f;
     if(width>height*2.2f)uw=width/(height>8?height:8)*.5f;if(height>width*2.2f)vw=height/(width>3?width:3)*.5f;
     if(ul>8)ul=8;if(uw>8)uw=8;if(vl>8)vl=8;if(vw>8)vw=8;float ut=1,vt=1;
-    if((side==BRICK||side==STUCCO||side==SHOP||side==CURTAIN||side==MODERN)&&height>14){
+    if((side==BRICK||side==STUCCO||side==SHOP||side==CURTAIN||side==MODERN||
+        side==RETAIL||side==EATERY||side==OFFICE_FRONT||side==WORKSHOP_FRONT)&&height>14){
         ul=fmaxf(1,length/54);uw=fmaxf(1,width/54);vl=vw=fmaxf(1,height/24);
     }
     if(length>width*2.2f)ut=length/(width>4?width:4)*.5f;if(width>length*2.2f)vt=width/(length>4?length:4)*.5f;if(ut>8)ut=8;if(vt>8)vt=8;

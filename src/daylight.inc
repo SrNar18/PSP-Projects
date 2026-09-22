@@ -63,8 +63,8 @@ static uint32_t day_scale(uint32_t c){
 /* Materiales que emiten luz de noche (escaparates, torres de cristal, farolas). */
 static uint32_t emissive_color(int mat,uint32_t c){
     if(night<=0)return c;
-    if(mat==CURTAIN||mat==MODERN){float w=night*.12f;int R=(int)(((c&255))*(1-w)+240*w),G=(int)((((c>>8)&255))*(1-w)+220*w),B=(int)((((c>>16)&255))*(1-w)+160*w);return COLOR(R,G,B);}
-    if(mat==SHOP||mat==GLASS){float w=night*.35f;int R=(int)(((c&255))*(1-w)+250*w),G=(int)((((c>>8)&255))*(1-w)+225*w),B=(int)((((c>>16)&255))*(1-w)+150*w);return COLOR(R,G,B);}
+    if(mat==CURTAIN||mat==MODERN||mat==OFFICE_FRONT){float w=night*.14f;int R=(int)(((c&255))*(1-w)+240*w),G=(int)((((c>>8)&255))*(1-w)+220*w),B=(int)((((c>>16)&255))*(1-w)+160*w);return COLOR(R,G,B);}
+    if(mat==SHOP||mat==GLASS||mat==RETAIL||mat==EATERY){float w=night*.38f;int R=(int)(((c&255))*(1-w)+250*w),G=(int)((((c>>8)&255))*(1-w)+225*w),B=(int)((((c>>16)&255))*(1-w)+150*w);return COLOR(R,G,B);}
     return c;
 }
 /* Effects need the same near-plane clipping as world geometry. Preserve alpha

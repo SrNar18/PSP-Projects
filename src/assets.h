@@ -3,7 +3,7 @@ static const unsigned char font_bits[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,8,8,8,8,8,8,
 static const int track_start[] = {0,481090,931472,1447764};
 static const int track_length[] = {481090,450382,516292,432000};
 static const char *track_names[] = {"Ladera FM / Concreto y cielo","Rio 90.7 / Puente de noche","Sur Beats / Ventanas abiertas","Horizonte / Vuelta a casa"};
-extern const unsigned char signature_data[];
 extern const short radio_data[];
-extern const unsigned char title_bg_indices[];
-extern const unsigned short title_bg_palette[];
+extern const unsigned short title_cover_v213[],title_menu_v213[];
+extern const unsigned short title_card_new_v213[],title_card_continue_v213[];
+extern const unsigned char title_labels_v213[];

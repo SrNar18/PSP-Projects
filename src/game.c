@@ -32,6 +32,7 @@ typedef struct {int kind,loc,seed,par; const char *text;} Step;
 typedef struct {const char *title,*who,*intro,*outro;int count,reward;Step steps[6];} Mission;
 #include "story.h"
 #include "assets.h"
+#include "title_ui.h"
 enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE};
 typedef struct {float x,y,a,speed,hp;int type,parked,police;} Car;
 typedef struct {float x,y,v,phase;int vertical;} Ped;
@@ -44,7 +45,7 @@ typedef struct {
  float t,value,target,hold,x,y;int lane,notes[24],hit[24];
 } Puzzle;
 static struct {
- int screen,back,mission,step,cash,reputation,ending,car,station,menu,seenIntro,dialogAction,mapSel,journalPage;
+ int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
  float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
@@ -636,7 +637,20 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   g.weaponWheel=0;g.weaponHold=0;
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
  }
- if(g.screen==TITLE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}}}
+ if(g.screen==TITLE){
+  if(!g.titleStage){
+   if(pressed(B_CROSS)||pressed(B_START)){g.titleStage=1;g.menu=0;g.screenT=0;}
+  }else{
+   if(pressed(B_CIRCLE)){g.titleStage=0;g.screenT=0;}
+   else{
+    if(pressed(B_UP)||pressed(B_DOWN)||pressed(B_LEFT)||pressed(B_RIGHT))g.menu=1-g.menu;
+    if(pressed(B_CROSS)||pressed(B_START)){
+     if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}
+     else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}
+    }
+   }
+  }
+ }
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
  else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);}}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
@@ -808,20 +822,65 @@ static void hud(void){
  minimap(46,H-46,32);
 #endif
 }
-static void signature(int x,int y){for(int yy=0;yy<74;yy++)for(int xx=0;xx<180;xx++){int a=signature_data[yy*180+xx];if(a>60)rect(x+xx,y+yy,1,1,a>160?LIME:MUTED);}}
-static uint32_t title_color(unsigned short c,int shade){int r=(c&31)<<3,g=((c>>5)&63)<<2,b=((c>>11)&31)<<3;r=r*shade/255;g=g*shade/255;b=b*shade/255;return RGB(r,g,b);}
+static uint32_t title_color(unsigned short c){return RGB((c&31)*255/31,((c>>5)&63)*255/63,((c>>11)&31)*255/31);}
+static void title_image(const unsigned short *src,int sw,int sh,int dx,int dy){
+ for(int y=0;y<sh;y++){int sy=dy+y;if((unsigned)sy>=H)continue;
+  for(int x=0;x<sw;x++){int sx=dx+x;if((unsigned)sx<W)fb[sy*pitch+sx]=title_color(src[y*sw+x]);}}
+}
+/* UI letterforms are rendered by Pillow from Bahnschrift/Segoe UI/Allura at
+   native PSP resolution. Alpha compositing preserves antialiased edges. */
+static void title_label(int id,int x,int y,uint32_t color){
+ const TitleLabel *l=&titleLabels[id];
+ for(int yy=0;yy<l->height;yy++){int py=y+yy;if((unsigned)py>=H)continue;
+  for(int xx=0;xx<l->width;xx++){int px=x+xx;if((unsigned)px>=W)continue;
+   unsigned a=title_labels_v213[l->offset+yy*l->width+xx];if(!a)continue;
+   uint32_t *dst=&fb[py*pitch+px],old=*dst;
+   unsigned r=(((old&255)*(255-a))+((color&255)*a)+127)/255;
+   unsigned g0=((((old>>8)&255)*(255-a))+(((color>>8)&255)*a)+127)/255;
+   unsigned b=((((old>>16)&255)*(255-a))+(((color>>16)&255)*a)+127)/255;
+   *dst=RGB(r,g0,b);
+  }
+ }
+}
+static void title_card(int x,int selected,int isContinue){
+ uint32_t accent=isContinue?RGB(95,223,232):RGB(249,185,108);
+ if(selected){rect(x-5,77,218,164,RGB(29,70,83));outline(x-4,78,216,162,accent);}
+ else{rect(x-3,79,214,160,RGB(11,22,35));outline(x-3,79,214,160,RGB(72,88,103));}
+ title_image(isContinue?title_card_continue_v213:title_card_new_v213,208,115,x,82);
+ rect(x,197,208,39,RGB(10,18,29));rect(x,197,208,2,accent);
+ title_label(isContinue?TL_CONTINUE:TL_NEW,x+11,202,WHITE);
+ title_label(isContinue?TL_CONTINUE_SUB:TL_NEW_SUB,x+11,221,MUTED);
+ if(selected){rect(x,236,208,3,accent);rect(x+197,82,11,3,accent);}
+}
 static void title_draw(void){
- /* The XMB artwork becomes the actual title scene. A slow exposure pulse,
-    moving reflections and neon shimmer give it life without video decoding. */
- int pulse=224+(int)(sinf(g.clock*.65f)*12);for(int y=0;y<H;y++)for(int x=0;x<W;x++){unsigned short c=title_bg_palette[title_bg_indices[(y>>1)*240+(x>>1)]];fb[y*pitch+x]=title_color(c,pulse);}
- for(int x=-80+(int)fmodf(g.clock*19,640);x<W;x+=160){for(int i=0;i<36;i++)px(x+i,239-i/3,RGB(35,104+i*2,145+i*2));}
- for(int i=0;i<3;i++){int r=3+i*4+(int)(2*sinf(g.clock*2+i));outline(72-r,67-r,r*2,r*2,i==0?LIME:TEAL);}
- rect(0,0,W,29,RGB(7,12,20));label(16,8,"UNA HISTORIA ORIGINAL EN MEDELLIN",TEAL);
- text(20,36,"NARCADE",INK,5);text(17,33,"NARCADE",WHITE,5);rect(20,91,205,3,LIME);label(21,101,"NARCADE 3D / PSP / v2.11",WHITE);
- rect(12,166,231,78,RGB(7,12,20));outline(12,166,231,78,RGB(49,102,116));
- text(25,178,g.menu==0?"> CONTINUAR PARTIDA":"  CONTINUAR PARTIDA",g.menu==0?LIME:MUTED,1);text(25,202,g.menu==1?"> NUEVA HISTORIA":"  NUEVA HISTORIA",g.menu==1?LIME:MUTED,1);text(25,226,"X confirmar",TEAL,1);
- rect(300,181,169,63,RGB(7,12,20));text(321,187,"made by",WHITE,1);signature(292,190);
- footer("36 misiones / Medellin 3D / radio y ambiente urbano");
+ if(!g.titleStage){
+  title_image(title_cover_v213,W,H,0,0);
+  rect(0,0,W,3,RGB(31,191,205));
+  title_label(TL_LOGO,22,34,WHITE);
+  rect(28,79,160,2,RGB(91,220,232));
+  title_label(TL_COVER_SUB,26,88,RGB(188,220,230));
+  rect(0,174,275,98,RGB(7,14,25));
+  rect(20,190,4,48,RGB(84,218,230));
+  uint32_t prompt=sinf(g.clock*3.2f)>-.45f?WHITE:RGB(116,165,176);
+  title_label(TL_PRESS,33,194,prompt);
+  title_label(TL_PRESS_SUB,34,218,RGB(146,184,195));
+  title_label(TL_MADE_BY,356,234,WHITE);title_label(TL_CREDIT,397,224,WHITE);
+  rect(20,253,122,2,RGB(64,145,161));
+ }else{
+  title_image(title_menu_v213,W,H,0,0);
+  rect(0,0,W,4,RGB(68,204,218));
+  rect(0,0,W,65,RGB(7,13,23));
+  title_label(TL_LOGO_SMALL,21,15,WHITE);
+  rect(151,17,2,27,RGB(60,108,124));
+  title_label(TL_STORY,169,13,WHITE);
+  title_label(TL_STORY_KICKER,21,59,RGB(153,186,196));
+  title_card(20,g.menu==0,1);
+  title_card(252,g.menu==1,0);
+  rect(0,246,W,26,RGB(7,13,23));
+  rect(20,246,440,1,RGB(58,84,96));
+  title_label(TL_FOOTER,21,253,RGB(190,212,219));
+  title_label(TL_MADE_BY,356,252,MUTED);title_label(TL_CREDIT,395,246,WHITE);
+ }
 }
 static void mini_draw(void){
  Puzzle *p=&g.p;char b[180];rect(0,0,W,H,INK);header("NARCADE / INTERACCION",puzzleNames[p->kind]);

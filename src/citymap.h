@@ -3,9 +3,9 @@
  * Fuente unica de verdad para colision (game.c solid()), minimapa/mapa y render 3D (city3d.inc, city_v26()).
  * Base: rejilla de 8x7 celdas de 320 unidades (calle base en lx<86 || lz<86). Sobre ella:
  *  - MERGE_E / MERGE_S: la calle entre dos celdas desaparece -> manzana doble (grande).
- *  - TUNNEL (solo con MERGE_E): la manzana doble deja un paso estrecho de 48 por donde iba la calle y un edificio
+ *  - TUNNEL (solo con MERGE_E): la manzana doble deja un paso de 64 por donde iba la calle y un edificio
  *    puente lo cubre por encima -> "tunel" urbano.
- *  - SPLIT_X / SPLIT_Z: una calle de 40 atraviesa la celda por el medio -> dos manzanas pequenas.
+ *  - SPLIT_X / SPLIT_Z: una calle de 52 atraviesa la celda por el medio -> dos manzanas pequenas.
  *  - Avenida diagonal (Av. Oriental) que cruza el Centro y genera parcelas triangulares/trapezoidales.
  *  - Parcelas = poligonos convexos (rectangulos recortados por la diagonal). La colision es "dentro de una parcela
  *    edificable"; todo lo demas (calles, aceras, plazas, parques) es transitable.
@@ -66,11 +66,11 @@ static inline int cm_on_grid_road(float x,float z){
     unsigned f=cm_flags(bx,bz),fw=cm_flags(bx-1,bz),fn=cm_flags(bx,bz-1);
     int westStreet=lx<86,northStreet=lz<86;
     /* la calle oeste de esta celda pertenece a la fusion con la celda de la izquierda; la norte, con la de arriba */
-    if(westStreet&&(fw&CM_MERGE_E)&&lz>=86){ if((fw&CM_TUNNEL)&&lx>=7&&lx<55)return 1; return 0; }
+    if(westStreet&&(fw&CM_MERGE_E)&&lz>=86){ if((fw&CM_TUNNEL)&&lx>=7&&lx<71)return 1; return 0; }
     if(northStreet&&(fn&CM_MERGE_S)&&lx>=86)return 0;
     if(westStreet||northStreet)return 1;
-    if((f&CM_SPLIT_X)&&lx>=170&&lx<210)return 1;
-    if((f&CM_SPLIT_Z)&&lz>=166&&lz<206)return 1;
+    if((f&CM_SPLIT_X)&&lx>=166&&lx<218)return 1;
+    if((f&CM_SPLIT_Z)&&lz>=160&&lz<212)return 1;
     return 0;
 }
 static inline int cm_on_road(float x,float z){return cm_on_grid_road(x,z)||cm_on_diag(x,z);}
@@ -105,9 +105,9 @@ static inline int cm_parcels_compute(int bx,int bz,CmParcel *out){
     if(bx==4)x0=1506;                                  /* orilla este del rio: paseo + viaducto del Metro */
     if(f&CM_MERGE_E)x1=x+320+288;
     if(f&CM_MERGE_S)z1=z+320+280;
-    if((f&CM_TUNNEL)&&(f&CM_MERGE_E)){cm_rect(&out[n++],x0,z0,x+327,z1,kind);cm_rect(&out[n++],x+375,z0,x1,z1,kind);}
-    else if(f&CM_SPLIT_X){cm_rect(&out[n++],x0,z0,x+162,z1,kind);cm_rect(&out[n++],x+218,z0,x1,z1,kind);}
-    else if(f&CM_SPLIT_Z){cm_rect(&out[n++],x0,z0,x1,z+158,kind);cm_rect(&out[n++],x0,z+214,x1,z1,kind);}
+    if((f&CM_TUNNEL)&&(f&CM_MERGE_E)){cm_rect(&out[n++],x0,z0,x+327,z1,kind);cm_rect(&out[n++],x+391,z0,x1,z1,kind);}
+    else if(f&CM_SPLIT_X){cm_rect(&out[n++],x0,z0,x+158,z1,kind);cm_rect(&out[n++],x+226,z0,x1,z1,kind);}
+    else if(f&CM_SPLIT_Z){cm_rect(&out[n++],x0,z0,x1,z+152,kind);cm_rect(&out[n++],x0,z+220,x1,z1,kind);}
     else cm_rect(&out[n++],x0,z0,x1,z1,kind);
     /* recorte por la diagonal: cada parcela se divide en la parte a un lado y al otro de la avenida */
     float dx=CM_DIAG_X1-CM_DIAG_X0,dz=CM_DIAG_Z1-CM_DIAG_Z0,l=sqrtf(dx*dx+dz*dz);float nx=-dz/l,nz=dx/l; /* normal */
@@ -177,10 +177,17 @@ static inline float cm_lift(float x,float z,int up){
 }
 /* Estacion mas cercana al tren en z (o -1). */
 static inline int cm_station_near(float z,float tol){for(int bz=1;bz<=5;bz+=2)if(fabsf(z-cm_station_z(bz))<tol)return bz;return -1;}
-#define CM_CABLE_X0 1760.f
-#define CM_CABLE_Z0 520.f
-#define CM_CABLE_X1 2460.f
-#define CM_CABLE_Z1 120.f
+#define CM_CABLE_X0 1730.f
+#define CM_CABLE_Z0 508.f
+#define CM_CABLE_X1 2430.f
+#define CM_CABLE_Z1 189.f
+/* Stations occupy buildable parcels; intermediate pylons are set on open
+   sidewalk plots rather than passing through houses or traffic lanes. */
+static inline void cm_cable_node(int i,float *x,float *z){
+    static const float nodes[6][2]={{CM_CABLE_X0,CM_CABLE_Z0},{1886.f,444.f},
+        {2006.f,408.f},{2150.f,317.f},{2326.f,253.f},{CM_CABLE_X1,CM_CABLE_Z1}};
+    if(i<0)i=0;if(i>5)i=5;*x=nodes[i][0];*z=nodes[i][1];
+}
 static inline void cm_centroid(const CmParcel *p,float *cx,float *cz){float sx=0,sz=0;for(int i=0;i<p->n;i++){sx+=p->x[i];sz+=p->z[i];}*cx=sx/p->n;*cz=sz/p->n;}
 /* Parcela encogida (inset>0) o ensanchada (inset<0) moviendo cada vertice hacia/desde el centroide. */
 static inline void cm_shrunk(const CmParcel *p,float inset,CmParcel *out){
@@ -191,6 +198,9 @@ static inline void cm_shrunk(const CmParcel *p,float inset,CmParcel *out){
 /* Obstaculos menores que tambien son solidos (mismas posiciones que dibuja city26.inc): pilares y escaleras del
    Metro, pedestales y fuente de Plaza Botero, fuentes de los parques. */
 static inline int cm_obstacle(float x,float z){
+    for(int i=1;i<5;i++){float px,pz;cm_cable_node(i,&px,&pz);
+        if(fabsf(x-px)<4.5f&&fabsf(z-pz)<4.5f)return 1;
+    }
     if(x>=1392.f&&x<=1464.f)
         for(int row=0;row<7;row++){
             float dz=fabsf(z-cm_footbridge_z(row));

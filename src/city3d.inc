@@ -14,21 +14,22 @@ static unsigned city_hash(int bx,int bz,int salt){unsigned h=(unsigned)bx*738560
 static float city_rand(int bx,int bz,int salt){return (city_hash(bx,bz,salt)&1023)/1023.0f;}
 static int city_district(float x,float z){if(x<640&&z<1000)return 0;if(x<960&&z<1550)return 1;if(x<1100)return 2;if(z<630)return 3;if(x>1760&&z>1380)return 4;if(x>1600)return 5;return 6;}
 /* cityMid (LOD intermedio) esta declarado en render3d.c antes de tree(): sin flores, tanques, semaforos ni balcones */
-enum {CB_CLASSIC,CB_COMUNA,CB_COLONIAL,CB_TOWER,CB_COMMERCIAL,CB_CHURCH,CB_MARKET};
+enum {CB_CLASSIC,CB_COMUNA,CB_COLONIAL,CB_TOWER,CB_COMMERCIAL,CB_CHURCH,CB_MARKET,
+      CB_RETAIL,CB_RESTAURANT,CB_OFFICE,CB_WORKSHOP};
 static int city_block_type(int bx,int bz){
     int d=city_district(bx*320+160,bz*320+160);unsigned h=city_hash(bx,bz,1)%100;
     switch(d){
-        case 0: return h<60?CB_COMUNA:h<80?CB_COLONIAL:h<90?CB_CHURCH:CB_MARKET;          /* Comuna 13 */
-        case 1: return h<45?CB_COLONIAL:h<70?CB_CLASSIC:h<85?CB_COMMERCIAL:CB_CHURCH;     /* Laureles */
-        case 2: return h<40?CB_COLONIAL:h<65?CB_COMMERCIAL:h<85?CB_MARKET:CB_CLASSIC;      /* Belen */
-        case 3: return h<50?CB_COMUNA:h<75?CB_CLASSIC:CB_MARKET;                            /* Norte */
-        case 4: return h<55?CB_TOWER:h<80?CB_CLASSIC:CB_COMMERCIAL;                         /* Poblado */
-        case 5: return h<55?CB_COMUNA:h<80?CB_COLONIAL:CB_CLASSIC;                          /* Ladera oriental */
-        default:return h<35?CB_TOWER:h<60?CB_CLASSIC:h<80?CB_COMMERCIAL:CB_CHURCH;         /* Centro / Rio */
+        case 0: return h<40?CB_COMUNA:h<58?CB_COLONIAL:h<74?CB_RETAIL:h<86?CB_RESTAURANT:CB_MARKET;
+        case 1: return h<25?CB_COLONIAL:h<43?CB_CLASSIC:h<60?CB_RETAIL:h<75?CB_RESTAURANT:h<90?CB_OFFICE:CB_CHURCH;
+        case 2: return h<20?CB_COLONIAL:h<39?CB_RETAIL:h<57?CB_MARKET:h<74?CB_WORKSHOP:h<87?CB_RESTAURANT:CB_CLASSIC;
+        case 3: return h<34?CB_COMUNA:h<49?CB_CLASSIC:h<66?CB_RETAIL:h<82?CB_WORKSHOP:CB_MARKET;
+        case 4: return h<32?CB_TOWER:h<58?CB_OFFICE:h<74?CB_RESTAURANT:h<88?CB_RETAIL:CB_COMMERCIAL;
+        case 5: return h<36?CB_COMUNA:h<54?CB_COLONIAL:h<72?CB_RETAIL:h<87?CB_RESTAURANT:CB_CLASSIC;
+        default:return h<22?CB_TOWER:h<43?CB_OFFICE:h<59?CB_CLASSIC:h<74?CB_RETAIL:h<87?CB_COMMERCIAL:CB_RESTAURANT;
     }
 }
-static const uint32_t cityPastel[8]={COLOR(236,196,120),COLOR(214,124,104),COLOR(128,168,198),COLOR(242,232,204),COLOR(156,196,156),COLOR(226,160,178),COLOR(190,150,110),COLOR(120,140,168)};
-static const uint32_t cityBrick[4]={COLOR(255,255,255),COLOR(230,200,180),COLOR(200,170,150),COLOR(255,230,210)};
+static const uint32_t cityPastel[8]={COLOR(247,189,89),COLOR(225,106,83),COLOR(92,170,205),COLOR(243,223,175),COLOR(113,198,150),COLOR(231,126,164),COLOR(185,131,89),COLOR(100,145,204)};
+static const uint32_t cityBrick[4]={COLOR(255,246,226),COLOR(236,195,165),COLOR(212,150,124),COLOR(255,215,190)};
 
 /* Tejado a dos aguas centrado en (x,z): largo L (eje x), ancho W (eje z), base h, cumbrera r. */
 static void gable_roof(float x,float z,float L,float W,float h,float r,uint32_t color){
@@ -49,7 +50,7 @@ static void rooftop(float x,float z,float top,unsigned h){
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
     float top=6+floors*22;
     if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);return;}
-    for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,f?STUCCO:SHOP,ROOF,f?color:0xffffffffu);
+    for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,f?STUCCO:((h&3)==0?EATERY:RETAIL),ROOF,f?color:0xffffffffu);
     gable_roof(x,z,L,W,top,top+9,(h&1)?COLOR(190,90,60):COLOR(150,110,90));
     if(cityMid)return;
     if(floors>1){box(x,z-W*.5f-3,6+22,L*.6f,6,1.2f,0,SIDEWALK,SIDEWALK,COLOR(120,70,50));box(x,z-W*.5f-6,6+23,L*.6f,.6f,7,0,CAR_PAINT,CAR_PAINT,COLOR(70,50,40));}

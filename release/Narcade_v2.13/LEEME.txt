@@ -1,0 +1,15 @@
+NARCADE 3D v2.13 - made by Naresz
+
+Instalación ISO: copia Narcade_v2.13.iso a /ISO de la Memory Stick en una PSP con CFW.
+Alternativa homebrew: copia PSP/GAME/NARCADE a /PSP/GAME de la Memory Stick.
+
+Ahora hay dos pantallas de inicio. En la portada, pulsa X o START para entrar al menú.
+En el menú, usa la cruceta para elegir Continuar partida o Nueva historia;
+X o START confirma y círculo vuelve a la portada. Continuar conserva el panel
+oficial de la Memory Stick para cargar la partida.
+
+La portada y las tarjetas son arte original de Medellín. Se muestran a la
+resolución nativa de PSP y las letras tienen bordes suavizados.
+
+La ISO arrancó en PPSSPP y ambas pantallas fueron verificadas. Pendiente de
+prueba en una PSP física.
