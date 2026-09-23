@@ -14,9 +14,9 @@ static void foot_turn(int pace,int sprint){
  g.x=900;g.y=962;g.viewYaw=PI*.5f;
  if(sprint)g.sprintTime=10;
  for(int i=0;i<60;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,0,-1,1.f/60);}
- float initial=g.moveYaw;
+ float cameraBefore=g.viewYaw;
  if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);
- assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),geo_heading(g.x,g.y,initial)+PI*.5f))<.22f);
+ assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),cameraBefore+PI*.5f))<.12f);
  for(int i=1;i<70;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
  float settled=g.moveYaw,px=g.x,py=g.y;
  for(int i=0;i<60;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
@@ -28,6 +28,13 @@ static void foot_turn(int pace,int sprint){
 int main(void){
  foot_turn(0,0);foot_turn(B_CROSS,0);foot_turn(B_CROSS,1);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
+ g.x=900;g.y=962;g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
+ for(int i=0;i<50;i++)game_tick(B_CROSS,0,-1,1.f/60);
+ for(int i=0;i<45;i++)game_tick(B_CROSS,1,0,1.f/60);
+ float cameraBefore=g.viewYaw;
+ game_tick(B_CROSS,0,-1,1.f/60);
+ assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),cameraBefore))<.12f);
+ game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;Car *c=&g.cars[g.car];c->x=1002;c->y=1002;c->a=0;c->speed=0;c->parked=0;c->hp=100;
  assert(car_free_at(c,c->x,c->y));
  for(int i=0;i<70;i++)game_tick(B_CROSS,1,0,1.f/60);
@@ -35,6 +42,9 @@ int main(void){
  assert(c->y>1018.f); /* crosses the traffic lane freely */
  assert(c->a>.2f);
  assert(car_free_at(c,c->x,c->y));
+ float releasedAngle=c->a;
+ game_tick(0,0,0,1.f/60);
+ assert(fabsf(angle_delta(c->a,releasedAngle))<.001f);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;c=&g.cars[g.car];c->x=1002;c->y=1002;c->a=0;c->speed=0;c->parked=0;c->hp=100;
  Car *other=&g.cars[31];other->x=1080;other->y=1002;other->a=0;other->speed=0;other->parked=1;
@@ -43,6 +53,7 @@ int main(void){
  assert(car_free_at(c,c->x,c->y));
  assert(!car_overlap(c,other,&nx,&ny,&depth)||depth<1.5f);
  assert(c->x<other->x);
+ assert(fabsf(other->x-1080)<.01f&&fabsf(other->y-1002)<.01f);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;c=&g.cars[g.car];c->x=62;c->y=1000;c->a=PI*.5f;c->speed=50;c->parked=0;c->hp=100;
  for(int i=0;i<120;i++)game_tick(B_CROSS,0,0,1.f/60);

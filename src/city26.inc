@@ -230,7 +230,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         box(ax,cz,42,aw+3,ad+3,2,0,ROOF,ROOF,COLOR(120,110,100));box(bxx,bzz,42,bwid+3,bd+3,2,0,ROOF,ROOF,COLOR(120,110,100));
         rooftop(ax,cz,44,h);rooftop(bxx,bzz,44,h>>4);
         for(int k=0;k<4;k++)box(x0+14+k*(aw-20)/4,z0,18,(aw-28)/4,10,.8f,-.3f,AWNING,AWNING,0xffffffffu);
-        float px0=x0+aw+8,pz0=z0+bd+14,pw=x1-px0-4,pd=z1-pz0-4;if(pw>20&&pd>20){ground(ROAD,px0,pz0,pw,pd,6.3f,COLOR(150,150,150),3);for(int k=1;k<pd/30;k++)ground(CAR_PAINT,px0,pz0+k*30,pw,1.2f,6.9f,0xffffffffu,1);}
+        float px0=x0+aw+8,pz0=z0+bd+14,pw=x1-px0-4,pd=z1-pz0-4;if(pw>20&&pd>20)ground(ROAD,px0,pz0,pw,pd,6.3f,COLOR(150,150,150),3);
         box(bxx,z1-4,6,bwid*.5f,3,1.5f,0,CAR_PAINT,CAR_PAINT,COLOR(230,60,50));
         break;}
     case CB_CHURCH:{float nw=w*.42f,nd=d*.62f;float zz=cz+d*.08f;
@@ -350,7 +350,7 @@ static void fill_pueblito(const CmParcel *p,int far,unsigned h){
 static void fill_stadium(const CmParcel *p,int far,unsigned h){
     float cx,cz;parcel_centroid(p,&cx,&cz);float A=(p->x[1]-p->x[0])*.5f-18,B=(p->z[2]-p->z[0])*.5f-12;
     ground(GRASS,cx-80,cz-46,160,92,6.5f,COLOR(120,200,110),4);
-    if(!far){for(int k=0;k<5;k++)ground(CAR_PAINT,cx-80+k*40,cz-46,1.2f,92,7.1f,0xffffffffu,1);}
+    if(!far){for(int k=0;k<5;k++)ground(FLAT,cx-80+k*40,cz-46,1.2f,92,7.1f,COLOR(214,220,209),1);}
     int segs=far?14:26;
     for(int k=0;k<segs;k++){float t=k*2*PI/segs,t2=(k+1)*2*PI/segs;float x=cx+cosf(t)*A,z=cz+sinf(t)*B;float x2=cx+cosf(t2)*A,z2=cz+sinf(t2)*B;
         float ang=atan2f(z2-z,x2-x);float len=sqrtf((x2-x)*(x2-x)+(z2-z)*(z2-z))*1.08f;x=(x+x2)*.5f;z=(z+z2)*.5f;
@@ -368,7 +368,7 @@ static void tunnel_building(int bx,float z0,float z1,int far){
     for(int k=0;k<4;k++)box(x+(k&1?42:-42),cz+(k&2?d*.3f:-d*.3f),6,10,10,54,0,STUCCO,STUCCO,COLOR(200,200,205));
     if(far)return;
     box(x,cz,94,120,d*.7f,16,0,STUCCO,ROOF,COLOR(200,200,205));
-    for(int k=0;k<3;k++)ground(CAR_PAINT,x-6,z0+40+k*(d/3),12,1.2f,.2f,0xffffffffu,1); /* paso peatonal bajo el edificio */
+    /* No decorative paint beneath the building: this is a tunnel, not a crossing. */
 }
 /* Metro de Medellin a escala del jugador (citymap.h: CM_METRO_*): viaducto sobre pilares, estaciones con anden a 30,
    escalera de 60 de recorrido en la orilla, y tren de dos coches (paneles bajos + pilares de ventana: se ve la ciudad
@@ -476,7 +476,7 @@ static void metrocable(int far){
         }
     }
 }
-/* Avenida diagonal: separador ajardinado con arboles, lineas de carril y farolas. */
+/* Avenida diagonal: separador ajardinado con arboles y farolas. */
 static void diagonal_avenue(void){
     float dx=CM_DIAG_X1-CM_DIAG_X0,dz=CM_DIAG_Z1-CM_DIAG_Z0,l=sqrtf(dx*dx+dz*dz),ux=dx/l,uz=dz/l,nx=-uz,nz=ux;
     int segs=(int)(l/60);
@@ -487,8 +487,6 @@ static void diagonal_avenue(void){
         quad(GRASS,point(x0-nx*3,.45f,z0-nz*3),point(x1-nx*3,.45f,z1-nz*3),point(x1+nx*3,.45f,z1+nz*3),point(x0+nx*3,.45f,z0+nz*3),COLOR(140,190,120),1,2);
         quad(SIDEWALK,point(x0-nx*3.6f,.4f,z0-nz*3.6f),point(x1-nx*3.6f,.4f,z1-nz*3.6f),point(x1-nx*3,.4f,z1-nz*3),point(x0-nx*3,.4f,z0-nz*3),0xffffffffu,1,1);
         quad(SIDEWALK,point(x0+nx*3,.4f,z0+nz*3),point(x1+nx*3,.4f,z1+nz*3),point(x1+nx*3.6f,.4f,z1+nz*3.6f),point(x0+nx*3.6f,.4f,z0+nz*3.6f),0xffffffffu,1,1);
-        for(int s=-1;s<=1;s+=2){float ox=nx*15*s,oz=nz*15*s;
-            quad(FLAT,point(mx-ux*9+ox-nx*.6f,.4f,mz-uz*9+oz-nz*.6f),point(mx+ux*9+ox-nx*.6f,.4f,mz+uz*9+oz-nz*.6f),point(mx+ux*9+ox+nx*.6f,.4f,mz+uz*9+oz+nz*.6f),point(mx-ux*9+ox+nx*.6f,.4f,mz-uz*9+oz+nz*.6f),0xffffffffu,1,1);}
         if(view_distance(mx,mz)<430&&(k&1))tree(mx,mz);
         if(!(k%3)){box(x0-nx*2,z0-nz*2,.4f,1.2f,1.2f,30,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x0-nx*2,z0-nz*2,29,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
     }
@@ -569,12 +567,6 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
                 ground(FLAT,x+k,z+41.4f,16,1.2f,.45f,COLOR(244,208,100),1);
             if(!westMerged&&road_mark_clear(x+41.4f,z+k,1.2f,16))
                 ground(FLAT,x+41.4f,z+k,1.2f,16,.45f,COLOR(244,208,100),1);
-        }
-        if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)if(road_mark_clear(x+191.4f,z+k,1.2f,19))ground(FLAT,x+191.4f,z+k,1.2f,19,.45f,white,1);
-        if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)if(road_mark_clear(x+k,z+185.4f,19,1.2f))ground(FLAT,x+k,z+185.4f,19,1.2f,.45f,white,1);
-        if(h&128)for(int k=0;k<5;k++){
-            if(road_mark_clear(x+9+k*13,z+75,7,5))ground(FLAT,x+9+k*13,z+75,7,5,.6f,white,1);
-            if(road_mark_clear(x+75,z+9+k*13,5,7))ground(FLAT,x+75,z+9+k*13,5,7,.6f,white,1);
         }
         if(!cityMid){if((bx==0||bx==3||bx==5)&&(bz==0||bz==3))traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
         if(cityMid){box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}

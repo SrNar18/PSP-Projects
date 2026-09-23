@@ -251,10 +251,12 @@ static void separate_cars(void){
    car_push(a,-nx*push*.5f,-ny*push*.5f,&ax,&ay);car_push(b,nx*push*.5f,ny*push*.5f,&bx,&by);
    car_push(a,-nx*push,-ny*push,&aax,&aay);car_push(b,nx*push,ny*push,&bbx,&bby);
    int moveA=car_free_at(a,ax,ay),moveB=car_free_at(b,bx,by);
-   if(moveA&&moveB){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
-   else if(car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
-   else if(car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
-   else if(contact_slide(a,b,-nx,-ny,depth)||contact_slide(b,a,nx,ny,depth))changed=1;
+   if(a->parked&&!b->parked&&car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
+   else if(b->parked&&!a->parked&&car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
+   else if(moveA&&moveB&&!a->parked&&!b->parked){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
+   else if(!a->parked&&car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
+   else if(!b->parked&&car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
+   else if((!a->parked&&contact_slide(a,b,-nx,-ny,depth))||(!b->parked&&contact_slide(b,a,nx,ny,depth)))changed=1;
    float aa=physics_heading(a),ba=physics_heading(b);
    float an=cosf(aa)*nx+sinf(aa)*ny,bn=cosf(ba)*nx+sinf(ba)*ny;
    float closing=a->speed*an-b->speed*bn,impact=fmaxf(0,closing);
@@ -636,9 +638,10 @@ static void world_tick(float ax,float ay,float dt){
    if(!wasActive||!g.moveActive){g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);g.stickAngle=stickAngle;}
    else if(rawStick>.28f){
     float delta=angle_delta(stickAngle,g.stickAngle);
-    if(fabsf(delta)>.005f){
-     float target=geo_heading(g.x,g.y,g.inputYaw)+delta;
-     g.inputYaw=logical_heading_from_projected(g.x,g.y,target);
+    if(fabsf(delta)>.10f){
+     /* A new stick direction is relative to the camera the player sees NOW.
+        The previous heading was relative to an older camera frame. */
+     g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);
      g.stickAngle=stickAngle;
     }
    }
@@ -686,7 +689,9 @@ static void world_tick(float ax,float ay,float dt){
   Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
-  g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*22));
+  /* Centre the wheel as soon as the stick is released: lingering steering
+     made the car keep turning after a direction change. */
+  g.steerSmooth=steer;
   /* Steering belongs solely to the player; traffic routes never set this car's heading. */
   float grip=clampf((fabsf(c->speed)+8)/24,0,1);
   c->a+=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;

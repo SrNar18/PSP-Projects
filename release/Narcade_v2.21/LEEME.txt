@@ -1,0 +1,4 @@
+Narcade 3D 2.21 - made by Naresz
+ISO: copia Narcade_v2.21.iso a ISO/ en la Memory Stick de una PSP con CFW compatible.
+EBOOT: copia PSP/GAME/NARCADE a PSP/GAME/ en la Memory Stick.
+La partida conserva el formato anterior.
