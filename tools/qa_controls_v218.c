@@ -27,6 +27,20 @@ static void foot_turn(int pace,int sprint){
 }
 int main(void){
  foot_turn(0,0);foot_turn(B_CROSS,0);foot_turn(B_CROSS,1);
+ for(int pace=0;pace<3;pace++){
+  game_init();fresh_game();g.screen=WORLD;clear_traffic();
+  g.x=900;g.y=962;g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
+  int keys=pace?B_CROSS:0;
+  if(pace==2)g.sprintTime=10;
+  game_tick(keys,0,-1,1.f/60);
+  float initial=g.inputYaw;
+  for(int i=0;i<110;i++){
+   if(pace==2){g.sprintTime=10;g.stamina=100;}
+   game_tick(keys,(i%4==0?.11f:i%4==2?-.11f:0.f),-1,1.f/60);
+  }
+  assert(fabsf(angle_delta(g.inputYaw,initial))<.035f);
+  assert(hypotf(g.x-900.f,g.y-962.f)>20.f);
+ }
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.x=900;g.y=962;g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
  for(int i=0;i<50;i++)game_tick(B_CROSS,0,-1,1.f/60);

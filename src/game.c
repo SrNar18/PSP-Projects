@@ -123,10 +123,13 @@ static int solid(float x,float y){
  return cm_solid(x,y)||cm_obstacle(x,y);
 }
 static int free_at(float x,float y,int radius){
- /* Check the entire contact footprint, including its centre and side
-    midpoints: thin walls and triangular corners must not be walk-through. */
- for(int iz=-1;iz<=1;iz++)for(int ix=-1;ix<=1;ix++)
-  if(solid(x+ix*radius,y+iz*radius))return 0;
+ /* A circular footprint matches the character's body. The old 3x3 square
+    extended 41% farther at its corners and snagged diagonal facades. */
+ if(solid(x,y))return 0;
+ for(int k=0;k<8;k++){
+  float a=k*(PI*.25f);
+  if(solid(x+cosf(a)*radius,y+sinf(a)*radius))return 0;
+ }
  return 1;
 }
 static void physics_project(float x,float y,float *a,float *b){
@@ -632,16 +635,15 @@ static void world_tick(float ax,float ay,float dt){
        sx=sx/fmaxf(rawStick,.001f)*amount;sy=sy/fmaxf(rawStick,.001f)*amount;}
   float inputLength=hypotf(sx,sy);
   if(inputLength>.2f){
-   /* The camera follows with a delay. Map changes in stick angle to changes
-      in world heading, so its own rotation cannot steer a held direction. */
+   /* Keep the heading in world space while the camera catches up. Only a
+      deliberate large change re-anchors the stick to the current camera. */
    float stickAngle=atan2f(sx,-sy);
    if(!wasActive||!g.moveActive){g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);g.stickAngle=stickAngle;}
    else if(rawStick>.28f){
     float delta=angle_delta(stickAngle,g.stickAngle);
-    if(fabsf(delta)>.10f){
-     /* A new stick direction is relative to the camera the player sees NOW.
-        The previous heading was relative to an older camera frame. */
-     g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);
+    if(fabsf(delta)>.012f){
+     float target=fabsf(delta)>.38f?g.viewYaw+stickAngle:geo_heading(g.x,g.y,g.inputYaw)+delta;
+     g.inputYaw=logical_heading_from_projected(g.x,g.y,target);
      g.stickAngle=stickAngle;
     }
    }
