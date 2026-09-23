@@ -642,7 +642,9 @@ static void world_tick(float ax,float ay,float dt){
    else if(rawStick>.28f){
     float delta=angle_delta(stickAngle,g.stickAngle);
     if(fabsf(delta)>.012f){
-     float target=fabsf(delta)>.38f?g.viewYaw+stickAngle:geo_heading(g.x,g.y,g.inputYaw)+delta;
+     /* Preserve the world-space heading even on a large stick change. A
+        camera-relative rebase used to flip diagonals while the camera lagged. */
+     float target=geo_heading(g.x,g.y,g.inputYaw)+delta;
      g.inputYaw=logical_heading_from_projected(g.x,g.y,target);
      g.stickAngle=stickAngle;
     }
@@ -653,14 +655,13 @@ static void world_tick(float ax,float ay,float dt){
    g.moveYaw=wantYaw;g.moveActive=1;
    dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
   }else g.moveActive=0;
-  float desiredYaw=g.moveYaw;
 #endif
   float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;foot_pace(g.walking,dt);if(n>.1f){
 #ifndef NARCADE_3D
   dx/=fmaxf(1,n);dy/=fmaxf(1,n);
 #endif
-  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*25));float speed=g.footSpeed;
-  float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
+  g.a=atan2f(dy,dx);float speed=g.footSpeed;
+  float originX=g.x,originY=g.y,beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
   float lookX=g.x+dx*4,lookY=g.y+dy*4,lookPX,lookPY;
   physics_project(lookX,lookY,&lookPX,&lookPY);
   float projectionScale=hypotf(lookPX-beforeX,lookPY-beforeY)/4;
@@ -675,15 +676,27 @@ static void world_tick(float ax,float ay,float dt){
    if(foot_free(tx,ty)&&lift_ok(tx,ty)){g.x=tx;g.y=ty;}
    else{
     /* Both slide candidates use the same logical space as the city collision. */
+    float oldX=g.x,oldY=g.y;
     if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
     if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
+    if(g.x==oldX&&g.y==oldY){
+     /* A diagonal frontage can block both axis candidates even where a
+        forward tangent is open. Try the nearest forward directions only. */
+     float stepX=mx/steps,stepY=my/steps;
+     for(int k=1;k<=5&&g.x==oldX&&g.y==oldY;k++)for(int side=-1;side<=1;side+=2){
+      float a=side*k*(PI/12.f),ca=cosf(a),sa=sinf(a);
+      float nx=oldX+stepX*ca-stepY*sa,ny=oldY+stepX*sa+stepY*ca;
+      if(foot_free(nx,ny)&&lift_ok(nx,ny)){g.x=nx;g.y=ny;break;}
+     }
+    }
    }
   }
   g.lift=cm_lift(g.x,g.y,g.lift>15);
+  if(hypotf(g.x-originX,g.y-originY)>.02f)g.a=atan2f(g.y-originY,g.x-originX);
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
-  if(inputLength>.29f)camera_follow(geo_heading(g.x,g.y,desiredYaw),dt);
+  if(inputLength>.29f&&g.footTravel>.05f)camera_follow(geo_heading(g.x,g.y,g.a),dt);
 #endif
   }
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
@@ -696,8 +709,15 @@ static void world_tick(float ax,float ay,float dt){
   g.steerSmooth=steer;
   /* Steering belongs solely to the player; traffic routes never set this car's heading. */
   float grip=clampf((fabsf(c->speed)+8)/24,0,1);
-  c->a+=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;
-  if(!car_free_at(c,c->x,c->y))c->a=oldAngle;
+  float turn=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;
+  c->a=oldAngle+turn;
+  if(!car_free_at(c,c->x,c->y)){
+   /* Near a facade, keep the largest steering angle that still fits.
+      Reverting the whole turn made the wheel appear unresponsive. */
+   float lo=0,hi=1;
+   for(int k=0;k<5;k++){float mid=(lo+hi)*.5f;c->a=oldAngle+turn*mid;if(car_free_at(c,c->x,c->y))lo=mid;else hi=mid;}
+   c->a=oldAngle+turn*lo;
+  }
   /* Sweep along the same logical road coordinates as collision and traffic.
      Projected-space translation drifts into facades as the valley bends. */
   float distance=c->speed*dt;
