@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -155,7 +155,7 @@ static float physics_heading(const Car *c){
 }
 static float logical_heading_from_projected(float x,float y,float angle){
  float gx,gz,tx,ty;physics_project(x,y,&gx,&gz);
- physics_unproject(gx+cosf(angle)*5,gz+sinf(angle)*5,&tx,&ty);
+ physics_unproject(gx+cosf(angle)*.5f,gz+sinf(angle)*.5f,&tx,&ty); /* v2.24: sonda corta = direccion local exacta */
  return atan2f(ty-y,tx-x);
 }
 /* v2.6: escaleras y anden del Metro. Arriba solo se puede estar sobre el anden o la escalera; no hay saltos bruscos. */
@@ -178,11 +178,12 @@ static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d
 static void camera_follow(float target,float dt){
  /* Critically damped heading in rendered world space, bounded turn speed. */
  if(g.car<0&&fabsf(angle_delta(target,g.viewYaw))<.10f){g.cameraVelocity*=expf(-dt*9);return;}
- float omega=g.car>=0?6.5f:g.footSpeed<56?3.1f:g.footSpeed<86?4.1f:5.2f;
+ float fs=g.car>=0||g.followScale<=0?1:g.followScale;
+ float omega=(g.car>=0?6.5f:g.footSpeed<56?3.1f:g.footSpeed<86?4.1f:5.2f)*fs;
  float d=angle_delta(g.viewYaw,target),decay=expf(-omega*dt),v=g.cameraVelocity;
  float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
  g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
- float limit=(g.car>=0?3.6f:g.footSpeed<56?2.2f:g.footSpeed<86?2.6f:3.0f)*dt;
+ float limit=(g.car>=0?3.6f:g.footSpeed<56?2.2f:g.footSpeed<86?2.6f:3.0f)*dt*fs;
  if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
  g.viewYaw+=change;
 }
@@ -628,27 +629,25 @@ static void world_tick(float ax,float ay,float dt){
 #ifdef NARCADE_3D
   float sx=dx,sy=dy;
   float rawStick=hypotf(sx,sy);
-  int wasActive=g.stickActive;
   if(rawStick>.24f)g.stickActive=1;else if(rawStick<.12f)g.stickActive=0;
   if(!g.stickActive)sx=sy=0;
   else{float amount=clampf((rawStick-.10f)/.90f,0,1);
        sx=sx/fmaxf(rawStick,.001f)*amount;sy=sy/fmaxf(rawStick,.001f)*amount;}
   float inputLength=hypotf(sx,sy);
   if(inputLength>.2f){
-   /* Keep the heading in world space while the camera catches up. Only a
-      deliberate large change re-anchors the stick to the current camera. */
+   /* v2.24 (Claude): movimiento SIEMPRE relativo a la camara actual. La
+      direccion de la palanca es la direccion en pantalla, en cada fotograma.
+      El rumbo acumulado en espacio mundo (v2.18-v2.23) se desalineaba de la
+      pantalla en cuanto la camara giraba (error medio simulado: 84 grados), y
+      el personaje parecia chocar con paredes invisibles al girar. */
    float stickAngle=atan2f(sx,-sy);
-   if(!wasActive||!g.moveActive){g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);g.stickAngle=stickAngle;}
-   else if(rawStick>.28f){
-    float delta=angle_delta(stickAngle,g.stickAngle);
-    if(fabsf(delta)>.012f){
-     /* Preserve the world-space heading even on a large stick change. A
-        camera-relative rebase used to flip diagonals while the camera lagged. */
-     float target=geo_heading(g.x,g.y,g.inputYaw)+delta;
-     g.inputYaw=logical_heading_from_projected(g.x,g.y,target);
-     g.stickAngle=stickAngle;
-    }
-   }
+   /* Filtro corto (~40 ms) del angulo: quita el temblor del analogico de la
+      PSP sin retrasar un giro deliberado. */
+   {float d=angle_delta(stickAngle,g.stickAngle);
+    if(!g.moveActive||fabsf(d)>.35f)g.stickAngle=stickAngle; /* giro deliberado: inmediato */
+    else g.stickAngle+=d*(1-expf(-dt*25));}
+   stickAngle=g.stickAngle;
+   g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);
    float wantYaw=g.inputYaw;
    /* Movement follows the requested direction immediately at every gait.
       Only the visible body and camera are smoothed; neither steers the feet. */
@@ -696,7 +695,12 @@ static void world_tick(float ax,float ay,float dt){
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
-  if(inputLength>.29f&&g.footTravel>.05f)camera_follow(geo_heading(g.x,g.y,g.a),dt);
+   /* La camara solo se coloca detras cuando se avanza hacia delante; de lado
+     gira muy poco y hacia atras nada, asi la palanca no produce circulos. */
+  if(inputLength>.29f&&g.footTravel>.05f){
+   float fw=clampf(cosf(g.stickAngle)*1.4f-.1f,0,1);
+   if(fw>0){g.followScale=fw;camera_follow(geo_heading(g.x,g.y,g.a),dt);g.followScale=1;}
+  }
 #endif
   }
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
@@ -717,15 +721,40 @@ static void world_tick(float ax,float ay,float dt){
    float lo=0,hi=1;
    for(int k=0;k<5;k++){float mid=(lo+hi)*.5f;c->a=oldAngle+turn*mid;if(car_free_at(c,c->x,c->y))lo=mid;else hi=mid;}
    c->a=oldAngle+turn*lo;
+   /* v2.24 (Claude): pegado a una pared el giro quedaba bloqueado del todo.
+      Si no cabe ninguna fraccion, se prueba el giro completo separando el
+      coche 1-3 unidades de la pared (nunca atraviesa edificios). */
+   if(lo<.05f&&fabsf(turn)>1e-4f){
+    int done=0;
+    for(float r=1.f;r<=3.f&&!done;r+=1.f)for(int k=0;k<8&&!done;k++){
+     float oa=k*(PI*.25f),ox=c->x+cosf(oa)*r,oy=c->y+sinf(oa)*r;
+     c->a=oldAngle+turn;if(car_free_at(c,ox,oy)){c->x=ox;c->y=oy;done=1;}
+    }
+    if(!done)c->a=oldAngle+turn*lo;
+   }
   }
   /* Sweep along the same logical road coordinates as collision and traffic.
      Projected-space translation drifts into facades as the valley bends. */
   float distance=c->speed*dt;
-  int steps=(int)ceilf(fabsf(distance)/3.f);if(steps<1)steps=1;
+  int steps=(int)ceilf(fabsf(distance)/3.f);if(steps<1)steps=1;int scraped=0;
   for(int step=0;step<steps;step++){
    float xx=c->x+cosf(c->a)*distance/steps,yy=c->y+sinf(c->a)*distance/steps;
-   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
-   else{float impact=fabsf(c->speed);c->hp-=impact*.025f;c->speed=impact>65?-c->speed*.13f:0;g.hitCD=.12f;break;}
+   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;continue;}
+   /* v2.24 (Claude): roce lateral = deslizar a lo largo de la pared. Antes
+      cualquier contacto paraba el coche en seco (simulado: 72% de los choques
+      eran roces que podian deslizar). Solo un choque casi frontal detiene. */
+   int slid=0;float seg=distance/steps;
+   for(int k=1;k<=4&&!slid;k++)for(int sd=-1;sd<=1&&!slid;sd+=2){
+    float off=sd*k*(PI/12.f),dir=c->a+off,len=seg*cosf(off);
+    Car t=*c;t.a=c->a+off*.35f;
+    float sx=c->x+cosf(dir)*len,sy=c->y+sinf(dir)*len;
+    if(car_free_at(&t,sx,sy)){c->x=sx;c->y=sy;c->a=t.a;slid=k;}
+   }
+   if(slid){
+    if(!scraped){float keep=cosf(slid*(PI/12.f));c->speed*=.35f+.65f*keep;if(slid>=3)c->hp-=fabsf(c->speed)*.004f;scraped=1;}
+    distance=c->speed*dt;continue;
+   }
+   {float impact=fabsf(c->speed);c->hp-=impact*.025f;c->speed=impact>65?-c->speed*.13f:0;g.hitCD=.12f;break;}
   }
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
@@ -790,7 +819,9 @@ static void world_tick(float ax,float ay,float dt){
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  int oldScreen=g.screen,oldMenu=g.menu,oldTitleStage=g.titleStage,oldTab=g.pauseTab,oldMap=g.mapSel,oldJournal=g.journalPage,oldCursor=g.p.cursor;
  dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
- if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
+ /* v2.24: zona muerta radial. La zona por eje anulaba cada eje por separado y
+    "pegaba" la palanca a las 4 direcciones rectas (+-10 grados sin respuesta). */
+ if(hypotf(ax,ay)<.18f)ax=ay=0;
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.weaponWheel=0;g.weaponHold=0;

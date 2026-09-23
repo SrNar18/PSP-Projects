@@ -531,3 +531,16 @@ al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layo
 - Cuando un intento diagonal tropieza con una fachada oblicua y ambos deslizamientos por X/Y están bloqueados, se prueban tangentes delanteras a ±15, 30, 45, 60 y 75 grados. Nunca se acepta un paso hacia atrás ni se omite la comprobación `foot_free`/`lift_ok`.
 - En el coche, si el ángulo de giro solicitado invade una fachada, se conserva la mayor fracción válida calculada por bisección. Antes se deshacía todo el giro de ese fotograma y parecía que el volante dejaba de responder. Los coches siguen sin atravesar edificios.
 - `tools/qa_diagonal_v223.c`: 212 trayectorias diagonales desde cruces del mapa, sin retrocesos ni bloqueos iniciales. `tools/qa_controls_v218.c` sigue validando las tres velocidades, cambios de dirección y conducción. ISO/EBOOT 2.23.
+
+### 25. Narcade 2.24 (Claude) — libertad total de giro a pie y en coche
+
+Diagnostico con simulacion en PC (`tools/qa_foot_freedom_v224.c`, `tools/qa_car_freedom_v224.c`; se compilan con gcc del host + stubs de assets/render):
+- **A pie, causa principal**: el rumbo acumulado en espacio mundo (v2.18-v2.23) se desalineaba de la pantalla en cuanto la camara giraba. Con un jugador que mueve la palanca de forma normal, el 74% de los fotogramas el personaje iba a mas de 34 grados de donde apuntaba la palanca (error medio 84 grados). Eso es lo que se sentia como "pared invisible" y "tengo que parar para girar".
+- **Arreglo**: `src/game.c` calcula en CADA fotograma `inputYaw = logical_heading_from_projected(x,y,viewYaw+angulo_palanca)`: la palanca es siempre la direccion en pantalla. Resultado: error medio 0,10 rad (6 grados). NO volver al rumbo incremental en espacio mundo.
+- La camara solo se coloca detras al avanzar: `camera_follow` se escala con `fw=clamp(cos(angulo)*1.4-0.1,0,1)` (`g.followScale`). De lado la camara no gira (no hay circulos) y hacia atras tampoco.
+- Zona muerta **radial** (`hypotf(ax,ay)<.18`) en `game_tick`; la zona por eje pegaba la palanca a las 4 direcciones rectas.
+- Filtro de temblor: cambios de angulo <0,35 rad se suavizan (~40 ms); cambios mayores son inmediatos.
+- `logical_heading_from_projected` usa una sonda de 0,5 (antes 5): con 5 cruzaba el pliegue de `geo_shape_z` y daba errores de hasta 0,47 rad.
+- **Coche**: velocidad media en la simulacion 25 -> 64; atascos contra paredes 3875 -> 1740; el 72% de los choques eran roces que ahora deslizan. Al rozar una fachada el coche prueba desviaciones de 15-60 grados (longitud * cos) y se alinea un poco con la pared, perdiendo velocidad segun el angulo; solo un choque casi frontal lo para. Si el giro no cabe en ninguna fraccion, prueba el giro completo separando el coche 1-3 unidades de la pared (nunca atraviesa edificios).
+- Tests ajustados a la nueva semantica: `qa_traffic_v216.c` mide el avance a pie en espacio proyectado; `qa_controls_v218.c` comprueba la estabilidad del angulo filtrado. `qa_locomotion.c` ya fallaba antes de este cambio (linea 15, velocidad al terminar el sprint).
+- Nota: la partida de prueba aparece en x=46 (borde oeste del mapa); la banda de rayas con el disco claro que se ve alli es el fondo de montana del borde del mundo, no un error de render.
