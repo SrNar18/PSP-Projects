@@ -569,3 +569,15 @@ Coche:
 
 Tests actualizados a la nueva semantica: `qa_diagonal_v223.c` mide "hacia atras" en pantalla y no cuenta el borde del mundo; `qa_gait_v217.c` empieza dentro de la ciudad (desde x=62 una recta llega al borde del mundo). Todos pasan salvo `qa_locomotion.c`, que ya fallaba antes de v2.24.
 **No volver** a rumbo incremental en espacio mundo ni a `camara + palanca` sin marco congelado.
+
+### 27. Narcade 2.26 (Claude) — paredes invisibles y tirones
+
+Paredes invisibles (`tools/qa_invisible_walls_v226.c`): genera con el renderizador real (R3_HOST, `-DMAX_VERTICES=60000`, sin recorte) toda la ciudad, la rasteriza en planta y la compara con `solid()`. Resultado: 45.277 puntos solidos sin nada dibujado -> 1.956 (0,11%, franjas de pocas unidades). Mapa en `build/collision_audit.ppm` (rojo = invisible, azul = dibujado pero atravesable).
+- Causa: las dos manzanas dobles (celdas 7,3 y 2,5; parcelas de 500 de alto) cruzan una franja de transicion de `geo_shape_z`. `prism()` dibujaba sus lados largos rectos en pantalla y la colision seguia la curva: triangulo de pared invisible a un lado y franja atravesable al otro.
+- Arreglo en `src/city26.inc` `prism()`: si la parcela cruza una transicion (`warped`), lados en trozos de ~40 y tapa rectangular en franjas. Solo afecta a esas parcelas (sin coste en el resto; `qa_road_v220` sin desbordes).
+- `MAX_VERTICES` ahora es `#ifndef` (la PSP sigue en 6144).
+
+Tirones (`tools/qa_smooth_v226.c`, mide ojo de camara, giro, distancia y velocidad en pantalla fotograma a fotograma):
+- Deslizamiento en paredes con saltos de 13 grados = velocidad a golpes. Ahora se afina por biseccion (5 pasos) el angulo minimo libre: cambios bruscos de velocidad 0,67% -> 0,29%.
+- `camera_clearance`: solo edificios y borde del mundo acercan la camara (farolas/pilares/fuentes la hacian saltar); se acerca en pocos fotogramas (exp 16/s) en vez de golpe.
+- `qa_render3d.c` ya fallaba antes (road_covers linea 86); no es de este cambio.

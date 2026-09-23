@@ -201,10 +201,14 @@ static void camera_clearance(float dt){
  float gx,gz;geo_project(g.x,g.y,&gx,&gz);float desired=cam_distance();if(g.inMetro){g.cameraDistance=30;return;}
  for(float d=8;d<desired;d+=2){
   float x,y;geo_unproject(gx-cosf(g.viewYaw)*d,gz-sinf(g.viewYaw)*d,&x,&y);
-  if(solid(x,y)){desired=fmaxf(10,d-4);break;}
+  /* v2.26 (Claude): solo los edificios y el borde acercan la camara; farolas,
+     pilares y fuentes la hacian saltar adelante y atras al pasar junto a ellos. */
+  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8||cm_solid(x,y)){desired=fmaxf(10,d-4);break;}
  }
- if(g.cameraDistance<=0||desired<g.cameraDistance)g.cameraDistance=desired;
- else g.cameraDistance+=(desired-g.cameraDistance)*(1-expf(-dt*4));
+ /* Acercarse rapido pero en unos fotogramas (no de golpe); alejarse despacio. */
+ if(g.cameraDistance<=0)g.cameraDistance=desired;
+ else if(desired<g.cameraDistance)g.cameraDistance+=(desired-g.cameraDistance)*(1-expf(-dt*16));
+ else g.cameraDistance+=(desired-g.cameraDistance)*(1-expf(-dt*3));
 #else
  (void)dt;
 #endif
@@ -673,12 +677,21 @@ static void world_tick(float ax,float ay,float dt){
    int steps=(int)ceilf(dist/3.f);if(steps<1)steps=1;float seg=dist/steps;
    for(int s=0;s<steps;s++){
     int moved=0;
+#define FOOT_TRY(OFF,NX,NZ) (physics_unproject(px+cosf(dirP+(OFF))*seg*cosf(OFF),pz+sinf(dirP+(OFF))*seg*cosf(OFF),&(NX),&(NZ)),foot_free((NX),(NZ))&&lift_ok((NX),(NZ)))
     for(int k=0;k<=6&&!moved;k++)for(int sd=-1;sd<=1&&!moved;sd+=2){
      if(!k&&sd<0)continue;
-     float off=sd*k*(PI/14.f),len=seg*cosf(off),nx,nz;
-     physics_unproject(px+cosf(dirP+off)*len,pz+sinf(dirP+off)*len,&nx,&nz);
-     if(foot_free(nx,nz)&&lift_ok(nx,nz)){g.x=nx;g.y=nz;physics_project(g.x,g.y,&px,&pz);moved=1;slideOff=off;}
+     float off=sd*k*(PI/14.f),nx,nz;
+     if(FOOT_TRY(off,nx,nz)){
+      /* v2.26 (Claude): afinar el angulo de deslizamiento por biseccion entre el
+         ultimo bloqueado y el primero libre. Con saltos de 13 grados la velocidad
+         junto a una pared cambiaba a golpes (cos 13, 26, 39...): eso eran tirones. */
+      if(k>0){float lo=sd*(k-1)*(PI/14.f),hi=off;
+       for(int it=0;it<5;it++){float mid=(lo+hi)*.5f,mx,mz;if(FOOT_TRY(mid,mx,mz)){hi=mid;nx=mx;nz=mz;}else lo=mid;}
+       off=hi;}
+      g.x=nx;g.y=nz;physics_project(g.x,g.y,&px,&pz);moved=1;slideOff=off;
+     }
     }
+#undef FOOT_TRY
     if(!moved)break;
    }
    /* Guia de pared: al deslizar, el rumbo pedido se dobla (max. 0,9 rad) hacia

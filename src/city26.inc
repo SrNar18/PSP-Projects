@@ -28,17 +28,41 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
     {float rr=0;for(int i=0;i<p->n;i++){float dx=p->x[i]-cx,dz=p->z[i]-cz,d=dx*dx+dz*dz;if(d>rr)rr=d;}if(geographic&&!rigid&&!volume_visible(cx,cz,bottom,h,sqrtf(rr))){fixedGround=savedGround;return;}}
     uint32_t sc=emissive_color(side,color);
     litAlready=1;
+    /* Solo las parcelas que cruzan una franja de transicion del valle (z local <86 de una
+       fila) se deforman en pantalla; el resto se dibuja como siempre (sin coste extra). */
+    int warped=0;{float z0=1e9f,z1=-1e9f;for(int i=0;i<p->n;i++){z0=fminf(z0,p->z[i]);z1=fmaxf(z1,p->z[i]);}
+        warped=geographic&&!rigid&&floorf((z0-86.f)/320.f)!=floorf((z1-86.f)/320.f);}
     for(int i=0;i<p->n;i++){int j=(i+1)%p->n;
         float ex=p->x[j]-p->x[i],ez=p->z[j]-p->z[i],len=sqrtf(ex*ex+ez*ez);if(len<.5f)continue;
         float nx=ez/len,nz=-ex/len;float mx=(p->x[i]+p->x[j])*.5f-cx,mz=(p->z[i]+p->z[j])*.5f-cz;if(mx*nx+mz*nz<0){nx=-nx;nz=-nz;}
-        Point a=point(p->x[i],h,p->z[i]),b=point(p->x[j],h,p->z[j]),c=point(p->x[j],bottom,p->z[j]),d=point(p->x[i],bottom,p->z[i]);
-        float u=len/54;if(u<1)u=1;float v=height/24;if(v<1)v=1;
-        if(height>14)quad2(side,a,b,c,d,lit_color(sc,nx,0,nz),u,v);else quad(side,a,b,c,d,lit_color(sc,nx,0,nz),u,v);
-        if(height>18)facade_lights(d,c,height,nx,nz,side);
+        /* v2.26 (Claude): en el valle deformado un lado largo (manzanas dobles de 500) se
+           dibujaba recto en pantalla mientras la colision seguia la curva del mapa: quedaba
+           un triangulo de pared invisible. Los lados largos se trocean cada ~40 unidades. */
+        int parts=(warped&&len>60)?(int)ceilf(len/40):1;
+        for(int k=0;k<parts;k++){
+            float t0=(float)k/parts,t1=(float)(k+1)/parts;
+            float x0=p->x[i]+ex*t0,z0=p->z[i]+ez*t0,x1=p->x[i]+ex*t1,z1=p->z[i]+ez*t1;
+            Point a=point(x0,h,z0),b=point(x1,h,z1),c=point(x1,bottom,z1),d=point(x0,bottom,z0);
+            float u=len/parts/54;if(u<1)u=1;float v=height/24;if(v<1)v=1;
+            if(height>14)quad2(side,a,b,c,d,lit_color(sc,nx,0,nz),u,v);else quad(side,a,b,c,d,lit_color(sc,nx,0,nz),u,v);
+            if(height>18)facade_lights(d,c,height,nx,nz,side);
+        }
     }
     Vertex tv[8];uint32_t tc=lit_color(color,0,1,0);
+    float spanZ=0,spanX=0;for(int i=0;i<p->n;i++){spanZ=fmaxf(spanZ,fabsf(p->z[i]-cz));spanX=fmaxf(spanX,fabsf(p->x[i]-cx));}
+    if(warped&&cm_is_rect(p)&&(spanZ>60||spanX>60)){
+        /* tapa rectangular en franjas para que siga la misma curva que la colision */
+        float x0=p->x[0],x1=p->x[1],z0=p->z[0],z1=p->z[2];
+        int nzp=(int)ceilf((z1-z0)/40),nxp=(int)ceilf((x1-x0)/40);if(nzp<1)nzp=1;if(nxp<1)nxp=1;
+        for(int a=0;a<nzp;a++)for(int b=0;b<nxp;b++){
+            float za=z0+(z1-z0)*a/nzp,zb=z0+(z1-z0)*(a+1)/nzp,xa=x0+(x1-x0)*b/nxp,xb=x0+(x1-x0)*(b+1)/nxp;
+            Vertex q[4]={{(xa-cx)/90,(za-cz)/90,tc,xa,h,za},{(xb-cx)/90,(za-cz)/90,tc,xb,h,za},{(xb-cx)/90,(zb-cz)/90,tc,xb,h,zb},{(xa-cx)/90,(zb-cz)/90,tc,xa,h,zb}};
+            polygon(top,q,4);
+        }
+    }else{
     for(int i=0;i<p->n;i++){Vertex vv={(p->x[i]-cx)/90,(p->z[i]-cz)/90,tc,p->x[i],h,p->z[i]};tv[i]=vv;}
     polygon(top,tv,p->n);
+    }
     litAlready=0;fixedGround=savedGround;
 }
 /* Losa transitable que SIGUE el terreno (parques y plazas poligonales): abanico desde el centroide subdividido en 4,
