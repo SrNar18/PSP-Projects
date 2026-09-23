@@ -174,12 +174,18 @@ int main(void){
  r3_init();game_init();game_set_native_savedata(1);sceIoMkdir("ms0:/PSP/SAVEDATA/NARCADE3D",0777);game_set_save_path("ms0:/PSP/SAVEDATA/NARCADE3D/PROGRESS.BIN");
  pspAudioInit();pspAudioSetChannelCallback(0,audio_cb,0);
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;int postLoad=0;
- while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
+ /* v2.30 (Claude): el tiempo de cada paso se mide en refrescos de pantalla (vcount), no
+    con el reloj: asi cada imagen mostrada avanza exactamente lo que le toca (antes el
+    tiempo de calculo variaba y el movimiento por imagen salia irregular). Ademas, si
+    la zona es pesada, se fija un ritmo constante de 30 fps en vez de alternar 60/30. */
+ unsigned lastV=sceDisplayGetVcount();float workAvg=0;int interval=1;
+ while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();before=now;
+  unsigned vnow=sceDisplayGetVcount();int vf=(int)(vnow-lastV);if(vf<1)vf=1;if(vf>4)vf=4;lastV=vnow;float dt=vf/59.94f;
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
   input_record(&pad,dt);
   phase("tick");game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
   phase("draw");
-  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();postLoad=req==2?3:0;continue;}
+  int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();lastV=sceDisplayGetVcount();postLoad=req==2?3:0;continue;}
   if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-tick",4-postLoad);dbg(m);}
 #ifdef NARCADE_PROFILE
   uint64_t p0=sceKernelGetSystemTimeWide();
@@ -192,7 +198,11 @@ int main(void){
   /* v1.2: pedir el cambio de buffer ANTES de esperar el vblank: el cambio ocurre en ese vblank
      y el siguiente fotograma se dibuja en el buffer ya oculto. (v1.0 esperaba primero y pedia
      el cambio despues, asi que redibujaba el buffer aun visible: parpadeo en la parte superior.) */
-  sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();index^=1;
+  {float work=(sceKernelGetSystemTimeWide()-before)/1000000.0f;workAvg+=(work-workAvg)*.08f;
+   if(interval==1&&workAvg>.0150f)interval=2;else if(interval==2&&workAvg<.0115f)interval=1;}
+  sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
+  while((int)(sceDisplayGetVcount()-lastV)<interval)sceDisplayWaitVblankStart(); /* ritmo constante */
+  index^=1;
  }
  game_save();pspAudioEnd();r3_shutdown();sceKernelExitGame();return 0;
 }

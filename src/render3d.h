@@ -15,6 +15,7 @@ typedef struct {
     R3Person people[42];
     float lift,metroZ;int metroDir,inMetro;
     float metroDoors; /* 0 closed, 1 open; driven by the station dwell timer */
+    float camBase,camClear; /* v2.30: altura base y suelo minimo de camara ya suavizados por el juego (0 = calcular aqui) */
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
     int weapon; /* 0 fists; 1..7 handheld models */
 } R3Scene;

@@ -611,3 +611,11 @@ Causas encontradas (la cruceta no las activa):
 3. Umbral estrecho: zona muerta 0,18 + activacion 0,22 -> con empuje suave arrancaba/paraba sin parar. Ahora a pie el mundo recibe el analogico sin la zona muerta de 0,18 (solo <0,10) y usa histeresis 0,20 / 0,12. En coche y menus sigue la zona muerta radial 0,18.
 4. Mediana de 3 lecturas por eje del analogico (`g.stickHX/HY`): elimina picos de un fotograma (1 fotograma de retardo). Tests ajustados a ese retardo.
 Grabadora de diagnostico en `psp_main.c`: si existe `ms0:/NARCADE_INPUT.ON`, guarda dt/Lx/Ly/botones por fotograma (hasta 2 min, 8 bytes/muestra) en `ms0:/NARCADE_INPUT.BIN` al pulsar START. Sirve para reproducir en el PC la entrada real de la consola. Borrar el .ON para desactivarla.
+
+### 31. Narcade 2.30 (Claude) — tirones en pendientes, ritmo de imagen y volante
+
+- `tools/qa_drawcost_v230.c`: en las calles en pendiente (N-S) se dibuja ~15% mas (media 13.240 vertices frente a 11.488 en llano; maximo ~19.600) porque la camara ve mas valle. Toda la geometria se genera en CPU cada fotograma: en zonas pesadas la PSP alternaba 60/30 fps.
+- `src/psp_main.c`: (1) `dt` = refrescos de pantalla transcurridos (`sceDisplayGetVcount`)/59,94, no el reloj: cada imagen mostrada avanza exactamente lo que le toca. (2) Ritmo constante: media movil del tiempo de calculo; si pasa de 15 ms se fija 30 fps (2 vblanks), vuelve a 60 por debajo de 11,5 ms. Constante 30 se ve mas fluido que 60/30 alternado.
+- Camara en cuestas (`camera_heights`, `tools/qa_slope_v230.c`): el terreno sube por tramos rectos; la altura base de la camara y su suelo minimo se siguen con muelle critico (`g.camBase`, `g.camClear`; campos nuevos `R3Scene.camBase/camClear`, 0 = calculo antiguo). En coche mas suave (w 4,5).
+- Volante: `4.0/(1+|v|/130)` rad/s (antes `2.45/(1+|v|/360)`): ~30% mas a 60, ~13% mas a 120, casi igual a tope; cuanto mas rapido, mas cuesta girar.
+- La grabadora (`ms0:/NARCADE_INPUT.ON`) sigue activa en la PSP del jugador; `dt10us` ahora refleja los vblanks (16,7 ms = 60 fps, 33,4 ms = 30 fps).

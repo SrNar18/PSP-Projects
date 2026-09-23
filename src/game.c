@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2];int carCamInit,carYawOwner;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2],camBase,camClear;int carCamInit,carYawOwner;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -194,6 +194,28 @@ static void camera_follow(float target,float dt){
  float want=limit>0?limit*tanhf(omega*d/limit):0;
  g.cameraVelocity+=(want-g.cameraVelocity)*(1-expf(-dt*12));
  g.viewYaw+=g.cameraVelocity*dt;
+}
+/* v2.30 (Claude): altura de la camara suavizada. El terreno sube por tramos rectos
+   (4 por cuesta): en cada union la camara cambiaba de velocidad vertical de golpe,
+   y el "suelo minimo" detras de la camara la empujaba hacia arriba a saltos. Ambos
+   se siguen ahora con un muelle critico (sin sobrepaso), mas notable en coche. */
+static float camBaseVel,camClearVel;
+static void spring(float *x,float *v,float target,float w,float dt){
+ float d=*x-target,e=expf(-w*dt),vv=*v;*x=target+(d+(vv+w*d)*dt)*e;*v=(vv-w*(vv+w*d)*dt)*e;
+}
+static float cam_distance(void);static float cam_eye(void);
+static void camera_heights(float dt){
+#ifdef NARCADE_3D
+ if(g.inMetro||g.lift>1){g.camBase=g.camClear=0;return;}
+ float base=geo_height(g.x,g.y);
+ float px,pz;geo_project(g.x,g.y,&px,&pz);float d=g.cameraDistance>0?g.cameraDistance:cam_distance();
+ float lx,lz;geo_unproject(px-cosf(g.viewYaw)*d,pz-sinf(g.viewYaw)*d,&lx,&lz);float clear=geo_height(lx,lz)+12;
+ if(g.camBase==0||fabsf(g.camBase-base)>40){g.camBase=base;camBaseVel=0;g.camClear=clear;camClearVel=0;return;}
+ float w=g.car>=0?4.5f:9.f; /* en coche se va mas rapido: mas suavizado */
+ spring(&g.camBase,&camBaseVel,base,w,dt);spring(&g.camClear,&camClearVel,clear,w*.8f,dt);
+#else
+ (void)dt;
+#endif
 }
 /* v2.6.2: niveles de camara (SELECT): 0 lejana, 1 normal (por defecto), 2 cercana, 3 muy cercana. */
 static const float camFootDist[4]={65,50,38,28},camFootEye[4]={43,34,26,20},camCarDist[4]={95,78,62,50},camCarEye[4]={54,46,38,32};
@@ -751,7 +773,10 @@ static void world_tick(float ax,float ay,float dt){
   g.steerSmooth=steer;
   /* Steering belongs solely to the player; traffic routes never set this car's heading. */
   float grip=clampf((fabsf(c->speed)+8)/24,0,1);
-  float turn=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;
+  /* v2.30 (Claude): volante mas sensible y mas dependiente de la velocidad: a 60
+     gira ~30% mas que antes, a 120 ~13% mas y a tope casi igual (cuanto mas rapido,
+     mas cuesta girar). Parado no gira (grip). */
+  float turn=g.steerSmooth*dt*(4.0f/(1.f+fabsf(c->speed)/130.f))*(c->speed<0?-1:1)*grip;
   /* v2.25 (Claude): el giro se aplica en pantalla (espacio proyectado): la misma
      presion del volante gira lo mismo en cualquier zona del valle. En espacio
      del mapa, las zonas deformadas giraban mucho mas o mucho menos. */
@@ -854,6 +879,7 @@ static void world_tick(float ax,float ay,float dt){
  }else{g.carCamInit=0;g.carYawOwner=0;}
  if(g.car<0&&!g.walking)g.cameraVelocity=0;
  camera_clearance(dt);
+ camera_heights(dt);
 #endif
  for(int i=0;i<42;i++){Ped *p=&g.peds[i];p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;}
  if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
@@ -1263,6 +1289,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
+ scene.camBase=g.camBase;scene.camClear=g.camClear;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
  scene.weapon=g.weapon;
  scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;

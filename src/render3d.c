@@ -53,9 +53,9 @@ static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
 static void camera(const R3Scene *s){
     float px,pz;geo_project(s->x,s->z,&px,&pz);float yaw=s->yaw;
-    float h=geo_height(s->x,s->z)+s->lift; /* v2.6: anden del Metro */
+    float h=s->camBase!=0?s->camBase:geo_height(s->x,s->z)+s->lift; /* v2.6: anden del Metro; v2.30: base suavizada */
     eye=point(px-cosf(yaw)*s->cameraDistance,h+(s->eyeHeight>0?s->eyeHeight:(s->driving?54:43)),pz-sinf(yaw)*s->cameraDistance);
-    float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+12);
+    float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,s->camClear!=0?s->camClear:geo_height(lx,lz)+12);
     target=point(px+cosf(yaw)*25,h+(s->driving?10:11),pz+sinf(yaw)*25);
     if(s->inMetro){ /* v2.6: camara dentro del coche del Metro, mirando en el sentido de la marcha */
         float dir=s->metroDir>0?1:-1;float mx,mz;geo_project(CM_METRO_X,s->metroZ+dir*(CM_TRAIN_CAR*.5f+3-26),&mx,&mz);float base=geo_height(CM_METRO_X,s->metroZ)+CM_PLAT_H;
