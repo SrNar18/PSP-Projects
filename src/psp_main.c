@@ -56,6 +56,25 @@ static int watchdog(SceSize a,void *v){(void)a;(void)v;
     }
     return 0;
 }
+/* v2.29 (Claude): grabadora de joystick para diagnostico. Solo si existe
+   ms0:/NARCADE_INPUT.ON: guarda por fotograma el tiempo (dt), Lx, Ly y botones
+   (hasta 2 minutos, en RAM) y lo escribe en ms0:/NARCADE_INPUT.BIN al pulsar START
+   o al llenarse. Permite reproducir en el PC la entrada real de la consola. */
+typedef struct{uint16_t dt10us;uint8_t lx,ly;uint32_t buttons;}InputSample;
+#define INPUT_MAX 7200
+static InputSample inputLog[INPUT_MAX];static int inputOn=-1,inputCount=0,inputPrevStart=0,inputSaved=0;
+static void input_flush(void){
+    SceUID f=sceIoOpen("ms0:/NARCADE_INPUT.BIN",PSP_O_WRONLY|PSP_O_CREAT|PSP_O_TRUNC,0777);
+    if(f>=0){sceIoWrite(f,inputLog,inputCount*sizeof(InputSample));sceIoClose(f);}
+}
+static void input_record(const SceCtrlData *pad,float dt){
+    if(inputOn<0){SceUID t=sceIoOpen("ms0:/NARCADE_INPUT.ON",PSP_O_RDONLY,0);inputOn=t>=0;if(t>=0)sceIoClose(t);}
+    if(!inputOn||inputSaved)return;
+    if(inputCount<INPUT_MAX){InputSample *s=&inputLog[inputCount++];float v=dt*100000.f;s->dt10us=(uint16_t)(v>65535?65535:v);s->lx=pad->Lx;s->ly=pad->Ly;s->buttons=pad->Buttons;}
+    int start=(pad->Buttons&PSP_CTRL_START)!=0;
+    if((start&&!inputPrevStart&&inputCount>60)||inputCount>=INPUT_MAX){input_flush();inputSaved=inputCount>=INPUT_MAX;}
+    inputPrevStart=start;
+}
 static void dbg(const char *msg){
     if(dbgOn<0){SceUID t=sceIoOpen("ms0:/NARCADE_DEBUG.ON",PSP_O_RDONLY,0);dbgOn=t>=0;if(t>=0)sceIoClose(t);}
     if(!dbgOn)return; /* v2.13.6: diagnostico solo si existe ms0:/NARCADE_DEBUG.ON */
@@ -157,6 +176,7 @@ int main(void){
  uint64_t before=sceKernelGetSystemTimeWide();int index=0;int postLoad=0;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();float dt=(now-before)/1000000.0f;before=now;
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
+  input_record(&pad,dt);
   phase("tick");game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
   phase("draw");
   int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();postLoad=req==2?3:0;continue;}

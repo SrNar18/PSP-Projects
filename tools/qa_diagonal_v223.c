@@ -19,7 +19,7 @@ int main(void){
       que es donde el controlador calcula el rumbo. */
    float p1x,p1z;physics_project(g.x,g.y,&p1x,&p1z);float dirP=g.frameYaw+g.stickAngle+g.wallGuide;
    if((p1x-p0x)*cosf(dirP)+(p1z-p0z)*sinf(dirP)<-.05f)backwards++;
-   if(hypotf(mx,my)<.001f&&g.x>20&&g.x<WORLD_W-20){stalls++;if(t<10)blocked++;}
+   if(t>=2&&hypotf(mx,my)<.001f&&g.x>20&&g.x<WORLD_W-20){stalls++;if(t>=2&&t<10)blocked++;} /* v2.29: 2 fotogramas de arranque del filtro de picos */
    previousX=g.x;previousY=g.y;
   }
   paths++;

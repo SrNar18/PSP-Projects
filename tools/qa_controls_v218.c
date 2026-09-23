@@ -15,8 +15,9 @@ static void foot_turn(int pace,int sprint){
  if(sprint)g.sprintTime=10;
  for(int i=0;i<60;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,0,-1,1.f/60);}
  float headingBefore=geo_heading(g.x,g.y,g.moveYaw);
- if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);
- assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),headingBefore+PI*.5f))<.12f);
+ /* v2.29: el filtro de picos del analogico da 1 fotograma de retardo (16 ms). */
+ for(int t=0;t<2;t++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
+ assert(fabsf(angle_delta(proj_heading(g.x,g.y,g.moveYaw),headingBefore+PI*.5f))<.25f); /* el filtro continuo completa el giro en 2-3 fotogramas */
  for(int i=1;i<70;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
  /* v2.28 (Claude): a peticion del jugador la camara sigue tambien el movimiento
     lateral: con la palanca a un lado personaje y camara giran juntos. */
@@ -52,8 +53,8 @@ int main(void){
  for(int i=0;i<50;i++)game_tick(B_CROSS,0,-1,1.f/60);
  for(int i=0;i<45;i++)game_tick(B_CROSS,1,0,1.f/60);
  float headingBefore=proj_heading(g.x,g.y,g.moveYaw);
- game_tick(B_CROSS,0,-1,1.f/60);
- assert(fabsf(angle_delta(proj_heading(g.x,g.y,g.moveYaw),headingBefore-PI*.5f))<.2f);
+ for(int t=0;t<3;t++)game_tick(B_CROSS,0,-1,1.f/60);
+ assert(fabsf(angle_delta(proj_heading(g.x,g.y,g.moveYaw),headingBefore-PI*.5f))<.25f);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;Car *c=&g.cars[g.car];c->x=1002;c->y=1002;c->a=0;c->speed=0;c->parked=0;c->hp=100;
  assert(car_free_at(c,c->x,c->y));

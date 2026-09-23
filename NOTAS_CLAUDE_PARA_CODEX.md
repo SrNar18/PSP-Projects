@@ -601,3 +601,13 @@ Pedido del jugador: la camara debe girar siguiendo hacia donde se mueve con el j
 - Tirones propios del joystick (`tools/qa_joystick_feel_v228.c`, pulgar realista que no empuja a tope y varia la presion): la velocidad dependia de la inclinacion, y la presion variable aceleraba y frenaba a golpes (3-7 veces mas que con la cruceta). Ahora la palanca solo decide la direccion; la velocidad es completa como con la cruceta (andar/trotar/correr siguen con X). Resultado: joystick = cruceta en velocidad, cuerpo y camara.
 - Se mantiene el filtro del angulo (cambios <0,1 rad a 5/s, medianos a 25/s, >0,35 inmediatos).
 - `qa_controls_v218.c`: con la palanca a un lado ahora se comprueba que la camara gira (>0,3 rad en 1 s).
+
+### 30. Narcade 2.29 (Claude) — tirones solo con joystick
+
+Prueba `tools/qa_thumb_v229.c` (pulgar realista: arcos lentos, empuje suave, cambios rapidos; ruido +-3 cuentas).
+Causas encontradas (la cruceta no las activa):
+1. `camera_follow` tenia zona muerta de 0,10 rad (paraba y arrancaba) y recortaba la velocidad de golpe al tope. Con giros finos del joystick la camara iba a saltos. Reescrita: velocidad deseada `limit*tanh(omega*d/limit)` y la real la alcanza con exp(-12 dt). Sin zona muerta.
+2. Filtro del angulo con dos velocidades y corte brusco (0,1 rad): al girar poco a poco alternaba -> giro a tirones. Ahora filtro continuo sobre el VECTOR de la palanca (`g.stickFX/FY`), mas rapido cuanto mas cambia, y con menos peso cerca del centro.
+3. Umbral estrecho: zona muerta 0,18 + activacion 0,22 -> con empuje suave arrancaba/paraba sin parar. Ahora a pie el mundo recibe el analogico sin la zona muerta de 0,18 (solo <0,10) y usa histeresis 0,20 / 0,12. En coche y menus sigue la zona muerta radial 0,18.
+4. Mediana de 3 lecturas por eje del analogico (`g.stickHX/HY`): elimina picos de un fotograma (1 fotograma de retardo). Tests ajustados a ese retardo.
+Grabadora de diagnostico en `psp_main.c`: si existe `ms0:/NARCADE_INPUT.ON`, guarda dt/Lx/Ly/botones por fotograma (hasta 2 min, 8 bytes/muestra) en `ms0:/NARCADE_INPUT.BIN` al pulsar START. Sirve para reproducir en el PC la entrada real de la consola. Borrar el .ON para desactivarla.

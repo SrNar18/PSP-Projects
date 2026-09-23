@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw;int carCamInit,carYawOwner;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2];int carCamInit,carYawOwner;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -181,16 +181,19 @@ static int foot_free(float x,float y){
 }
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
 static void camera_follow(float target,float dt){
- /* Critically damped heading in rendered world space, bounded turn speed. */
- if(g.car<0&&fabsf(angle_delta(target,g.viewYaw))<.10f){g.cameraVelocity*=expf(-dt*9);return;}
+ /* v2.29 (Claude): seguimiento continuo y sin zona muerta. La version anterior
+    se paraba si faltaban menos de 0,10 rad y arrancaba al superarlos, y recortaba
+    la velocidad de golpe al llegar al limite: con el joystick (giros finos y
+    continuos) la camara iba a saltos. Ahora la velocidad deseada es proporcional a
+    lo que falta, con un tope suave (tanh), y la velocidad real la alcanza de forma
+    progresiva: giro de camara suave en cualquier caso. */
  float fs=g.car>=0||g.followScale<=0?1:g.followScale;
  float omega=(g.car>=0?6.5f:g.footSpeed<56?3.1f:g.footSpeed<86?4.1f:5.2f)*fs;
- float d=angle_delta(g.viewYaw,target),decay=expf(-omega*dt),v=g.cameraVelocity;
- float change=angle_delta(target+(d+(v+omega*d)*dt)*decay,g.viewYaw);
- g.cameraVelocity=(v-omega*(v+omega*d)*dt)*decay;
- float limit=(g.car>=0?3.6f:g.footSpeed<56?2.2f:g.footSpeed<86?2.6f:3.0f)*dt*fs;
- if(fabsf(change)>limit){change=clampf(change,-limit,limit);g.cameraVelocity=change/dt;}
- g.viewYaw+=change;
+ float limit=(g.car>=0?3.6f:g.footSpeed<56?2.2f:g.footSpeed<86?2.6f:3.0f)*fs;
+ float d=angle_delta(target,g.viewYaw);
+ float want=limit>0?limit*tanhf(omega*d/limit):0;
+ g.cameraVelocity+=(want-g.cameraVelocity)*(1-expf(-dt*12));
+ g.viewYaw+=g.cameraVelocity*dt;
 }
 /* v2.6.2: niveles de camara (SELECT): 0 lejana, 1 normal (por defecto), 2 cercana, 3 muy cercana. */
 static const float camFootDist[4]={65,50,38,28},camFootEye[4]={43,34,26,20},camCarDist[4]={95,78,62,50},camCarEye[4]={54,46,38,32};
@@ -644,9 +647,21 @@ static void world_tick(float ax,float ay,float dt){
      sin torcer el rumbo (sin circulos en diagonal). Cuando el jugador mueve la
      palanca, el marco se acerca a la camara en proporcion a cuanto la movio:
      cada cambio de direccion es relativo a lo que se ve en pantalla. */
+  /* v2.29 (Claude): mediana de las 3 ultimas lecturas del analogico por eje. Una
+     lectura suelta disparada (pico de un fotograma, habitual en las palancas de
+     PSP) ya no mueve al personaje; los cambios reales pasan con 1 fotograma de
+     retraso. La cruceta no pasa por aqui. */
+  {float mx=ax,my=ay;
+   #define MED3(a,b,c) fmaxf(fminf(a,b),fminf(fmaxf(a,b),c))
+   ax=MED3(mx,g.stickHX[0],g.stickHX[1]);ay=MED3(my,g.stickHY[0],g.stickHY[1]);
+   #undef MED3
+   g.stickHX[1]=g.stickHX[0];g.stickHX[0]=mx;g.stickHY[1]=g.stickHY[0];g.stickHY[0]=my;}
   float sx=ax+(held(B_RIGHT)-held(B_LEFT)),sy=ay+(held(B_DOWN)-held(B_UP));
   float raw=hypotf(sx,sy);
-  if(raw>.22f)g.stickActive=1;else if(raw<.14f)g.stickActive=0;
+  /* v2.29 (Claude): margen amplio para empezar (0,20) y dejar de andar (0,12). Antes
+     la zona muerta (0,18) y el umbral (0,22) dejaban una franja estrecha: empujando
+     suave el personaje arrancaba y paraba sin parar (177 veces en la prueba). */
+  if(raw>.20f)g.stickActive=1;else if(raw<.12f)g.stickActive=0;
   /* v2.28 (Claude): modelo pedido por el jugador: la direccion es SIEMPRE
      "camara + palanca" y la camara sigue al movimiento (tambien hacia los lados),
      asi que al mantener la palanca a un lado el personaje y la camara van girando
@@ -656,14 +671,21 @@ static void world_tick(float ax,float ay,float dt){
      veces mas tirones de velocidad que con la cruceta). */
   float mag=0;
   if(g.stickActive){
-   float ang=atan2f(sx,-sy);
-   if(!g.moveActive)g.stickAngle=ang;
+   /* v2.29 (Claude): filtro CONTINUO sobre la posicion de la palanca (vector), no
+      sobre el angulo. El filtro anterior tenia dos velocidades con un corte brusco:
+      al girar la palanca poco a poco saltaba de una a otra y el giro iba a tirones.
+      Este filtro es mas rapido cuanto mas se mueve la palanca (giros al instante) y
+      promedia el temblor cuando esta quieta; y cerca del centro, donde el angulo es
+      poco fiable, pesa menos cada lectura. */
+   if(!g.moveActive){g.stickFX=sx;g.stickFY=sy;}
    else{
-    float d=angle_delta(ang,g.stickAngle);
-    /* temblor fuera (cambios diminutos muy filtrados), giro deliberado inmediato */
-    float rate=fabsf(d)<.10f?5.f:25.f;
-    g.stickAngle+=fabsf(d)>.35f?d:d*(1-expf(-dt*rate));
+    float ex=sx-g.stickFX,ey=sy-g.stickFY,e=hypotf(ex,ey);
+    float k=(10.f+70.f*e)*clampf(raw/.45f,.35f,1.f);
+    float a=1-expf(-dt*k);g.stickFX+=ex*a;g.stickFY+=ey*a;
+    /* un giro brusco de un lado a otro pasa por el centro: seguir a la palanca */
+    if(hypotf(g.stickFX,g.stickFY)<.15f){g.stickFX=sx;g.stickFY=sy;}
    }
+   g.stickAngle=atan2f(g.stickFX,-g.stickFY);
    mag=1;g.moveActive=1;
   }else g.moveActive=0;
   g.frameYaw=g.viewYaw;g.wallGuide=0;g.stickAnchor=g.stickAngle;
@@ -859,7 +881,11 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  /* v2.24: zona muerta radial. La zona por eje anulaba cada eje por separado y
     "pegaba" la palanca a las 4 direcciones rectas (+-10 grados sin respuesta). */
- if(hypotf(ax,ay)<.18f)ax=ay=0;
+ {float r=hypotf(ax,ay);
+  /* v2.29: a pie el mundo aplica su propio margen (ver world_tick); fuera del mundo
+     o en coche se mantiene la zona muerta radial. */
+  if(r<.18f&&!(g.screen==WORLD&&g.car<0))ax=ay=0;
+  else if(r<.10f)ax=ay=0;}
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.weaponWheel=0;g.weaponHold=0;
