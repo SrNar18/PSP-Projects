@@ -503,3 +503,11 @@ al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layo
 - `src/shapes.inc`: la textura lateral usa ahora UV ancladas a la altura real de la pieza; las líneas del panel ya no se doblan al pasar de capó a puerta. `car_skin()` calcula la superficie inclinada de cada perfil para colocar elementos sobre ella.
 - `src/render3d.c`: las juntas de puertas, manillas con hueco y pieza brillante, y retrovisores siguen la cabina de cada una de las seis siluetas. El presupuesto de vértices METAL conserva margen para atascos; `tools/qa_cars_v217.c` comprueba 24 coches simultáneos.
 - Atlas y binario de texturas regenerados. ISO 2.19. Formato `Save` sin cambios.
+
+### 21. Narcade 2.20 (Codex) — controles, marcas viales y sonido de interfaz
+
+- `src/game.c`: el joystick se interpreta según la cámara al iniciar cada gesto y conserva un rumbo lógico estable aunque la cámara siga girando. El desplazamiento a pie responde inmediatamente a cambios de dirección en las tres velocidades; la orientación visual se suaviza por separado. El cálculo de velocidad proyectada conserva una cadencia parecida entre regiones, pero movimiento y colisión usan siempre las mismas coordenadas lógicas de la ciudad. Cámara inicial y cámara tras cargar se alinean con la proyección del rumbo, sin tocar `Save`.
+- El coche del jugador responde antes al giro y barre su trayectoria en pasos pequeños, sin el deslizamiento por ejes que lo movía lateralmente al tocar una fachada. Conserva colisiones con edificios y otros coches; la IA de tráfico no controla el coche del jugador.
+- `src/city26.inc` y `src/render3d.c`: todas las marcas viales activas usan el material blanco plano existente, no la textura reflectante de pintura de coche. Cada trazo se comprueba contra la calle real y la avenida diagonal antes de dibujarse. También se interrumpe la mediana de la avenida en los cruces de vías de la cuadrícula.
+- Sonido original de selección de 90 ms, sintetizado en el mezclador actual con ataque y caída suaves. Suena al cambiar de opción/sección en portada, pausa, mapa, mensajes, elección y minijuegos; no usa ni copia el audio XMB.
+- `tools/qa_road_v220.c` recorre las 56 celdas; `tools/qa_menu_v220.c` comprueba el sonido y genera `assets/menu-click-v220.wav` para escucha; pruebas de giros/colisiones y tráfico ampliadas. ISO 2.20.

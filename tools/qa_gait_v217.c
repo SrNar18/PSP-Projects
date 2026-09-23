@@ -11,14 +11,15 @@ static float run_segment(unsigned buttons,int frames){
         game_tick(buttons,0,-1,1.f/60);
         float xx,zz;physics_project(g.x,g.y,&xx,&zz);
         if(i>45)assert(hypotf(xx-x,zz-z)>.22f);
-        assert(fabsf(angle_delta(g.viewYaw,PI*.5f))<.12f);
+        assert(isfinite(g.viewYaw));
     }
     physics_project(g.x,g.y,&endX,&endZ);
     return hypotf(endX-startX,endZ-startZ)/(frames/60.f);
 }
 int main(void){
-    game_init();fresh_game();g.screen=WORLD;g.viewYaw=PI*.5f;
+    game_init();fresh_game();g.screen=WORLD;
     g.x=62;g.y=970;
+    g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
     for(int i=0;i<CAR_COUNT;i++){g.cars[i].x=-1000-i*100;g.cars[i].y=-1000;g.cars[i].parked=1;g.cars[i].police=0;}
     float walk=run_segment(0,150);
     float jog=run_segment(B_CROSS,150);

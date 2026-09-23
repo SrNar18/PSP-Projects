@@ -65,6 +65,7 @@ static uint32_t *renderTarget;
 #endif
 static volatile int audioStation=0,audioEnabled=0,audioAmbient=0;
 static volatile unsigned hornEvent=0;
+static volatile unsigned menuEvent=0;
 static volatile int hornGain=0,hornPan=0,trafficGain=0,crowdGain=0;
 extern const short city_bed[],city_engine[],city_horn[];
 #define CITY_BED_SAMPLES 352800
@@ -81,6 +82,7 @@ static int wrapi(int x,int n){return (x%n+n)%n;}
 static int pressed(int b){return (g.pressed&b)!=0;}
 static int held(int b){return (g.held&b)!=0;}
 static void notice(const char *s){snprintf(g.notice,sizeof(g.notice),"%s",s);g.noticeT=4;}
+static void menu_click(void){menuEvent++;}
 static const char *weaponNames[8]={"PUNOS","PISTOLA","REVOLVER","SUBFUSIL","AK","ESCOPETA","RIFLE","BATE"};
 static int weapon_menu(float ax,float ay,float dt){
  if(g.screen!=WORLD||g.car>=0||g.inMetro){g.weaponWheel=0;g.weaponHold=0;return 0;}
@@ -147,6 +149,11 @@ static float physics_heading(const Car *c){
 #else
  return c->a;
 #endif
+}
+static float logical_heading_from_projected(float x,float y,float angle){
+ float gx,gz,tx,ty;physics_project(x,y,&gx,&gz);
+ physics_unproject(gx+cosf(angle)*5,gz+sinf(angle)*5,&tx,&ty);
+ return atan2f(ty-y,tx-x);
 }
 /* v2.6: escaleras y anden del Metro. Arriba solo se puede estar sobre el anden o la escalera; no hay saltos bruscos. */
 static int lift_ok(float x,float y){
@@ -284,7 +291,7 @@ static void metro_update(float dt){
   for(int bz=1;bz<=5;bz+=2){float sz=cm_station_z(bz);if(before!=sz&&(before-sz)*(g.metroZ-sz)<=0){g.metroZ=sz;g.metroWait=6;metroSpeed=0;break;}}
   if(g.metroZ<60){g.metroZ=60;g.metroDir=1;g.metroWait=2;}if(g.metroZ>2180){g.metroZ=2180;g.metroDir=-1;g.metroWait=2;}
  }
- if(g.inMetro){g.x=CM_METRO_X;g.y=g.metroZ;g.lift=CM_PLAT_H+1;g.a=g.metroDir>0?PI*.5f:-PI*.5f;g.viewYaw=g.a;g.cameraVelocity=0;g.walking=0;}
+ if(g.inMetro){g.x=CM_METRO_X;g.y=g.metroZ;g.lift=CM_PLAT_H+1;g.a=g.metroDir>0?PI*.5f:-PI*.5f;g.viewYaw=geo_heading(g.x,g.y,g.a);g.cameraVelocity=0;g.walking=0;}
 }
 static int metro_boardable(void){return !g.inMetro&&g.car<0&&g.lift>15&&g.metroWait>0&&cm_station_near(g.metroZ,2)==(int)floorf(g.y/320)&&cm_on_platform(g.x,g.y);}
 static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)return 8;if(x<640&&y<1500)return 0;if(x<1100&&y<1450)return 1;if(x<1250)return 2;if(y<650)return 3;if(x>1600&&y>1500)return 4;if(x>1800)return 5;return 6;}
@@ -398,7 +405,7 @@ void game_save_summary(char *title,int titlecap,char *detail,int detailcap){
 static int apply_save(const Save *sp){Save s=*sp;g.lift=0;g.inMetro=0;
  if(s.magic!=0x4e415243||s.version!=1||s.check!=savecheck(&s)||s.mission<0||s.mission>36||s.step<0||s.step>=6||s.cash<0||s.cash>100000000||s.station<0||s.station>4||!isfinite(s.x)||!isfinite(s.y)||!isfinite(s.health)||!isfinite(s.playtime)||s.playtime<0)return 0;
  if(s.mission<36&&s.step>=missions[s.mission].count)return 0;
- g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.motion=0;g.moveActive=0;return 1;}
+ g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.motion=0;g.moveActive=0;g.stickActive=0;g.a=-PI*.5f;g.viewYaw=geo_heading(g.x,g.y,g.a);g.cameraVelocity=0;return 1;}
 /* v2.13.6 (Claude): el tamano debe coincidir EXACTAMENTE. Una partida guardada por una version con otro formato
    pasaba las comprobaciones de rango y se cargaba con estado incoherente; en la consola eso acabo reiniciandola
    al dibujar la ciudad (en el emulador no). Mejor rechazarla con un aviso claro. */
@@ -424,7 +431,7 @@ static void fresh_game(void){g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
- world_init();start_mission();}
+ g.a=-PI*.5f;g.viewYaw=geo_heading(g.x,g.y,g.a);world_init();start_mission();}
 static void advance(void){
  if(g.side){g.cash+=180;g.jobs++;g.reputation++;g.side=0;g.raceTime=0;notice("ENCARGO COMPLETO  +$180  +1 reputacion");g.screen=WORLD;game_save();return;}
  g.step++;g.checkpoint=0;g.raceTime=0;g.missionTimer=0;g.screen=WORLD;
@@ -626,12 +633,19 @@ static void world_tick(float ax,float ay,float dt){
    /* The camera follows with a delay. Map changes in stick angle to changes
       in world heading, so its own rotation cannot steer a held direction. */
    float stickAngle=atan2f(sx,-sy);
-   if(!wasActive||!g.moveActive){g.inputYaw=g.viewYaw+stickAngle;g.stickAngle=stickAngle;}
-   else if(rawStick>.28f){g.inputYaw+=angle_delta(stickAngle,g.stickAngle);g.stickAngle=stickAngle;}
+   if(!wasActive||!g.moveActive){g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);g.stickAngle=stickAngle;}
+   else if(rawStick>.28f){
+    float delta=angle_delta(stickAngle,g.stickAngle);
+    if(fabsf(delta)>.005f){
+     float target=geo_heading(g.x,g.y,g.inputYaw)+delta;
+     g.inputYaw=logical_heading_from_projected(g.x,g.y,target);
+     g.stickAngle=stickAngle;
+    }
+   }
    float wantYaw=g.inputYaw;
-   if(!g.moveActive){g.moveYaw=wantYaw;g.moveActive=1;}                 /* arranque: rumbo inmediato */
-   else{float turn=(g.footSpeed>80?6.2f:g.footSpeed>55?7.3f:8.5f)*dt;
-    float d=angle_delta(wantYaw,g.moveYaw);g.moveYaw+=clampf(d,-turn,turn);}
+   /* Movement follows the requested direction immediately at every gait.
+      Only the visible body and camera are smoothed; neither steers the feet. */
+   g.moveYaw=wantYaw;g.moveActive=1;
    dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
   }else g.moveActive=0;
   float desiredYaw=g.moveYaw;
@@ -640,26 +654,31 @@ static void world_tick(float ax,float ay,float dt){
 #ifndef NARCADE_3D
   dx/=fmaxf(1,n);dy/=fmaxf(1,n);
 #endif
-  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*18));float speed=g.footSpeed;
+  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*25));float speed=g.footSpeed;
   float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
-  float lookX,lookY;physics_unproject(beforeX+dx*4,beforeY+dy*4,&lookX,&lookY);
+  float lookX=g.x+dx*4,lookY=g.y+dy*4,lookPX,lookPY;
+  physics_project(lookX,lookY,&lookPX,&lookPY);
+  float projectionScale=hypotf(lookPX-beforeX,lookPY-beforeY)/4;
   float grade=(geo_height(lookX,lookY)-geo_height(g.x,g.y))/4;
-  speed/=sqrtf(1+fminf(grade*grade,.35f));
+  speed/=clampf(projectionScale,.55f,1.85f)*sqrtf(1+fminf(grade*grade,.35f));
   /* Sweep short steps through the collision map. A long frame or a sprint
      must not jump over the narrow frontage of a building. */
   float mx=dx*speed*dt,my=dy*speed*dt;
   int steps=(int)ceilf(fmaxf(fabsf(mx),fabsf(my))/4.f);if(steps<1)steps=1;
   for(int step=0;step<steps;step++){
-   float gx,gz,tx,ty;physics_project(g.x,g.y,&gx,&gz);
-   physics_unproject(gx+mx/steps,gz+my/steps,&tx,&ty);
-   if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
-   if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
+   float tx=g.x+mx/steps,ty=g.y+my/steps;
+   if(foot_free(tx,ty)&&lift_ok(tx,ty)){g.x=tx;g.y=ty;}
+   else{
+    /* Both slide candidates use the same logical space as the city collision. */
+    if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
+    if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
+   }
   }
   g.lift=cm_lift(g.x,g.y,g.lift>15);
   float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
   g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
 #ifdef NARCADE_3D
-  if(inputLength>.29f)camera_follow(desiredYaw,dt);
+  if(inputLength>.29f)camera_follow(geo_heading(g.x,g.y,desiredYaw),dt);
 #endif
   }
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
@@ -667,16 +686,20 @@ static void world_tick(float ax,float ay,float dt){
   Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
-  g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*9)); /* v2.9: direccion progresiva (sin saltos al soltar/pulsar) */
+  g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*22));
   /* Steering belongs solely to the player; traffic routes never set this car's heading. */
-  float grip=clampf(fabsf(c->speed)/10,0,1);
-  c->a+=g.steerSmooth*dt*(2.5f/(1.f+fabsf(c->speed)/210.f))*(c->speed<0?-1:1)*grip;
+  float grip=clampf((fabsf(c->speed)+8)/24,0,1);
+  c->a+=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;
   if(!car_free_at(c,c->x,c->y))c->a=oldAngle;
-  float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
-  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
-  else if(car_free_at(c,xx,c->y)){c->x=xx;c->speed*=.85f;}
-  else if(car_free_at(c,c->x,yy)){c->y=yy;c->speed*=.85f;}
-  else{c->hp-=fabsf(c->speed)*.025f;c->speed*=.2f;g.hitCD=.12f;}
+  /* Sweep along the same logical road coordinates as collision and traffic.
+     Projected-space translation drifts into facades as the valley bends. */
+  float distance=c->speed*dt;
+  int steps=(int)ceilf(fabsf(distance)/3.f);if(steps<1)steps=1;
+  for(int step=0;step<steps;step++){
+   float xx=c->x+cosf(c->a)*distance/steps,yy=c->y+sinf(c->a)*distance/steps;
+   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
+   else{float impact=fabsf(c->speed);c->hp-=impact*.025f;c->speed=impact>65?-c->speed*.13f:0;g.hitCD=.12f;break;}
+  }
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
@@ -738,12 +761,13 @@ static void world_tick(float ax,float ay,float dt){
 }
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
+ int oldScreen=g.screen,oldMenu=g.menu,oldTitleStage=g.titleStage,oldTab=g.pauseTab,oldMap=g.mapSel,oldJournal=g.journalPage,oldCursor=g.p.cursor;
  dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  if(fabsf(ax)<.18f)ax=0;if(fabsf(ay)<.18f)ay=0;
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.weaponWheel=0;g.weaponHold=0;
-  g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;return;
+  g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;menu_click();return;
  }
  if(g.screen==TITLE){
   if(!g.titleStage){
@@ -765,7 +789,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
  else if(g.screen==PAUSE){
-  if(pressed(B_START)||pressed(B_CIRCLE)){g.screen=g.pauseBack;return;}
+  if(pressed(B_START)||pressed(B_CIRCLE)){g.screen=g.pauseBack;menu_click();return;}
   if(pressed(B_L)||pressed(B_LEFT)){g.pauseTab=wrapi(g.pauseTab-1,4);g.menu=0;}
   if(pressed(B_R)||pressed(B_RIGHT)){g.pauseTab=(g.pauseTab+1)%4;g.menu=0;}
   int delta=pressed(B_DOWN)-pressed(B_UP);
@@ -778,6 +802,10 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
    else if(g.pauseTab==3){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
   }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
+ if((oldScreen==TITLE&&g.screen==TITLE&&(oldMenu!=g.menu||oldTitleStage!=g.titleStage))||
+    (oldScreen==PAUSE&&g.screen==PAUSE&&(oldMenu!=g.menu||oldTab!=g.pauseTab||oldMap!=g.mapSel||oldJournal!=g.journalPage))||
+    (oldScreen==MAP&&oldMap!=g.mapSel)||(oldScreen==JOURNAL&&oldJournal!=g.journalPage)||
+    (oldScreen==MINI&&oldCursor!=g.p.cursor)||(oldScreen==CHOICE&&oldMenu!=g.menu))menu_click();
  int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE)||rhythm;
  audioAmbient=g.screen==WORLD;
  if(rhythm)audioPos=(unsigned)(g.p.t*44100)%(track_length[3]*2);
@@ -1149,8 +1177,10 @@ void game_draw(uint32_t *pixels,int stride){
 void game_audio(short *stereo,unsigned frames){
  int station=audioStation;if(station>3)station=0;if(station!=audioLast){audioPos=0;audioLast=station;}
  static unsigned bedPos=0,enginePos=0,hornPos=CITY_HORN_SAMPLES*2,seenHorn=0;
+ static unsigned seenMenu=0,menuSample=4000;
  static int hGain=0,hPan=0,fade=0,engineLevel=0;
  if(seenHorn!=hornEvent){seenHorn=hornEvent;if(audioAmbient){hornPos=0;hGain=hornGain;hPan=hornPan;}}
+ if(seenMenu!=menuEvent){seenMenu=menuEvent;menuSample=0;}
  for(unsigned i=0;i<frames;i++){
   int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;
   if(audioEnabled){audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
@@ -1161,8 +1191,14 @@ void game_audio(short *stereo,unsigned frames){
   int engine=city_engine[enginePos/4]*engineLevel/256;
   int horn=hornPos<CITY_HORN_SAMPLES*2?city_horn[hornPos++/2]*hGain/256:0;
   bedPos=(bedPos+1)%(CITY_BED_SAMPLES*4);enginePos=(enginePos+1)%(CITY_ENGINE_SAMPLES*4);
-  int l=music+(base+engine+horn*(128-hPan)/128)*fade/256;
-  int r=music+(baseRight+engine+horn*(128+hPan)/128)*fade/256;
+  int click=0;
+  if(menuSample<3969){ /* 90 ms: soft attack, two rounded partials, no XMB sample. */
+   float t=menuSample++/44100.f,env=(1-expf(-t*1100))*expf(-t*46);
+   float phase=2*PI*(810*t-1050*t*t);
+   click=(int)(2900*env*(sinf(phase)+.24f*sinf(phase*1.5f)));
+  }
+  int l=music+(base+engine+horn*(128-hPan)/128)*fade/256+click;
+  int r=music+(baseRight+engine+horn*(128+hPan)/128)*fade/256+click;
   stereo[i*2]=(short)(l<-32768?-32768:l>32767?32767:l);
   stereo[i*2+1]=(short)(r<-32768?-32768:r>32767?32767:r);
  }

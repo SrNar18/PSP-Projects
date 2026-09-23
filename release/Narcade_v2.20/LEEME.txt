@@ -1,0 +1,5 @@
+Narcade 3D v2.20 - Control, carreteras y menus
+Copia Narcade_v2.20.iso a ms0:/ISO/ o PSP/GAME/NARCADE a ms0:/PSP/GAME/.
+Giro directo a pie, mejor control del coche y colisiones en calles logicas.
+Marcas viales alineadas con la calzada y sonido original de navegacion en menus.
+menu-click-v220.wav es una muestra del sonido. El formato de guardado no cambia. Made by Naresz.

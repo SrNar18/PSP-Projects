@@ -22,6 +22,7 @@
 #include "player_mesh.h"
 #define COLOR(r,g,b) (0xff000000u | (r) | ((g)<<8) | ((b)<<16))
 enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,CAR_SIDE,CAR_PAINT,GLASS,MURAL,JACKET_BACK,SLEEVE,SKIN,HAIR };
+enum { FLAT=20 }; /* Existing opaque white tile, tintable without car-paint glints. */
 enum { BARK=29,LEAVES,METAL,CONCRETE,CURTAIN,AWNING,COBBLE,MODERN }; /* v2.7: materiales 64px en RAM (tools/extra_textures.py) */
 enum { RETAIL=37,EATERY,OFFICE_FRONT,WORKSHOP_FRONT };
 typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;

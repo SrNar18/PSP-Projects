@@ -483,12 +483,12 @@ static void diagonal_avenue(void){
     for(int k=0;k<segs;k++){float t0=(float)k/segs,t1=(float)(k+1)/segs;float x0=CM_DIAG_X0+dx*t0,z0=CM_DIAG_Z0+dz*t0,x1=CM_DIAG_X0+dx*t1,z1=CM_DIAG_Z0+dz*t1;
         float mx=(x0+x1)*.5f,mz=(z0+z1)*.5f;
         if(!nearby(mx,mz,700))continue;
-        if(fmodf(z0,320)<96||fmodf(z1,320)<96)continue; /* no median or paint through cross streets */
+        if(cm_on_grid_road(x0,z0)||cm_on_grid_road(x1,z1)||cm_on_grid_road(mx,mz))continue;
         quad(GRASS,point(x0-nx*3,.45f,z0-nz*3),point(x1-nx*3,.45f,z1-nz*3),point(x1+nx*3,.45f,z1+nz*3),point(x0+nx*3,.45f,z0+nz*3),COLOR(140,190,120),1,2);
         quad(SIDEWALK,point(x0-nx*3.6f,.4f,z0-nz*3.6f),point(x1-nx*3.6f,.4f,z1-nz*3.6f),point(x1-nx*3,.4f,z1-nz*3),point(x0-nx*3,.4f,z0-nz*3),0xffffffffu,1,1);
         quad(SIDEWALK,point(x0+nx*3,.4f,z0+nz*3),point(x1+nx*3,.4f,z1+nz*3),point(x1+nx*3.6f,.4f,z1+nz*3.6f),point(x0+nx*3.6f,.4f,z0+nz*3.6f),0xffffffffu,1,1);
         for(int s=-1;s<=1;s+=2){float ox=nx*15*s,oz=nz*15*s;
-            quad(CAR_PAINT,point(mx-ux*9+ox-nx*.6f,.2f,mz-uz*9+oz-nz*.6f),point(mx+ux*9+ox-nx*.6f,.2f,mz+uz*9+oz-nz*.6f),point(mx+ux*9+ox+nx*.6f,.2f,mz+uz*9+oz+nz*.6f),point(mx-ux*9+ox+nx*.6f,.2f,mz-uz*9+oz+nz*.6f),0xffffffffu,1,1);}
+            quad(FLAT,point(mx-ux*9+ox-nx*.6f,.4f,mz-uz*9+oz-nz*.6f),point(mx+ux*9+ox-nx*.6f,.4f,mz+uz*9+oz-nz*.6f),point(mx+ux*9+ox+nx*.6f,.4f,mz+uz*9+oz+nz*.6f),point(mx-ux*9+ox+nx*.6f,.4f,mz-uz*9+oz+nz*.6f),0xffffffffu,1,1);}
         if(view_distance(mx,mz)<430&&(k&1))tree(mx,mz);
         if(!(k%3)){box(x0-nx*2,z0-nz*2,.4f,1.2f,1.2f,30,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x0-nx*2,z0-nz*2,29,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
     }
@@ -537,6 +537,14 @@ static void cable_station_building(const CmParcel *p,int terminal,int far){
     box(cx,cz-d*.5f+.4f,35,w-7,1.4f,4,0,CAR_PAINT,CAR_PAINT,paint);
     box(cx,cz,44,w*.55f,d*.6f,3,0,METAL,METAL,COLOR(69,88,96));
 }
+static int road_mark_clear(float x,float z,float w,float d){
+    for(int i=0;i<5;i++){
+        float px=x+(i==1||i==2?w:i==4?w*.5f:0);
+        float pz=z+(i==2||i==3?d:i==4?d*.5f:0);
+        if(!cm_on_grid_road(px,pz)||cm_on_diag(px,pz))return 0;
+    }
+    return 1;
+}
 static void city_cell_v26(int bx,int bz,int far,uint32_t white){
     float x=bx*320,z=bz*320;unsigned f=cm_flags(bx,bz),h=city_hash(bx,bz,7);int type=city_block_type(bx,bz);
     ground(ROAD,x,z,320,320,0,white,12);
@@ -557,16 +565,17 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         /* Leave junctions and diagonal crossings clear. Stable dash phase
            and colour belong to the street, not a random building block. */
         for(int k=96;k<304;k+=32){
-            if(!northMerged&&cm_diag_dist(x+k+8,z+42)>CM_DIAG_HALF+12&&
-               !((cm_flags(bx,bz-1)|f)&CM_SPLIT_X && k>160&&k<216))
-                ground(CAR_PAINT,x+k,z+42,16,1.2f,.5f,COLOR(244,208,100),1);
-            if(!westMerged&&cm_diag_dist(x+42,z+k+8)>CM_DIAG_HALF+12&&
-               !((cm_flags(bx-1,bz)|f)&CM_SPLIT_Z && k>160&&k<216))
-                ground(CAR_PAINT,x+42,z+k,1.2f,16,.5f,COLOR(244,208,100),1);
+            if(!northMerged&&road_mark_clear(x+k,z+41.4f,16,1.2f))
+                ground(FLAT,x+k,z+41.4f,16,1.2f,.45f,COLOR(244,208,100),1);
+            if(!westMerged&&road_mark_clear(x+41.4f,z+k,1.2f,16))
+                ground(FLAT,x+41.4f,z+k,1.2f,16,.45f,COLOR(244,208,100),1);
         }
-        if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+191.4f,z+k,1.2f,19,.5f,white,1);
-        if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)ground(CAR_PAINT,x+k,z+185.4f,19,1.2f,.5f,white,1);
-        if(h&128)for(int k=0;k<5;k++){ground(CAR_PAINT,x+9+k*13,z+75,7,5,.6f,white,1);ground(CAR_PAINT,x+75,z+9+k*13,5,7,.6f,white,1);}
+        if(f&CM_SPLIT_X)for(int k=94;k<288;k+=40)if(road_mark_clear(x+191.4f,z+k,1.2f,19))ground(FLAT,x+191.4f,z+k,1.2f,19,.45f,white,1);
+        if(f&CM_SPLIT_Z)for(int k=94;k<288;k+=40)if(road_mark_clear(x+k,z+185.4f,19,1.2f))ground(FLAT,x+k,z+185.4f,19,1.2f,.45f,white,1);
+        if(h&128)for(int k=0;k<5;k++){
+            if(road_mark_clear(x+9+k*13,z+75,7,5))ground(FLAT,x+9+k*13,z+75,7,5,.6f,white,1);
+            if(road_mark_clear(x+75,z+9+k*13,5,7))ground(FLAT,x+75,z+9+k*13,5,7,.6f,white,1);
+        }
         if(!cityMid){if((bx==0||bx==3||bx==5)&&(bz==0||bz==3))traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
         if(cityMid){box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
         else lamp_post(x+84,z+59,PI);
