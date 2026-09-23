@@ -544,3 +544,28 @@ Diagnostico con simulacion en PC (`tools/qa_foot_freedom_v224.c`, `tools/qa_car_
 - **Coche**: velocidad media en la simulacion 25 -> 64; atascos contra paredes 3875 -> 1740; el 72% de los choques eran roces que ahora deslizan. Al rozar una fachada el coche prueba desviaciones de 15-60 grados (longitud * cos) y se alinea un poco con la pared, perdiendo velocidad segun el angulo; solo un choque casi frontal lo para. Si el giro no cabe en ninguna fraccion, prueba el giro completo separando el coche 1-3 unidades de la pared (nunca atraviesa edificios).
 - Tests ajustados a la nueva semantica: `qa_traffic_v216.c` mide el avance a pie en espacio proyectado; `qa_controls_v218.c` comprueba la estabilidad del angulo filtrado. `qa_locomotion.c` ya fallaba antes de este cambio (linea 15, velocidad al terminar el sprint).
 - Nota: la partida de prueba aparece en x=46 (borde oeste del mapa); la banda de rayas con el disco claro que se ve alli es el fondo de montana del borde del mundo, no un error de render.
+
+### 26. Narcade 2.25 (Claude) — controlador a pie reescrito desde cero + coche en espacio de pantalla
+
+El jugador (con analogico real) seguia notando paradas, giros raros y direcciones distintas a la pulsada. Nueva prueba `tools/qa_foot_feel_v225.c` (palanca simulada como una persona: giros, ruido, pasos por el centro). Comparativa v2.24 -> v2.25: movimientos a contrasentido 0,34% -> 0,06%; atascos con camino libre 0,31% -> 0,01%; tirones del cuerpo 14715 -> ~660.
+
+Raices encontradas (todas se sumaban, casi todas propias del analogico):
+1. **Rumbo y camara realimentados**: con rumbo = camara + palanca en cada fotograma y la camara persiguiendo al personaje, cualquier diagonal producia circulos. Con el rumbo incremental en espacio mundo (v2.18-2.23) la palanca dejaba de coincidir con la pantalla.
+2. **Proyeccion del valle**: `geo_project` deforma mucho el mapa (en los pliegues de `geo_shape_z` cerca de los bordes, +y logico se ve a 163 grados). `geo_heading` y el antiguo `projectionScale` usan sondas de 4-5 unidades que cruzan los pliegues: saltos de rumbo y velocidad (paradas de un instante). Un rumbo fijo en espacio del mapa gira solo en pantalla en esas zonas (se probo: contrasentido 0,54%).
+3. **Paredes invisibles**: la caja 20x18 de los 30 terminales (el terminal visible es un cilindro de radio 5,5). Ahora es un circulo de radio 9,5.
+4. Magnitud del analogico: inclinaciones medias andaban a velocidad reducida; y pasar por el centro frenaba en seco (`foot_pace` exp(-7) -> exp(-4)).
+
+Nuevo modelo (`src/game.c`, bloque `if(g.car<0&&!g.inMetro)`):
+- `g.frameYaw` = marco de la palanca en pantalla. Palanca quieta -> marco fijo (la camara puede colocarse detras sin crear circulos). Al mover la palanca el marco se acerca a la camara en proporcion al cambio (k = |cambio|/0,6): todo cambio de direccion es relativo a lo que se ve.
+- Filtro de temblor: cambios <0,35 rad suavizados (~40 ms), mayores inmediatos.
+- Movimiento calculado en pantalla y pasado al mapa con `geo_unproject` (inversa exacta). Deslizamiento: desviaciones de 13 a 77 grados, longitud*cos. **Guia de pared** `g.wallGuide` (max 0,9 rad): al deslizar, el rumbo se dobla hacia la pared para no seguir empujando de frente contra el bordillo (las calles se curvan en pantalla).
+- Cuerpo `g.bodyYaw` = direccion real de avance, suavizado y limitado a 14 rad/s. Camara: sigue a `bodyYaw` con peso `cos(bodyYaw-viewYaw)*1.4-0.1` (de lado o hacia la camara no gira).
+- Palanca a >55% = velocidad completa (`mag`).
+- `proj_heading()`: rumbo en pantalla con sonda de 0,5. Usarla en lugar de `geo_heading` en codigo de control.
+
+Coche:
+- El giro se aplica en pantalla (`CAR_TURNED`): la misma presion gira lo mismo en todo el valle. Sin volante no se toca `c->a` (el coche sigue la calle).
+- La camara del coche sigue un rumbo suavizado (`g.carCamYaw`, ~0,2 s) medido con `proj_heading`: los pliegues ya no la hacen bailar. Velocidad media en la simulacion 64 -> 75.
+
+Tests actualizados a la nueva semantica: `qa_diagonal_v223.c` mide "hacia atras" en pantalla y no cuenta el borde del mundo; `qa_gait_v217.c` empieza dentro de la ciudad (desde x=62 una recta llega al borde del mundo). Todos pasan salvo `qa_locomotion.c`, que ya fallaba antes de v2.24.
+**No volver** a rumbo incremental en espacio mundo ni a `camara + palanca` sin marco congelado.

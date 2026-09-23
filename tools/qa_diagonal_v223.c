@@ -12,11 +12,14 @@ int main(void){
   float ax=dir&1?-.7f:.7f,ay=dir&2?.7f:-.7f;
   float previousX=g.x,previousY=g.y,initialX=g.x,initialY=g.y;
   for(int t=0;t<45;t++){
+   float p0x,p0z;physics_project(g.x,g.y,&p0x,&p0z);
    game_tick(0,ax,ay,1.f/60);
    float mx=g.x-previousX,my=g.y-previousY;
-   float wantX=cosf(g.moveYaw),wantY=sinf(g.moveYaw);
-   if(mx*wantX+my*wantY<-.05f)backwards++;
-   if(hypotf(mx,my)<.001f){stalls++;if(t<10)blocked++;}
+   /* v2.25 (Claude): "hacia atras" se mide en pantalla (espacio proyectado),
+      que es donde el controlador calcula el rumbo. */
+   float p1x,p1z;physics_project(g.x,g.y,&p1x,&p1z);float dirP=g.frameYaw+g.stickAngle+g.wallGuide;
+   if((p1x-p0x)*cosf(dirP)+(p1z-p0z)*sinf(dirP)<-.05f)backwards++;
+   if(hypotf(mx,my)<.001f&&g.x>20&&g.x<WORLD_W-20){stalls++;if(t<10)blocked++;}
    previousX=g.x;previousY=g.y;
   }
   paths++;

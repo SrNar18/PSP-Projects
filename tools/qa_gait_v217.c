@@ -18,7 +18,9 @@ static float run_segment(unsigned buttons,int frames){
 }
 int main(void){
     game_init();fresh_game();g.screen=WORLD;
-    g.x=62;g.y=970;
+    /* v2.25 (Claude): el control va en espacio de pantalla; desde x=62 una linea recta
+       llega al borde del mundo en 5 s. Se prueba dentro de la ciudad. */
+    g.x=1002;g.y=1060;
     g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
     for(int i=0;i<CAR_COUNT;i++){g.cars[i].x=-1000-i*100;g.cars[i].y=-1000;g.cars[i].parked=1;g.cars[i].police=0;}
     float walk=run_segment(0,150);

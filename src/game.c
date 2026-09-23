@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw;int carCamInit;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -158,6 +158,10 @@ static float logical_heading_from_projected(float x,float y,float angle){
  physics_unproject(gx+cosf(angle)*.5f,gz+sinf(angle)*.5f,&tx,&ty); /* v2.24: sonda corta = direccion local exacta */
  return atan2f(ty-y,tx-x);
 }
+/* v2.25: rumbo en pantalla con sonda corta (geo_heading usa 4 unidades y falla en los pliegues). */
+static float proj_heading(float x,float y,float angle){
+ float a,b,c,d;physics_project(x,y,&a,&b);physics_project(x+cosf(angle)*.5f,y+sinf(angle)*.5f,&c,&d);return atan2f(d-b,c-a);
+}
 /* v2.6: escaleras y anden del Metro. Arriba solo se puede estar sobre el anden o la escalera; no hay saltos bruscos. */
 static int lift_ok(float x,float y){
  int up=g.lift>15;float nl=cm_lift(x,y,up);
@@ -171,7 +175,8 @@ static int foot_free(float x,float y){
   const Car *c=&g.cars[i];float px,py,cx,cy;physics_project(x,y,&px,&py);physics_project(c->x,c->y,&cx,&cy);float dx=px-cx,dy=py-cy;if(fabsf(dx)>27||fabsf(dy)>27)continue;
   float angle=physics_heading(c),ca=cosf(angle),sa=sinf(angle);if(fabsf(dx*ca+dy*sa)<22&&fabsf(-dx*sa+dy*ca)<13)return 0;
  }
- for(int i=0;i<30;i++)if(fabsf(x-(locations[i].x+18))<10&&fabsf(y-locations[i].y)<9)return 0;
+ /* v2.25: el terminal visible es un cilindro de radio 5.5; la caja de 20x18 era una pared invisible. */
+ for(int i=0;i<30;i++){float tx=x-(locations[i].x+18),ty=y-locations[i].y;if(tx*tx+ty*ty<9.5f*9.5f)return 0;}
  return 1;
 }
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
@@ -531,7 +536,7 @@ static void enter_exit(void){
 }
 static void foot_pace(int moving,float dt){
  g.tapAge+=dt;g.sprintTime=fmaxf(0,g.sprintTime-dt);
- if(!moving){g.moveGap+=dt;g.footSpeed*=expf(-dt*7);if(g.moveGap>.38f){g.runTaps=0;g.tapAge=10;g.sprintTime=0;}return;}
+ if(!moving){g.moveGap+=dt;g.footSpeed*=expf(-dt*4); /* v2.25: pasar la palanca por el centro no frena en seco */if(g.moveGap>.38f){g.runTaps=0;g.tapAge=10;g.sprintTime=0;}return;}
  g.moveGap=0;
  if(pressed(B_CROSS)){
   /* Once running, an irregular tap renews the sprint directly. Previously
@@ -625,84 +630,81 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
 #endif
  if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
- if(g.car<0&&!g.inMetro){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
-#ifdef NARCADE_3D
-  float sx=dx,sy=dy;
-  float rawStick=hypotf(sx,sy);
-  if(rawStick>.24f)g.stickActive=1;else if(rawStick<.12f)g.stickActive=0;
-  if(!g.stickActive)sx=sy=0;
-  else{float amount=clampf((rawStick-.10f)/.90f,0,1);
-       sx=sx/fmaxf(rawStick,.001f)*amount;sy=sy/fmaxf(rawStick,.001f)*amount;}
-  float inputLength=hypotf(sx,sy);
-  if(inputLength>.2f){
-   /* v2.24 (Claude): movimiento SIEMPRE relativo a la camara actual. La
-      direccion de la palanca es la direccion en pantalla, en cada fotograma.
-      El rumbo acumulado en espacio mundo (v2.18-v2.23) se desalineaba de la
-      pantalla en cuanto la camara giraba (error medio simulado: 84 grados), y
-      el personaje parecia chocar con paredes invisibles al girar. */
-   float stickAngle=atan2f(sx,-sy);
-   /* Filtro corto (~40 ms) del angulo: quita el temblor del analogico de la
-      PSP sin retrasar un giro deliberado. */
-   {float d=angle_delta(stickAngle,g.stickAngle);
-    if(!g.moveActive||fabsf(d)>.35f)g.stickAngle=stickAngle; /* giro deliberado: inmediato */
-    else g.stickAngle+=d*(1-expf(-dt*25));}
-   stickAngle=g.stickAngle;
-   g.inputYaw=logical_heading_from_projected(g.x,g.y,g.viewYaw+stickAngle);
-   float wantYaw=g.inputYaw;
-   /* Movement follows the requested direction immediately at every gait.
-      Only the visible body and camera are smoothed; neither steers the feet. */
-   g.moveYaw=wantYaw;g.moveActive=1;
-   dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
-  }else g.moveActive=0;
-#endif
-  float n=sqrtf(dx*dx+dy*dy);g.walking=n>.1f;foot_pace(g.walking,dt);if(n>.1f){
-#ifndef NARCADE_3D
-  dx/=fmaxf(1,n);dy/=fmaxf(1,n);
-#endif
-  g.a=atan2f(dy,dx);float speed=g.footSpeed;
-  float originX=g.x,originY=g.y,beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
-  float lookX=g.x+dx*4,lookY=g.y+dy*4,lookPX,lookPY;
-  physics_project(lookX,lookY,&lookPX,&lookPY);
-  float projectionScale=hypotf(lookPX-beforeX,lookPY-beforeY)/4;
-  float grade=(geo_height(lookX,lookY)-geo_height(g.x,g.y))/4;
-  speed/=clampf(projectionScale,.55f,1.85f)*sqrtf(1+fminf(grade*grade,.35f));
-  /* Sweep short steps through the collision map. A long frame or a sprint
-     must not jump over the narrow frontage of a building. */
-  float mx=dx*speed*dt,my=dy*speed*dt;
-  int steps=(int)ceilf(fmaxf(fabsf(mx),fabsf(my))/4.f);if(steps<1)steps=1;
-  for(int step=0;step<steps;step++){
-   float tx=g.x+mx/steps,ty=g.y+my/steps;
-   if(foot_free(tx,ty)&&lift_ok(tx,ty)){g.x=tx;g.y=ty;}
+ if(g.car<0&&!g.inMetro){
+  /* v2.25 (Claude): controlador a pie reescrito desde cero. Todo se calcula en
+     el espacio que se ve (proyectado), y se pasa al mapa con geo_unproject, que
+     es la inversa exacta: sin sondas ni factores de escala que den tirones al
+     cruzar las calles este-oeste.
+     Marco de entrada: la palanca se interpreta respecto a g.frameYaw. Con la
+     palanca quieta el marco queda fijo, asi la camara puede colocarse detras
+     sin torcer el rumbo (sin circulos en diagonal). Cuando el jugador mueve la
+     palanca, el marco se acerca a la camara en proporcion a cuanto la movio:
+     cada cambio de direccion es relativo a lo que se ve en pantalla. */
+  float sx=ax+(held(B_RIGHT)-held(B_LEFT)),sy=ay+(held(B_DOWN)-held(B_UP));
+  float raw=hypotf(sx,sy);
+  if(raw>.22f)g.stickActive=1;else if(raw<.14f)g.stickActive=0;
+  float mag=0;
+  if(g.stickActive){
+   float ang=atan2f(sx,-sy);
+   if(!g.moveActive){g.stickAngle=ang;g.frameYaw=g.viewYaw;g.wallGuide=0;}
    else{
-    /* Both slide candidates use the same logical space as the city collision. */
-    float oldX=g.x,oldY=g.y;
-    if(foot_free(tx,g.y)&&lift_ok(tx,g.y))g.x=tx;
-    if(foot_free(g.x,ty)&&lift_ok(g.x,ty))g.y=ty;
-    if(g.x==oldX&&g.y==oldY){
-     /* A diagonal frontage can block both axis candidates even where a
-        forward tangent is open. Try the nearest forward directions only. */
-     float stepX=mx/steps,stepY=my/steps;
-     for(int k=1;k<=5&&g.x==oldX&&g.y==oldY;k++)for(int side=-1;side<=1;side+=2){
-      float a=side*k*(PI/12.f),ca=cosf(a),sa=sinf(a);
-      float nx=oldX+stepX*ca-stepY*sa,ny=oldY+stepX*sa+stepY*ca;
-      if(foot_free(nx,ny)&&lift_ok(nx,ny)){g.x=nx;g.y=ny;break;}
-     }
-    }
+    float d=angle_delta(ang,g.stickAngle);
+    float step=fabsf(d)>.35f?d:d*(1-expf(-dt*25)); /* temblor fuera, giro deliberado inmediato */
+    g.stickAngle+=step;
+    float k=clampf(fabsf(step)/.6f,0,1);
+    g.frameYaw+=angle_delta(g.viewYaw,g.frameYaw)*k;g.wallGuide*=1-k;
    }
+   /* Palanca a mas de ~55% = velocidad completa; la cruceta siempre lo es. */
+   mag=.4f+.6f*clampf((fminf(raw,1)-.22f)/.33f,0,1);
+   g.moveActive=1;
+  }else{g.moveActive=0;g.frameYaw=g.viewYaw;}
+  float dirP=g.frameYaw+g.stickAngle+g.wallGuide;
+  g.walking=g.moveActive;foot_pace(g.walking,dt);
+  float bx,bz;physics_project(g.x,g.y,&bx,&bz);
+  if(g.moveActive){
+   g.inputYaw=g.moveYaw=logical_heading_from_projected(g.x,g.y,dirP);
+   float speed=g.footSpeed*mag;
+   {float lx,lz;physics_unproject(bx+cosf(dirP)*4,bz+sinf(dirP)*4,&lx,&lz);
+    float grade=(geo_height(lx,lz)-geo_height(g.x,g.y))/4;speed/=sqrtf(1+fminf(grade*grade,.35f));}
+   /* Barrido en pasos cortos. Si el paso choca, se prueban desviaciones de
+      13 a 77 grados a ambos lados con longitud * cos: deslizamiento suave y
+      proporcional a lo que se empuja contra la pared, nunca hacia atras. */
+   float dist=speed*dt,px=bx,pz=bz,slideOff=0;
+   int steps=(int)ceilf(dist/3.f);if(steps<1)steps=1;float seg=dist/steps;
+   for(int s=0;s<steps;s++){
+    int moved=0;
+    for(int k=0;k<=6&&!moved;k++)for(int sd=-1;sd<=1&&!moved;sd+=2){
+     if(!k&&sd<0)continue;
+     float off=sd*k*(PI/14.f),len=seg*cosf(off),nx,nz;
+     physics_unproject(px+cosf(dirP+off)*len,pz+sinf(dirP+off)*len,&nx,&nz);
+     if(foot_free(nx,nz)&&lift_ok(nx,nz)){g.x=nx;g.y=nz;physics_project(g.x,g.y,&px,&pz);moved=1;slideOff=off;}
+    }
+    if(!moved)break;
+   }
+   /* Guia de pared: al deslizar, el rumbo pedido se dobla (max. 0,9 rad) hacia
+      la pared que se recorre, para no seguir empujando de frente contra ella. */
+   if(slideOff!=0){
+    float turn=slideOff*(1-expf(-dt*6)),room=.9f-fabsf(g.wallGuide);
+    if(room>0)g.wallGuide+=clampf(turn,-room,room);
+   }
+   g.lift=cm_lift(g.x,g.y,g.lift>15);
   }
-  g.lift=cm_lift(g.x,g.y,g.lift>15);
-  if(hypotf(g.x-originX,g.y-originY)>.02f)g.a=atan2f(g.y-originY,g.x-originX);
-  float afterX,afterY;physics_project(g.x,g.y,&afterX,&afterY);
-  g.footTravel=hypotf(afterX-beforeX,afterY-beforeY);
+  float ax2,az2;physics_project(g.x,g.y,&ax2,&az2);
+  float mvx=ax2-bx,mvz=az2-bz;g.footTravel=hypotf(mvx,mvz);
+  /* Cuerpo: mira hacia donde realmente avanza (o a donde se pide si esta
+     parado contra algo), girando rapido pero sin saltos de un fotograma. */
+  if(g.moveActive){
+   float target=g.footTravel>.05f?atan2f(mvz,mvx):dirP;
+   g.bodyYaw+=clampf(angle_delta(target,g.bodyYaw)*(1-expf(-dt*18)),-14*dt,14*dt);
+   g.a=logical_heading_from_projected(g.x,g.y,g.bodyYaw);
+  }else g.bodyYaw=proj_heading(g.x,g.y,g.a);
 #ifdef NARCADE_3D
-   /* La camara solo se coloca detras cuando se avanza hacia delante; de lado
-     gira muy poco y hacia atras nada, asi la palanca no produce circulos. */
-  if(inputLength>.29f&&g.footTravel>.05f){
+  /* La camara se coloca detras solo al avanzar; de lado o hacia atras no gira. */
+  if(g.moveActive&&g.footTravel>.05f){
    float fw=clampf(cosf(g.stickAngle)*1.4f-.1f,0,1);
-   if(fw>0){g.followScale=fw;camera_follow(geo_heading(g.x,g.y,g.a),dt);g.followScale=1;}
+   if(fw>0){g.followScale=fw;camera_follow(g.bodyYaw,dt);g.followScale=1;}
   }
 #endif
-  }
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
   foot_pace(0,dt);
   Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
@@ -714,13 +716,18 @@ static void world_tick(float ax,float ay,float dt){
   /* Steering belongs solely to the player; traffic routes never set this car's heading. */
   float grip=clampf((fabsf(c->speed)+8)/24,0,1);
   float turn=g.steerSmooth*dt*(2.45f/(1.f+fabsf(c->speed)/360.f))*(c->speed<0?-1:1)*grip;
-  c->a=oldAngle+turn;
+  /* v2.25 (Claude): el giro se aplica en pantalla (espacio proyectado): la misma
+     presion del volante gira lo mismo en cualquier zona del valle. En espacio
+     del mapa, las zonas deformadas giraban mucho mas o mucho menos. */
+  float h0=proj_heading(c->x,c->y,oldAngle);
+#define CAR_TURNED(px,py,f) (turn==0?oldAngle:logical_heading_from_projected((px),(py),h0+turn*(f)))
+  c->a=CAR_TURNED(c->x,c->y,1);
   if(!car_free_at(c,c->x,c->y)){
    /* Near a facade, keep the largest steering angle that still fits.
       Reverting the whole turn made the wheel appear unresponsive. */
    float lo=0,hi=1;
-   for(int k=0;k<5;k++){float mid=(lo+hi)*.5f;c->a=oldAngle+turn*mid;if(car_free_at(c,c->x,c->y))lo=mid;else hi=mid;}
-   c->a=oldAngle+turn*lo;
+   for(int k=0;k<5;k++){float mid=(lo+hi)*.5f;c->a=CAR_TURNED(c->x,c->y,mid);if(car_free_at(c,c->x,c->y))lo=mid;else hi=mid;}
+   c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;
    /* v2.24 (Claude): pegado a una pared el giro quedaba bloqueado del todo.
       Si no cabe ninguna fraccion, se prueba el giro completo separando el
       coche 1-3 unidades de la pared (nunca atraviesa edificios). */
@@ -728,9 +735,9 @@ static void world_tick(float ax,float ay,float dt){
     int done=0;
     for(float r=1.f;r<=3.f&&!done;r+=1.f)for(int k=0;k<8&&!done;k++){
      float oa=k*(PI*.25f),ox=c->x+cosf(oa)*r,oy=c->y+sinf(oa)*r;
-     c->a=oldAngle+turn;if(car_free_at(c,ox,oy)){c->x=ox;c->y=oy;done=1;}
+     c->a=CAR_TURNED(ox,oy,1);if(car_free_at(c,ox,oy)){c->x=ox;c->y=oy;done=1;}
     }
-    if(!done)c->a=oldAngle+turn*lo;
+    if(!done)c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;
    }
   }
   /* Sweep along the same logical road coordinates as collision and traffic.
@@ -756,6 +763,7 @@ static void world_tick(float ax,float ay,float dt){
    }
    {float impact=fabsf(c->speed);c->hp-=impact*.025f;c->speed=impact>65?-c->speed*.13f:0;g.hitCD=.12f;break;}
   }
+#undef CAR_TURNED
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
@@ -791,8 +799,16 @@ static void world_tick(float ax,float ay,float dt){
  city_audio_update();
  metro_update(dt);
 #ifdef NARCADE_3D
- if(g.car>=0)camera_follow(physics_heading(&g.cars[g.car]),dt);
- else if(!g.walking)g.cameraVelocity=0;
+ /* v2.25 (Claude): la camara del coche sigue un rumbo suavizado (~0,2 s) y medido
+    con sonda corta: las curvas de las calles en los pliegues del valle y los saltos
+    de geo_heading (sonda de 4) ya no la hacen bailar. Los giros reales se siguen. */
+ if(g.car>=0){
+  float h=proj_heading(g.cars[g.car].x,g.cars[g.car].y,g.cars[g.car].a);
+  if(!g.carCamInit){g.carCamYaw=h;g.carCamInit=1;}
+  else g.carCamYaw+=angle_delta(h,g.carCamYaw)*(1-expf(-dt*5));
+  camera_follow(g.carCamYaw,dt);
+ }else g.carCamInit=0;
+ if(g.car<0&&!g.walking)g.cameraVelocity=0;
  camera_clearance(dt);
 #endif
  for(int i=0;i<42;i++){Ped *p=&g.peds[i];p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;}
