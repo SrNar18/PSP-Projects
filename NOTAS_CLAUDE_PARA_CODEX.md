@@ -632,3 +632,4 @@ Cambios:
 - dt hasta 0,1 s (antes 0,05): sin camara lenta a pocos fps. vcount hasta 6 refrescos.
 - Memoria: 17,86 MB estaticos (+1 MB heap). No subir `CITY_CACHE_BYTES` sin revisar el limite de ~20 MB.
 - La grabadora ahora guarda tambien tiempos por etapa (tick, ciudad, resto de geometria, GE, HUD, espera) en unidades de 10 us: 20 bytes por muestra.
+- Calibracion automatica del centro del joystick (g.calX/calY), aprendida mientras no se empuja; en la consola del jugador el reposo es (-0,053,-0,102).

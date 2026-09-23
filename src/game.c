@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2],camBase,camClear;int carCamInit,carYawOwner;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2],camBase,camClear,calX,calY;int carCamInit,carYawOwner;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -673,6 +673,12 @@ static void world_tick(float ax,float ay,float dt){
      lectura suelta disparada (pico de un fotograma, habitual en las palancas de
      PSP) ya no mueve al personaje; los cambios reales pasan con 1 fotograma de
      retraso. La cruceta no pasa por aqui. */
+  /* v2.31 (Claude): calibracion automatica del centro. La grabacion de la consola del
+     jugador mostro la palanca en reposo en (121,115) y no en (128,128): una desviacion
+     de 0,11, casi el umbral de parada. Mientras no se empuja, el centro se aprende
+     poco a poco y se descuenta. */
+  if(!g.stickActive&&hypotf(ax-g.calX,ay-g.calY)<.22f){float k=1-expf(-dt*1.5f);g.calX+=(ax-g.calX)*k;g.calY+=(ay-g.calY)*k;}
+  ax-=g.calX;ay-=g.calY;
   {float mx=ax,my=ay;
    #define MED3(a,b,c) fmaxf(fminf(a,b),fminf(fmaxf(a,b),c))
    ax=MED3(mx,g.stickHX[0],g.stickHX[1]);ay=MED3(my,g.stickHY[0],g.stickHY[1]);
@@ -911,7 +917,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   /* v2.29: a pie el mundo aplica su propio margen (ver world_tick); fuera del mundo
      o en coche se mantiene la zona muerta radial. */
   if(r<.18f&&!(g.screen==WORLD&&g.car<0))ax=ay=0;
-  else if(r<.10f)ax=ay=0;}
+  }
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE){
   g.weaponWheel=0;g.weaponHold=0;
