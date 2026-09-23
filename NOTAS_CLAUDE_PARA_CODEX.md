@@ -593,3 +593,11 @@ Coche del jugador:
 - Ahora el coche del jugador avanza recto en pantalla con `g.carScreenYaw` (solo cambia al girar; sin deriva de conversion). Deslizamiento con biseccion sin girar el morro. Atascos en la simulacion 1740 -> 1233.
 - Los coches NPC siguen con su logica de carriles y semaforos sin cambios.
 - `qa_controls_v218.c`: la prueba de coche recto comprueba rumbo constante en pantalla.
+
+### 29. Narcade 2.28 (Claude) — la camara vuelve a seguir el joystick; sin tirones de velocidad
+
+Pedido del jugador: la camara debe girar siguiendo hacia donde se mueve con el joystick (como antes), tambien de lado.
+- Modelo a pie: direccion = `viewYaw + stickAngle` en cada fotograma (se quitaron el marco congelado, el ancla y la guia de pared de v2.25-2.27). La camara sigue a `bodyYaw` con peso `clamp(cos(stick)*1.3+1,0,1)`: delante y a los lados sigue del todo (palanca a un lado = personaje y camara giran juntos, estilo GTA de PSP); hacia atras no gira.
+- Tirones propios del joystick (`tools/qa_joystick_feel_v228.c`, pulgar realista que no empuja a tope y varia la presion): la velocidad dependia de la inclinacion, y la presion variable aceleraba y frenaba a golpes (3-7 veces mas que con la cruceta). Ahora la palanca solo decide la direccion; la velocidad es completa como con la cruceta (andar/trotar/correr siguen con X). Resultado: joystick = cruceta en velocidad, cuerpo y camara.
+- Se mantiene el filtro del angulo (cambios <0,1 rad a 5/s, medianos a 25/s, >0,35 inmediatos).
+- `qa_controls_v218.c`: con la palanca a un lado ahora se comprueba que la camara gira (>0,3 rad en 1 s).

@@ -647,32 +647,27 @@ static void world_tick(float ax,float ay,float dt){
   float sx=ax+(held(B_RIGHT)-held(B_LEFT)),sy=ay+(held(B_DOWN)-held(B_UP));
   float raw=hypotf(sx,sy);
   if(raw>.22f)g.stickActive=1;else if(raw<.14f)g.stickActive=0;
+  /* v2.28 (Claude): modelo pedido por el jugador: la direccion es SIEMPRE
+     "camara + palanca" y la camara sigue al movimiento (tambien hacia los lados),
+     asi que al mantener la palanca a un lado el personaje y la camara van girando
+     juntos. Solo al caminar hacia la camara (palanca atras) la camara no gira.
+     La palanca decide la direccion; la velocidad es completa como con la cruceta:
+     la presion variable del pulgar hacia acelerar y frenar a golpes (medido: 3-7
+     veces mas tirones de velocidad que con la cruceta). */
   float mag=0;
   if(g.stickActive){
    float ang=atan2f(sx,-sy);
-   if(!g.moveActive){g.stickAngle=g.stickAnchor=ang;g.frameYaw=g.viewYaw;g.wallGuide=0;}
+   if(!g.moveActive)g.stickAngle=ang;
    else{
     float d=angle_delta(ang,g.stickAngle);
     /* temblor fuera (cambios diminutos muy filtrados), giro deliberado inmediato */
     float rate=fabsf(d)<.10f?5.f:25.f;
-    float step=fabsf(d)>.35f?d:d*(1-expf(-dt*rate));
-    g.stickAngle+=step;
-    /* v2.27 (Claude): el marco solo se acerca a la camara cuando la palanca se
-       aleja mas de 0,2 rad (11 grados) de donde estaba anclada. El temblor del
-       pulgar en el analogico movia el marco un poco cada fotograma y, con la camara
-       persiguiendo al personaje, el rumbo giraba solo (en diagonal 4 veces mas que
-       con la cruceta). Ahora el ruido no toca el marco, igual que con la cruceta. */
-    float dev=angle_delta(g.stickAngle,g.stickAnchor);
-    if(fabsf(dev)>.20f){
-     float excess=dev-(dev>0?.20f:-.20f),k=clampf(fabsf(excess)/.6f,0,1);
-     g.frameYaw+=angle_delta(g.viewYaw,g.frameYaw)*k;g.wallGuide*=1-k;g.stickAnchor+=excess;
-    }
+    g.stickAngle+=fabsf(d)>.35f?d:d*(1-expf(-dt*rate));
    }
-   /* Palanca a mas de ~55% = velocidad completa; la cruceta siempre lo es. */
-   mag=.4f+.6f*clampf((fminf(raw,1)-.22f)/.33f,0,1);
-   g.moveActive=1;
-  }else{g.moveActive=0;g.frameYaw=g.viewYaw;}
-  float dirP=g.frameYaw+g.stickAngle+g.wallGuide;
+   mag=1;g.moveActive=1;
+  }else g.moveActive=0;
+  g.frameYaw=g.viewYaw;g.wallGuide=0;g.stickAnchor=g.stickAngle;
+  float dirP=g.viewYaw+g.stickAngle;
   g.walking=g.moveActive;foot_pace(g.walking,dt);
   float bx,bz;physics_project(g.x,g.y,&bx,&bz);
   if(g.moveActive){
@@ -704,12 +699,7 @@ static void world_tick(float ax,float ay,float dt){
 #undef FOOT_TRY
     if(!moved)break;
    }
-   /* Guia de pared: al deslizar, el rumbo pedido se dobla (max. 0,9 rad) hacia
-      la pared que se recorre, para no seguir empujando de frente contra ella. */
-   if(slideOff!=0){
-    float turn=slideOff*(1-expf(-dt*6)),room=.9f-fabsf(g.wallGuide);
-    if(room>0)g.wallGuide+=clampf(turn,-room,room);
-   }
+   (void)slideOff; /* v2.28: la camara sigue al deslizamiento; ya no hace falta guia */
    g.lift=cm_lift(g.x,g.y,g.lift>15);
   }
   float ax2,az2;physics_project(g.x,g.y,&ax2,&az2);
@@ -724,7 +714,8 @@ static void world_tick(float ax,float ay,float dt){
 #ifdef NARCADE_3D
   /* La camara se coloca detras solo al avanzar; de lado o hacia atras no gira. */
   if(g.moveActive&&g.footTravel>.05f){
-   float fw=clampf(cosf(g.stickAngle)*1.4f-.1f,0,1);
+   /* delante y a los lados la camara sigue del todo; hacia atras deja de girar */
+   float fw=clampf(cosf(g.stickAngle)*1.3f+1.f,0,1);
    if(fw>0){g.followScale=fw;camera_follow(g.bodyYaw,dt);g.followScale=1;}
   }
 #endif

@@ -18,9 +18,11 @@ static void foot_turn(int pace,int sprint){
  if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);
  assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),headingBefore+PI*.5f))<.12f);
  for(int i=1;i<70;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
- float settled=g.moveYaw,px=g.x,py=g.y;
+ /* v2.28 (Claude): a peticion del jugador la camara sigue tambien el movimiento
+    lateral: con la palanca a un lado personaje y camara giran juntos. */
+ float settled=g.moveYaw,px=g.x,py=g.y,view0=g.viewYaw;
  for(int i=0;i<60;i++){if(sprint){g.sprintTime=10;g.stamina=100;}game_tick(pace,1,0,1.f/60);}
- assert(fabsf(angle_delta(g.moveYaw,settled))<.03f);
+ assert(fabsf(angle_delta(g.viewYaw,view0))>.3f);
  fprintf(stderr,"foot motion: %.1f,%.1f -> %.1f,%.1f; speed %.1f\n",px,py,g.x,g.y,g.footSpeed);
  assert(hypotf(g.x-px,g.y-py)>18.f);
  printf("foot pace %d sprint %d: held turn stable at %.2f rad, camera %.2f rad\n",pace,sprint,settled,g.viewYaw);
@@ -49,9 +51,9 @@ int main(void){
  g.x=900;g.y=962;g.viewYaw=geo_heading(g.x,g.y,PI*.5f);
  for(int i=0;i<50;i++)game_tick(B_CROSS,0,-1,1.f/60);
  for(int i=0;i<45;i++)game_tick(B_CROSS,1,0,1.f/60);
- float headingBefore=geo_heading(g.x,g.y,g.moveYaw);
+ float headingBefore=proj_heading(g.x,g.y,g.moveYaw);
  game_tick(B_CROSS,0,-1,1.f/60);
- assert(fabsf(angle_delta(geo_heading(g.x,g.y,g.moveYaw),headingBefore-PI*.5f))<.2f);
+ assert(fabsf(angle_delta(proj_heading(g.x,g.y,g.moveYaw),headingBefore-PI*.5f))<.2f);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;Car *c=&g.cars[g.car];c->x=1002;c->y=1002;c->a=0;c->speed=0;c->parked=0;c->hp=100;
  assert(car_free_at(c,c->x,c->y));
