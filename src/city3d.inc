@@ -78,6 +78,7 @@ static void garden(float x,float z,float w,float d,unsigned h,int far){
 }
 /* Semaforo en una esquina de manzana. */
 static void traffic_light(float x,float z,float angle){
+    if(cacheRec){RecHdr h={3,0,0,0};cache_put(&h,4);float q[3]={x,z,angle};cache_put(q,sizeof q);return;} /* dinamico: se dibuja en vivo */
     box(x,z,0,1.2f,1.2f,28,angle,CAR_PAINT,CAR_PAINT,COLOR(70,74,76));
     box(x,z,22,3,3,9,angle,CAR_PAINT,CAR_PAINT,COLOR(40,40,40));
     int bx=(int)floorf(x/320),bz=(int)floorf(z/320);

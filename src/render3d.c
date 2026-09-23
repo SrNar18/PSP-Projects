@@ -31,6 +31,29 @@ typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;
 typedef struct { float x,y,z; } Point;
 static Vertex __attribute__((aligned(16))) mesh[MAT_COUNT][MAX_VERTICES];
 static int used[MAT_COUNT];
+/* v2.31 (Claude): CACHE DE LA CIUDAD. Medido en la consola real (grabadora v2.29): el juego
+   iba a ~9 fps porque cada fotograma se reconstruia en la CPU toda la ciudad visible
+   (el 54% del tiempo de dibujo; la logica apenas cuenta). Ahora cada manzana se construye
+   una vez por nivel de detalle y se guarda ya proyectada; cada fotograma solo se
+   recorta y se envia. Los semaforos se guardan como "dinamicos" (se dibujan en vivo) y
+   las manzanas se reconstruyen de una en una para seguir la luz del ciclo dia/noche.
+   Si el espacio se agota, esa manzana se dibuja como antes (nunca falta nada). */
+#ifndef CITY_CACHE_BYTES
+#define CITY_CACHE_BYTES (2u*1024u*1024u) /* 2 MB: pico medido 1,8 MB recorriendo toda la ciudad; limite de RAM ~20 MB */
+#endif
+typedef struct{unsigned char kind,mat,count,lit;}RecHdr; /* kind: 0 poligono, 1 luz, 2 sombra, 3 semaforo */
+typedef struct{unsigned off,len;float day;int valid;unsigned chunk0,nchunks;}CellCache;
+typedef struct{unsigned off,len;float x,y,z,r;}CacheChunk; /* trozo de ~100 vertices con esfera envolvente (off relativo a la manzana) */
+#define CHUNK_MAX 7000
+static CacheChunk chunkPool[CHUNK_MAX];static unsigned chunkUsed;
+static int noClip; /* v2.31: el trozo entero cae dentro de la vista: sin pruebas de recorte */
+static unsigned char __attribute__((aligned(16))) cachePool[CITY_CACHE_BYTES];
+static unsigned cacheUsed;static int cacheRec,recFail;static float recDist,recRange;
+static CellCache cellCache[64][3]; /* 56 manzanas + 7 tramos de rio/Metro */
+static void cache_put(const void *p,unsigned n){
+    if(recFail)return;if(cacheUsed+n>CITY_CACHE_BYTES){recFail=1;return;}
+    memcpy(cachePool+cacheUsed,p,n);cacheUsed+=n;
+}
 #ifndef R3_HOST
 static unsigned int __attribute__((aligned(16))) commands[65536];
 extern const unsigned char textures3d_data[];
@@ -122,6 +145,7 @@ static void rigid_cache(void){
         rigBZ=point(forward.x*os+right.x*oc,forward.y*os+right.y*oc,forward.z*os+right.z*oc);rigBY=up;
     }
 }
+static void polygon_emit(int mat,Vertex *input,int count,int lit);
 static void polygon(int mat,Vertex *input,int count){
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     if(geographic)for(int i=0;i<count;i++){
@@ -136,11 +160,16 @@ static void polygon(int mat,Vertex *input,int count){
             }else{v->x=rigGX+rigCos*dx-rigSin*dz;v->z=rigGZ+rigSin*dx+rigCos*dz;v->y+=rigH;}
         }else{geo_project(v->x,v->z,&gx,&gz);v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
     }
+    if(cacheRec){RecHdr h={0,(unsigned char)mat,(unsigned char)count,(unsigned char)litAlready};cache_put(&h,4);cache_put(buffers[0],count*sizeof(Vertex));return;}
+    polygon_emit(mat,buffers[0],count,litAlready);
+}
+static void polygon_emit(int mat,Vertex *input,int count,int lit){
+    Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     /* PSP rejects large triangles crossing its near/guard planes. Clip in
        world space before submission, including UV interpolation at cuts.
        Optimizacion (Claude): primero una prueba trivial por plano; si todos los vertices quedan fuera de un plano se
        descarta el poligono entero, y solo se recorta contra los planos que realmente cruza. */
-    if(clipEnabled&&count>=3){
+    if(clipEnabled&&!noClip&&count>=3){
         unsigned crossing=0;
         for(int k=0;k<6;k++){
             int inside=0;
@@ -161,7 +190,7 @@ static void polygon(int mat,Vertex *input,int count){
         }
     }
     if(count<3)return;
-    if(!litAlready)for(int j=0;j<count;j++)buffers[src][j].color=day_scale(buffers[src][j].color);
+    if(!lit)for(int j=0;j<count;j++)buffers[src][j].color=day_scale(buffers[src][j].color);
     int needed=(count-2)*3;
     if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
     Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;
@@ -169,16 +198,16 @@ static void polygon(int mat,Vertex *input,int count){
 }
 /* Optimizacion (Claude): descarte por esfera envolvente contra el frustum (en coordenadas proyectadas). */
 static int sphere_visible(float x,float z,float radius){
-    if(!clipEnabled)return 1; /* offline mesh export */
+    if(!clipEnabled||cacheRec)return 1; /* offline mesh export / grabacion de cache */
     float gx,gz;geo_project(x,z,&gx,&gz);float gy=geo_height(x,z)+radius*.4f;
     for(int k=0;k<6;k++)if(planes[k][0]*gx+planes[k][1]*gy+planes[k][2]*gz+planes[k][3]<-radius)return 0;
     return 1;
 }
-static float view_distance(float x,float z){float dx=x-view->x,dz=z-view->z;return sqrtf(dx*dx+dz*dz);}
+static float view_distance(float x,float z){if(cacheRec)return recDist;float dx=x-view->x,dz=z-view->z;return sqrtf(dx*dx+dz*dz);}
 /* Floors and roofs have an absolute elevation. Testing them with a sphere
    centred near the ground incorrectly removed middle/upper building sections. */
 static int volume_visible(float x,float z,float bottom,float top,float planRadius){
-    if(!clipEnabled)return 1;
+    if(!clipEnabled||cacheRec)return 1;
     float gx,gz;geo_project(x,z,&gx,&gz);
     float gy=(fixedGround>-999999?fixedGround:geo_height(x,z))+(bottom+top)*.5f;
     float r=hypotf(planRadius*2,(top-bottom)*.5f)+4;
@@ -264,7 +293,7 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
         }zz=endz;
     }
 }
-static int nearby(float x,float z,float range){float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
+static int nearby(float x,float z,float range){if(cacheRec)return range>=recRange;float dx=x-view->x,dz=z-view->z;return dx*dx+dz*dz<range*range;}
 static int park(int x,int z){return cm_park(x,z);}
 static int cityMid; /* LOD intermedio (definido en city3d.inc) */
 static void tree_shape(float x,float z,int kind,int simple); /* shapes.inc */
@@ -278,6 +307,7 @@ static void (*phaseFn2)(const char*)=0;
 static void r3_phase(const char *s){if(phaseFn2)phaseFn2(s);}
 static void (*traceFn2)(const char*)=0;static int *traceFrames2=0;
 static void r3_trace_cell(const char *s){if(traceFn2&&traceFrames2&&*traceFrames2>0)traceFn2(s);}
+static void fx_triangle(Vertex a,Vertex b,Vertex c,int shadow);static float dayT; /* v2.31: usados por la cache (definidos en daylight.inc) */
 #include "city3d.inc"
 #include "city26.inc"
 #include "shapes.inc"
@@ -291,7 +321,7 @@ static void car(const R3Car *c){
         COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
-    if(dist>380){ /* LOD lejano: dos cajas */
+    if(dist>170){ /* LOD lejano: dos cajas. v2.31: desde 170 (antes 380); de lejos ocupan pocos pixeles y los coches eran ~37% del dibujo */
         box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);return;
     }
     /* v2.7 (Claude): carrocerias por secciones (perfil lateral real: capo, parabrisas inclinado, techo, luneta,
@@ -767,12 +797,21 @@ static void horizon_build(void){
   v[9]=v[6];v[10]=v[8];v[11]=(Vertex){0,0,building,x0,top,z0};
  }
 }
+/* v2.30 (Claude): marcas de tiempo por etapa para medir en la consola real
+   (inicio, ciudad construida, resto de geometria, GE terminado). */
+unsigned r3ProfT[4];
+#ifndef R3_HOST
+#define R3PROF(i) (r3ProfT[i]=sceKernelGetSystemTimeLow())
+#else
+#define R3PROF(i) ((void)0)
+#endif
 void r3_draw(uint32_t *fb,const R3Scene *s){
+    R3PROF(0);
     TRACE("r3:inicio");
     view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
     TRACE("r3:camara");camera(s);
 #ifndef AB_NOCITY
-    TRACE("r3:ciudad");city();TRACE("r3:ciudad-ok");
+    TRACE("r3:ciudad");city();TRACE("r3:ciudad-ok");R3PROF(1);
 #endif
     TRACE("r3:coches");rigid=2;
 #ifndef AB_NOCARS
@@ -798,7 +837,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #endif
     geographic=0;
 #ifndef R3_HOST
-    TRACE("r3:ge-inicio");sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
+    R3PROF(2);TRACE("r3:ge-inicio");sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
     sceGuClearColor(skyColor);sceGuClearDepth(0);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
     sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuDisable(GU_BLEND);sceGuDisable(GU_LIGHTING);
@@ -844,7 +883,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     if(shadowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,shadowUsed,0,shadowMesh);}
     if(glowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_FIX,0,0xffffff);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,glowUsed,0,glowMesh);}
     sceGuDisable(GU_BLEND);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
-    sceGuFinish();sceGuSync(0,0);
+    sceGuFinish();sceGuSync(0,0);R3PROF(3);
     TRACE("r3:ge-fin");if(traceFrames>0)traceFrames--;
 #else
     (void)fb;

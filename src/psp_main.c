@@ -60,7 +60,10 @@ static int watchdog(SceSize a,void *v){(void)a;(void)v;
    ms0:/NARCADE_INPUT.ON: guarda por fotograma el tiempo (dt), Lx, Ly y botones
    (hasta 2 minutos, en RAM) y lo escribe en ms0:/NARCADE_INPUT.BIN al pulsar START
    o al llenarse. Permite reproducir en el PC la entrada real de la consola. */
-typedef struct{uint16_t dt10us;uint8_t lx,ly;uint32_t buttons;}InputSample;
+typedef struct{uint16_t dt10us;uint8_t lx,ly;uint32_t buttons;
+    uint16_t tick,city,geom,ge,hud,wait;}InputSample; /* v2.30: tiempos por etapa en unidades de 10 us */
+extern unsigned r3ProfT[4];
+static unsigned profTick,profDraw0,profDraw1,profWait0;
 #define INPUT_MAX 7200
 static InputSample inputLog[INPUT_MAX];static int inputOn=-1,inputCount=0,inputPrevStart=0,inputSaved=0;
 static void input_flush(void){
@@ -71,6 +74,12 @@ static void input_record(const SceCtrlData *pad,float dt){
     if(inputOn<0){SceUID t=sceIoOpen("ms0:/NARCADE_INPUT.ON",PSP_O_RDONLY,0);inputOn=t>=0;if(t>=0)sceIoClose(t);}
     if(!inputOn||inputSaved)return;
     if(inputCount<INPUT_MAX){InputSample *s=&inputLog[inputCount++];float v=dt*100000.f;s->dt10us=(uint16_t)(v>65535?65535:v);s->lx=pad->Lx;s->ly=pad->Ly;s->buttons=pad->Buttons;}
+    if(inputCount>1){InputSample *p=&inputLog[inputCount-2]; /* tiempos del fotograma anterior (ya completo) */
+#define T10(x) (uint16_t)((x)/10>65535?65535:(x)/10)
+        p->tick=T10(profTick);p->city=T10(r3ProfT[1]-r3ProfT[0]);p->geom=T10(r3ProfT[2]-r3ProfT[1]);p->ge=T10(r3ProfT[3]-r3ProfT[2]);
+        unsigned drawAll=profDraw1-profDraw0,r3=r3ProfT[3]-r3ProfT[0];p->hud=T10(drawAll>r3?drawAll-r3:0);p->wait=T10(sceKernelGetSystemTimeLow()-profWait0);
+#undef T10
+    }
     int start=(pad->Buttons&PSP_CTRL_START)!=0;
     if((start&&!inputPrevStart&&inputCount>60)||inputCount>=INPUT_MAX){input_flush();inputSaved=inputCount>=INPUT_MAX;}
     inputPrevStart=start;
@@ -180,10 +189,12 @@ int main(void){
     la zona es pesada, se fija un ritmo constante de 30 fps en vez de alternar 60/30. */
  unsigned lastV=sceDisplayGetVcount();float workAvg=0;int interval=1;
  while(running){SceCtrlData pad;sceCtrlPeekBufferPositive(&pad,1);uint64_t now=sceKernelGetSystemTimeWide();before=now;
-  unsigned vnow=sceDisplayGetVcount();int vf=(int)(vnow-lastV);if(vf<1)vf=1;if(vf>4)vf=4;lastV=vnow;float dt=vf/59.94f;
+  unsigned vnow=sceDisplayGetVcount();int vf=(int)(vnow-lastV);if(vf<1)vf=1;if(vf>6)vf=6;lastV=vnow;float dt=vf/59.94f;
   SceCtrlLatch latch;sceCtrlReadLatch(&latch);game_latch_cross(latch.uiMake);
   input_record(&pad,dt);
+  {unsigned t0=sceKernelGetSystemTimeLow();
   phase("tick");game_tick(pad.Buttons,((float)pad.Lx-128)/127,((float)pad.Ly-128)/127,dt);
+  profTick=sceKernelGetSystemTimeLow()-t0;}
   phase("draw");
   int req=game_take_request();if(req){handle_save_request(req,buffers,&index);sceCtrlReadLatch(&latch);before=sceKernelGetSystemTimeWide();lastV=sceDisplayGetVcount();postLoad=req==2?3:0;continue;}
   if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-tick",4-postLoad);dbg(m);}
@@ -191,7 +202,7 @@ int main(void){
   uint64_t p0=sceKernelGetSystemTimeWide();
 #endif
   if(postLoad>0){char m[32];snprintf(m,sizeof(m),"fotograma-%d-dibujado",4-postLoad);dbg(m);postLoad--;if(!postLoad)dbg("mundo-estable");}
-  game_draw(buffers[index],512);
+  profDraw0=sceKernelGetSystemTimeLow();game_draw(buffers[index],512);profDraw1=sceKernelGetSystemTimeLow();
 #ifdef NARCADE_PROFILE
   game_set_profile((sceKernelGetSystemTimeWide()-p0)/1000.0f);
 #endif
@@ -200,6 +211,7 @@ int main(void){
      el cambio despues, asi que redibujaba el buffer aun visible: parpadeo en la parte superior.) */
   {float work=(sceKernelGetSystemTimeWide()-before)/1000000.0f;workAvg+=(work-workAvg)*.08f;
    if(interval==1&&workAvg>.0150f)interval=2;else if(interval==2&&workAvg<.0115f)interval=1;}
+  profWait0=sceKernelGetSystemTimeLow();
   sceDisplaySetFrameBuf(buffers[index],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);sceDisplayWaitVblankStart();
   while((int)(sceDisplayGetVcount()-lastV)<interval)sceDisplayWaitVblankStart(); /* ritmo constante */
   index^=1;

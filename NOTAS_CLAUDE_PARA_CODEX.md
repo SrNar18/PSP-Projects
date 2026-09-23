@@ -619,3 +619,16 @@ Grabadora de diagnostico en `psp_main.c`: si existe `ms0:/NARCADE_INPUT.ON`, gua
 - Camara en cuestas (`camera_heights`, `tools/qa_slope_v230.c`): el terreno sube por tramos rectos; la altura base de la camara y su suelo minimo se siguen con muelle critico (`g.camBase`, `g.camClear`; campos nuevos `R3Scene.camBase/camClear`, 0 = calculo antiguo). En coche mas suave (w 4,5).
 - Volante: `4.0/(1+|v|/130)` rad/s (antes `2.45/(1+|v|/360)`): ~30% mas a 60, ~13% mas a 120, casi igual a tope; cuanto mas rapido, mas cuesta girar.
 - La grabadora (`ms0:/NARCADE_INPUT.ON`) sigue activa en la PSP del jugador; `dt10us` ahora refleja los vblanks (16,7 ms = 60 fps, 33,4 ms = 30 fps).
+
+### 32. Narcade 2.31 (Claude) — la consola iba a ~9 fps: cache de la ciudad
+
+Grabacion real de la consola (v2.29, `ms0:/NARCADE_INPUT.BIN`): mediana 116 ms por fotograma (~9 fps) en todo momento, a pie y en coche. Esa es la raiz de los "tirones". Ademas `game_tick` limitaba dt a 0,05, asi que el juego iba a camara lenta (~45%). El centro del joystick del jugador en reposo es (121,115), no (128,128), y hubo 17 picos de un fotograma.
+Medicion en PC (`tools/qa_cpucost_v230.c`): la logica 0,15 ms, el dibujo (geometria en CPU) 1,14 ms. Del dibujo: ciudad 54%, coches 37%.
+
+Cambios:
+- **Cache de la ciudad** (`render3d.c`, `city26.inc`): cada manzana (56) y cada tramo de rio/Metro (7) se graba una vez por nivel de detalle ya proyectado (`polygon()` con `cacheRec` guarda el poligono antes de recortar; `fx_triangle` guarda luces/sombras; los semaforos se guardan como "dinamicos" y se dibujan en vivo). Cada fotograma solo se reproduce. Durante la grabacion `nearby/view_distance/sphere_visible/volume_visible` devuelven valores del nivel de detalle. Lo grabado se divide en trozos de ~100 vertices con esfera envolvente: una prueba por trozo descarta lo que no se ve, y si el trozo esta entero dentro de la vista se emite sin recorte (`noClip`). La luz del dia se sigue reconstruyendo una manzana por fotograma cuando cambia (>0,006 de dia). Pool 2 MB (pico medido 1,8 MB recorriendo toda la ciudad); si se llena se vacia y se rehace poco a poco. Si algo no cabe, esa manzana se dibuja como antes.
+- Resultado en PC: dibujo 1,14 -> 0,66 ms (-42%); ciudad 0,60 -> ~0,08 ms. El rio/Metro era el 78% de la ciudad restante (se construian las 7 filas cada fotograma).
+- Coches: version sencilla desde 170 de distancia (antes 380).
+- dt hasta 0,1 s (antes 0,05): sin camara lenta a pocos fps. vcount hasta 6 refrescos.
+- Memoria: 17,86 MB estaticos (+1 MB heap). No subir `CITY_CACHE_BYTES` sin revisar el limite de ~20 MB.
+- La grabadora ahora guarda tambien tiempos por etapa (tick, ciudad, resto de geometria, GE, HUD, espera) en unidades de 10 us: 20 bytes por muestra.

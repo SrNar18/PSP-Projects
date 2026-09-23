@@ -74,6 +74,7 @@ static Vertex fx_lerp(Vertex a,Vertex b,float t){
     for(int shift=0;shift<32;shift+=8){float av=(a.color>>shift)&255,bv=(b.color>>shift)&255;v.color|=(uint32_t)(av+(bv-av)*t)<<shift;}return v;
 }
 static void fx_triangle(Vertex a,Vertex b,Vertex c,int shadow){
+    if(cacheRec){RecHdr h={(unsigned char)(shadow?2:1),0,3,0};cache_put(&h,4);cache_put(&a,sizeof a);cache_put(&b,sizeof b);cache_put(&c,sizeof c);return;}
     Vertex buf[2][12];buf[0][0]=a;buf[0][1]=b;buf[0][2]=c;int count=3,src=0;
     for(int k=0;k<6;k++){
         int inside=0;for(int i=0;i<count;i++)inside+=plane_distance(&buf[src][i],k)>=0;

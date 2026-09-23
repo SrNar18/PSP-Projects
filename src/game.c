@@ -904,7 +904,7 @@ static void world_tick(float ax,float ay,float dt){
 
 void game_tick(unsigned buttons,float ax,float ay,float dt){
  int oldScreen=g.screen,oldMenu=g.menu,oldTitleStage=g.titleStage,oldTab=g.pauseTab,oldMap=g.mapSel,oldJournal=g.journalPage,oldCursor=g.p.cursor;
- dt=clampf(dt,.001f,.05f);g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
+ dt=clampf(dt,.001f,.10f); /* v2.31: hasta 0,1 s por paso (a pocos fps el tope de 0,05 ponia el juego en camara lenta); el movimiento va en subpasos */g.pressed=(buttons&~g.prev)|(g.screen==WORLD?pendingCross:0);pendingCross=0;g.held=buttons;g.prev=buttons;g.clock+=dt;g.screenT+=dt;g.noticeT=fmaxf(0,g.noticeT-dt);if(g.screen==WORLD){g.hudDistrictT=fmaxf(0,g.hudDistrictT-dt);g.hudObjectiveT=fmaxf(0,g.hudObjectiveT-dt);}g.hitCD=fmaxf(0,g.hitCD-dt);
  /* v2.24: zona muerta radial. La zona por eje anulaba cada eje por separado y
     "pegaba" la palanca a las 4 direcciones rectas (+-10 grados sin respuesta). */
  {float r=hypotf(ax,ay);

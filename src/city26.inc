@@ -632,27 +632,93 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         if(ne>=1&&cm_is_rect(&pe[0])&&(t2==CB_TOWER||t2==CB_COMMERCIAL||t2==CB_CLASSIC))skybridge(ps[0].x[1],pe[0].x[0],z+187,10);
     }
 }
+/* v2.31 (Claude): ver CACHE DE LA CIUDAD en render3d.c. */
+static void replay_range(const unsigned char *p,const unsigned char *end){
+    while(p<end){RecHdr h;memcpy(&h,p,4);p+=4;
+        if(h.kind==0){Vertex tmp[16];memcpy(tmp,p,h.count*sizeof(Vertex));p+=h.count*sizeof(Vertex);polygon_emit(h.mat,tmp,h.count,h.lit);}
+        else if(h.kind<3){Vertex t[3];memcpy(t,p,sizeof t);p+=sizeof t;fx_triangle(t[0],t[1],t[2],h.kind==2);}
+        else{float q[3];memcpy(q,p,sizeof q);p+=sizeof q;int nc=noClip;noClip=0;litAlready=0;traffic_light(q[0],q[1],q[2]);noClip=nc;}
+    }
+}
+static void cache_replay(const CellCache *c){
+    float savedGround=fixedGround;int savedLit=litAlready,savedRigid=rigid;
+    fixedGround=-1000000;rigid=0;
+    const unsigned char *base=cachePool+c->off;
+    for(unsigned k=0;k<c->nchunks;k++){const CacheChunk *ch=&chunkPool[c->chunk0+k];
+        /* una prueba por trozo: fuera de la vista se salta entero; dentro del todo, sin recorte */
+        int inside=1,out=0;
+        for(int q=0;q<6;q++){float d=planes[q][0]*ch->x+planes[q][1]*ch->y+planes[q][2]*ch->z+planes[q][3];if(d<-ch->r){out=1;break;}if(d<ch->r)inside=0;}
+        if(out)continue;
+        noClip=inside;replay_range(base+ch->off,base+ch->off+ch->len);noClip=0;
+    }
+    fixedGround=savedGround;litAlready=savedLit;rigid=savedRigid;
+}
+/* Divide lo grabado de una manzana en trozos de ~100 vertices con su esfera envolvente. */
+static int cache_chunks(CellCache *cc){
+    const unsigned char *base=cachePool+cc->off,*p=base,*end=base+cc->len;
+    cc->chunk0=chunkUsed;cc->nchunks=0;
+    while(p<end){
+        if(chunkUsed>=CHUNK_MAX)return 0;
+        CacheChunk *ch=&chunkPool[chunkUsed];const unsigned char *st=p;int verts=0;
+        float mnx=1e9f,mny=1e9f,mnz=1e9f,mxx=-1e9f,mxy=-1e9f,mxz=-1e9f;
+        while(p<end&&verts<100){RecHdr h;memcpy(&h,p,4);p+=4;int n=h.kind==0?h.count:h.kind<3?3:0;
+            if(h.kind==3){float q[3];memcpy(q,p,sizeof q);p+=sizeof q;float gx,gz;geo_project(q[0],q[1],&gx,&gz);float gy=geo_height(q[0],q[1]);
+                mnx=fminf(mnx,gx-4);mxx=fmaxf(mxx,gx+4);mnz=fminf(mnz,gz-4);mxz=fmaxf(mxz,gz+4);mny=fminf(mny,gy);mxy=fmaxf(mxy,gy+34);continue;}
+            for(int i=0;i<n;i++){Vertex v;memcpy(&v,p+i*sizeof(Vertex),sizeof v);
+                mnx=fminf(mnx,v.x);mxx=fmaxf(mxx,v.x);mny=fminf(mny,v.y);mxy=fmaxf(mxy,v.y);mnz=fminf(mnz,v.z);mxz=fmaxf(mxz,v.z);}
+            p+=n*sizeof(Vertex);verts+=n;}
+        ch->off=(unsigned)(st-base);ch->len=(unsigned)(p-st);
+        ch->x=(mnx+mxx)*.5f;ch->y=(mny+mxy)*.5f;ch->z=(mnz+mxz)*.5f;
+        ch->r=sqrtf((mxx-mnx)*(mxx-mnx)+(mxy-mny)*(mxy-mny)+(mxz-mnz)*(mxz-mnz))*.5f+.5f;
+        chunkUsed++;cc->nchunks++;
+    }
+    return 1;
+}
+typedef void (*PieceFn)(int,int,int,uint32_t);
+static void cached_piece(int slot,int lod,PieceFn fn,int bx,int bz,int far,uint32_t white,int *budget){
+    CellCache *cc=&cellCache[slot][lod];
+    float age=fabsf(cc->day-dayT);if(age>.5f)age=1-age;
+    if(cc->valid&&(age<.006f||*budget<=0)){cache_replay(cc);return;}
+    if(*budget<=0){fn(bx,bz,far,white);return;}
+    (*budget)--;
+    if(cacheUsed+262144>CITY_CACHE_BYTES||chunkUsed+2000>CHUNK_MAX){memset(cellCache,0,sizeof cellCache);cacheUsed=0;chunkUsed=0;} /* lleno: se vacia y se rehace poco a poco */
+    unsigned start=cacheUsed;float savedGround=fixedGround;int savedLit=litAlready;
+    cacheRec=1;recFail=0;recDist=lod==0?100.f:lod==1?300.f:500.f;recRange=lod==0?0.f:lod==1?250.f:420.f;
+    fn(bx,bz,far,white);
+    cacheRec=0;fixedGround=savedGround;litAlready=savedLit;
+    if(recFail){cacheUsed=start;cc->valid=0;fn(bx,bz,far,white);return;}
+    unsigned len=cacheUsed-start;
+    if(cc->valid&&len<=cc->len&&cc->off+cc->len<=start){memmove(cachePool+cc->off,cachePool+start,len);cc->len=len;cacheUsed=start;} /* reutiliza su hueco */
+    else{cc->off=start;cc->len=len;}
+    cc->day=dayT;cc->valid=1;
+    if(!cache_chunks(cc)){cc->valid=0;fn(bx,bz,far,white);return;}
+    cache_replay(cc);
+}
+static void cell_piece(int bx,int bz,int far,uint32_t white){city_cell_v26(bx,bz,far,white);}
+static void river_row(int bx,int bz,int far,uint32_t white){(void)bx;
+    ground(WATER,1396,bz*320+86,64,234,1.4f,white,7);
+    river_bridge(bz,white);
+    river_footbridge(bz);
+    box(1395,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);box(1461,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
+    ground(SIDEWALK,1462,bz*320+86,44,234,1.2f,COLOR(226,222,214),6);
+    if(!far)for(int k=0;k<3;k++){tree(1388,bz*320+120+k*60);if(!cm_metro_station(bz))tree(1466,bz*320+150+k*60);}
+    metro(bz,far);
+}
 static void city_v26(void){
-    const uint32_t white=0xffffffffu;
+    const uint32_t white=0xffffffffu;int cacheBudget=1;
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
         float x=bx*320,z=bz*320;
         if(!nearby(x+160,z+160,720))continue;
         if(!nearby(x+160,z+160,400)&&!sphere_visible(x+160,z+160,460))continue;
         float dist=view_distance(x+160,z+160);int far=dist>380;cityMid=dist>230;
         {static char cellTag[20];cellTag[0]='c';cellTag[1]='0'+bx;cellTag[2]=',';cellTag[3]='0'+bz;cellTag[4]=far?'L':(cityMid?'M':'c');cellTag[5]=0;r3_phase(cellTag);r3_trace_cell(cellTag);}
-        city_cell_v26(bx,bz,far,white);cityMid=0;
+        cached_piece(bz*8+bx,far?2:cityMid?1:0,cell_piece,bx,bz,far,white,&cacheBudget);cityMid=0;
     }
     diagonal_avenue();
     /* Rio con puentes reales en cada calle transversal, paseo de la orilla este y Metro. */
     for(int bz=0;bz<7;bz++)if(nearby(1428,bz*320+160,850)){
-        ground(WATER,1396,bz*320+86,64,234,1.4f,white,7);
-        river_bridge(bz,white);
-        river_footbridge(bz);
-        box(1395,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);box(1461,bz*320+203,0,2,234,8,0,SIDEWALK,SIDEWALK,white);
-        ground(SIDEWALK,1462,bz*320+86,44,234,1.2f,COLOR(226,222,214),6);
         int far=view_distance(1428,bz*320+160)>430;
-        if(!far)for(int k=0;k<3;k++){tree(1388,bz*320+120+k*60);if(!cm_metro_station(bz))tree(1466,bz*320+150+k*60);}
-        metro(bz,far);
+        cached_piece(56+bz,far?2:0,river_row,0,bz,far,white,&cacheBudget); /* v2.31: tramo de rio/Metro en cache */
     }
     if(nearby(CM_METRO_X,view->metroZ,800))metro_train();
     {float cx=(CM_CABLE_X0+CM_CABLE_X1)*.5f,cz=(CM_CABLE_Z0+CM_CABLE_Z1)*.5f;if(nearby(cx,cz,1100))metrocable(view_distance(cx,cz)>600);}
