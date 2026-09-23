@@ -78,15 +78,17 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
         uint32_t tc=lit_color(tm==GLASS?glass:paint,nx*ca,ny,nx*sa);
         litAlready=1;
         Vertex top[4]={{0,0,tc,tl0.x,tl0.y,tl0.z},{1,0,tc,tr0.x,tr0.y,tr0.z},{1,1,tc,tr1.x,tr1.y,tr1.z},{0,1,tc,tl1.x,tl1.y,tl1.z}};polygon(tm,top,4);
-        /* CAR_SIDE now contains continuous paint and a subtle pressed panel
-           crease; windows and doors are geometric, never a stretched photo. */
+        /* Metallic reflections share car-local UVs across all body sections.
+           Vertical UV follows actual height, so the shoulder and sill cannot
+           bend when the bonnet or roof changes height. */
         int sideMat=CAR_SIDE;
         uint32_t lc=lit_color(paint,-sa,.3f,ca),rc=lit_color(paint,sa,.3f,-ca);
         /* Shared longitudinal UVs keep paint detail aligned across doors,
            bonnet and rear quarter instead of restarting each section. */
         float u0=(a->x+20)/40.f,u1=(b->x+20)/40.f;
-        Vertex left[4]={{u0,0,lc,tl0.x,tl0.y,tl0.z},{u1,0,lc,tl1.x,tl1.y,tl1.z},{u1,1,lc,bl1.x,bl1.y,bl1.z},{u0,1,lc,bl0.x,bl0.y,bl0.z}};polygon(sideMat,left,4);
-        Vertex right[4]={{u1,0,rc,tr1.x,tr1.y,tr1.z},{u0,0,rc,tr0.x,tr0.y,tr0.z},{u0,1,rc,br0.x,br0.y,br0.z},{u1,1,rc,br1.x,br1.y,br1.z}};polygon(sideMat,right,4);
+        float v0=(20-a->y)/20.f,v1=(20-b->y)/20.f,vfloor=(20-floor)/20.f;
+        Vertex left[4]={{u0,v0,lc,tl0.x,tl0.y,tl0.z},{u1,v1,lc,tl1.x,tl1.y,tl1.z},{u1,vfloor,lc,bl1.x,bl1.y,bl1.z},{u0,vfloor,lc,bl0.x,bl0.y,bl0.z}};polygon(sideMat,left,4);
+        Vertex right[4]={{u1,v1,rc,tr1.x,tr1.y,tr1.z},{u0,v0,rc,tr0.x,tr0.y,tr0.z},{u0,vfloor,rc,br0.x,br0.y,br0.z},{u1,vfloor,rc,br1.x,br1.y,br1.z}};polygon(sideMat,right,4);
         litAlready=0;
         for(int side=-1;side<=1;side+=2){
             float y0=floor+2.4f,y1=y0+.45f;
@@ -118,6 +120,24 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
     for(int e=0;e<2;e++){const HullSec *a=e?&s[n-1]:&s[0];float ca=cosf(angle),sa=sinf(angle);uint32_t c=lit_color(paint,e?ca:-ca,.2f,e?sa:-sa);
         Point p0=local(a->x,a->y,-a->w*.86f,cx,cz,angle),p1=local(a->x,a->y,a->w*.86f,cx,cz,angle),p2=local(a->x,floor,a->w,cx,cz,angle),p3=local(a->x,floor,-a->w,cx,cz,angle);
         litAlready=1;Vertex q[4]={{0,0,c,p0.x,p0.y,p0.z},{1,0,c,p1.x,p1.y,p1.z},{1,1,c,p2.x,p2.y,p2.z},{0,1,c,p3.x,p3.y,p3.z}};polygon(CAR_PAINT,q,4);litAlready=0;}
+}
+/* Point on the actual sloped side of a car body, at car-local x and height.
+   Trim is attached to this surface instead of a fixed-width box silhouette. */
+static Point car_skin(float cx,float cz,float angle,const HullSec *s,int n,float floor,float x,float y,int side,float offset){
+    int i=0;while(i<n-2&&x>s[i+1].x)i++;
+    float t=(x-s[i].x)/fmaxf(.01f,s[i+1].x-s[i].x);t=fmaxf(0,fminf(1,t));
+    float top=s[i].y+(s[i+1].y-s[i].y)*t;
+    float width=s[i].w+(s[i+1].w-s[i].w)*t;
+    float height=fmaxf(0,fminf(1,(y-floor)/fmaxf(top-floor,.01f)));
+    return local(x,y,side*(width*(1-.14f*height)+offset),cx,cz,angle);
+}
+static void car_seam(float cx,float cz,float angle,const HullSec *s,int n,float floor,float x,int side){
+    float low=floor+2.4f,high=fminf(10.8f,s[n-1].y+2.8f);
+    Point a=car_skin(cx,cz,angle,s,n,floor,x-.10f,low,side,.18f);
+    Point b=car_skin(cx,cz,angle,s,n,floor,x+.10f,low,side,.18f);
+    Point c=car_skin(cx,cz,angle,s,n,floor,x+.10f,high,side,.18f);
+    Point d=car_skin(cx,cz,angle,s,n,floor,x-.10f,high,side,.18f);
+    quad(METAL,a,b,c,d,day_scale(COLOR(47,53,56)),1,1);
 }
 /* Arboles: tipo por hash de posicion (0 frondoso, 1 palma, 2 cipres). */
 static void tree_shape(float x,float z,int kind,int simple){

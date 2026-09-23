@@ -328,15 +328,17 @@ static void car(const R3Car *c){
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
     float spin=view->time*c->speed*.08f;
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
-    if(used[METAL]>4750)return; /* keep the 6K/material PSP budget in dense jams */
+    if(used[METAL]>4200)return; /* reserve room for doors and lights in dense jams */
     for(int s=-1;s<=1;s+=2){
         Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
         box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,244,192));
         p=local(prof[0].x-.3f,0,s*5.5f,c->x,c->z,c->angle);
         box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,61,42));
     }
-    /* retrovisores y matricula */
-    for(int s=-1;s<=1;s+=2){Point p=local(6,0,s*(prof[0].w+1.2f),c->x,c->z,c->angle);box(p.x,p.z,11.5f,1.8f,2.2f,1.2f,c->angle,METAL,METAL,paint);}
+    /* Mirrors sit beside the forward window, following each cabin's width. */
+    float mirrorX=type==3?9:type==2?6:type==4?9:type==5?10:8;
+    for(int s=-1;s<=1;s+=2){Point p=car_skin(c->x,c->z,c->angle,prof,n,floor,mirrorX,11.8f,s,1.25f);
+        box(p.x,p.z,p.y,1.9f,2.4f,1.15f,c->angle,METAL,METAL,shade(paint,.83f));}
     /* Modelled bumpers, grille, plates and handles remain straight when the
        body narrows; their details no longer depend on a stretched door bitmap. */
     for(int end=-1;end<=1;end+=2){
@@ -347,11 +349,25 @@ static void car(const R3Car *c){
     }
     Point grille=local(19.1f,0,0,c->x,c->z,c->angle);
     box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,METAL,METAL,COLOR(56,62,65));
+    /* Door shut lines and recessed handles are attached to the correct side
+       surface. Their x positions follow each model's cabin, not a shared box. */
+    static const float seamX[6][3]={{-9,0,10},{-14,0,9},{-6,7,99},{-9,7,99},{-1,11,99},{-14,0,11}};
+    static const float handleX[6][2]={{-2,7},{-4,6},{4,99},{-3,8},{7,99},{-4,8}};
     for(int side=-1;side<=1;side+=2){
-        Point handle=local(-2,0,side*8.95f,c->x,c->z,c->angle);
-        box(handle.x,handle.z,10.6f,2.6f,.5f,.45f,c->angle,METAL,METAL,COLOR(76,82,83));
-        if(type==0||type==5){handle=local(7,0,side*8.95f,c->x,c->z,c->angle);
-            box(handle.x,handle.z,10.6f,2.6f,.5f,.45f,c->angle,METAL,METAL,COLOR(76,82,83));}
+        for(int k=0;k<3;k++)if(seamX[type][k]<90)car_seam(c->x,c->z,c->angle,prof,n,floor,seamX[type][k],side);
+        for(int k=0;k<2;k++)if(handleX[type][k]<90){
+            float hx=handleX[type][k],hy=10.25f;
+            Point a=car_skin(c->x,c->z,c->angle,prof,n,floor,hx-1.35f,hy-.38f,side,.26f);
+            Point b=car_skin(c->x,c->z,c->angle,prof,n,floor,hx+1.35f,hy-.38f,side,.26f);
+            Point d=car_skin(c->x,c->z,c->angle,prof,n,floor,hx-1.35f,hy+.38f,side,.26f);
+            Point e=car_skin(c->x,c->z,c->angle,prof,n,floor,hx+1.35f,hy+.38f,side,.26f);
+            quad(METAL,a,b,e,d,day_scale(COLOR(48,55,58)),1,1);
+            a=car_skin(c->x,c->z,c->angle,prof,n,floor,hx-1.06f,hy+.06f,side,.37f);
+            b=car_skin(c->x,c->z,c->angle,prof,n,floor,hx+1.06f,hy+.06f,side,.37f);
+            d=car_skin(c->x,c->z,c->angle,prof,n,floor,hx-1.06f,hy+.29f,side,.37f);
+            e=car_skin(c->x,c->z,c->angle,prof,n,floor,hx+1.06f,hy+.29f,side,.37f);
+            quad(METAL,a,b,e,d,day_scale(COLOR(216,223,223)),1,1);
+        }
     }
     if(type==2){ /* bed rails give the pickup a distinct open cargo section */
         for(int side=-1;side<=1;side+=2){Point rail=local(-12,0,side*8.3f,c->x,c->z,c->angle);

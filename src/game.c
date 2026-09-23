@@ -614,25 +614,24 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
  if(g.car<0&&!g.inMetro){float dx=ax+(held(B_RIGHT)-held(B_LEFT)),dy=ay+(held(B_DOWN)-held(B_UP));
 #ifdef NARCADE_3D
-  /* Anchor input direction for this stick gesture. Following the camera with
-     an unanchored lateral input would turn a held direction into endless circles. */
-  /* v2.9 (Claude): la direccion del stick es relativa a la camara ACTUAL en cada fotograma (como en cualquier juego
-     en tercera persona): mantener izquierda/derecha describe una curva continua, no un tramo recto y luego nada.
-     Lo que evita las "vueltas locas" es que el RUMBO del personaje gira con una velocidad limitada (g.moveYaw) y la
-     camara lo sigue con retardo; el anclaje anterior hacia que al girar en carrera el personaje no respondiera. */
   float sx=dx,sy=dy;
   float rawStick=hypotf(sx,sy);
+  int wasActive=g.stickActive;
   if(rawStick>.24f)g.stickActive=1;else if(rawStick<.12f)g.stickActive=0;
   if(!g.stickActive)sx=sy=0;
   else{float amount=clampf((rawStick-.10f)/.90f,0,1);
        sx=sx/fmaxf(rawStick,.001f)*amount;sy=sy/fmaxf(rawStick,.001f)*amount;}
-  dx=-sinf(g.viewYaw)*sx-cosf(g.viewYaw)*sy;dy=cosf(g.viewYaw)*sx-sinf(g.viewYaw)*sy;
-  float inputLength=sqrtf(dx*dx+dy*dy);dx/=fmaxf(1,inputLength);dy/=fmaxf(1,inputLength);
+  float inputLength=hypotf(sx,sy);
   if(inputLength>.2f){
-   float wantYaw=atan2f(dy,dx);
+   /* The camera follows with a delay. Map changes in stick angle to changes
+      in world heading, so its own rotation cannot steer a held direction. */
+   float stickAngle=atan2f(sx,-sy);
+   if(!wasActive||!g.moveActive){g.inputYaw=g.viewYaw+stickAngle;g.stickAngle=stickAngle;}
+   else if(rawStick>.28f){g.inputYaw+=angle_delta(stickAngle,g.stickAngle);g.stickAngle=stickAngle;}
+   float wantYaw=g.inputYaw;
    if(!g.moveActive){g.moveYaw=wantYaw;g.moveActive=1;}                 /* arranque: rumbo inmediato */
-   else{float turn=(g.footSpeed>80?4.2f:g.footSpeed>55?5.5f:7.5f)*dt;   /* corriendo gira mas ancho */
-    float d=angle_delta(wantYaw,g.moveYaw);g.moveYaw+=clampf(d,-turn,turn);} /* media vuelta: giro seco */
+   else{float turn=(g.footSpeed>80?6.2f:g.footSpeed>55?7.3f:8.5f)*dt;
+    float d=angle_delta(wantYaw,g.moveYaw);g.moveYaw+=clampf(d,-turn,turn);}
    dx=cosf(g.moveYaw)*fminf(1,inputLength);dy=sinf(g.moveYaw)*fminf(1,inputLength);
   }else g.moveActive=0;
   float desiredYaw=g.moveYaw;
@@ -641,7 +640,7 @@ static void world_tick(float ax,float ay,float dt){
 #ifndef NARCADE_3D
   dx/=fmaxf(1,n);dy/=fmaxf(1,n);
 #endif
-  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*12));float speed=g.footSpeed;
+  g.a+=angle_delta(atan2f(dy,dx),g.a)*(1-expf(-dt*18));float speed=g.footSpeed;
   float beforeX,beforeY;physics_project(g.x,g.y,&beforeX,&beforeY);
   float lookX,lookY;physics_unproject(beforeX+dx*4,beforeY+dy*4,&lookX,&lookY);
   float grade=(geo_height(lookX,lookY)-geo_height(g.x,g.y))/4;
@@ -669,13 +668,15 @@ static void world_tick(float ax,float ay,float dt){
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
   g.steerSmooth+=(steer-g.steerSmooth)*(1-expf(-dt*9)); /* v2.9: direccion progresiva (sin saltos al soltar/pulsar) */
-  float grip=clampf(fabsf(c->speed)/25,0,1); /* a mucha velocidad gira algo menos */
-  c->a+=g.steerSmooth*dt*(2.2f/(1.f+fabsf(c->speed)/180.f))*(c->speed<0?-1:1)*grip;
+  /* Steering belongs solely to the player; traffic routes never set this car's heading. */
+  float grip=clampf(fabsf(c->speed)/10,0,1);
+  c->a+=g.steerSmooth*dt*(2.5f/(1.f+fabsf(c->speed)/210.f))*(c->speed<0?-1:1)*grip;
+  if(!car_free_at(c,c->x,c->y))c->a=oldAngle;
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}
   else if(car_free_at(c,xx,c->y)){c->x=xx;c->speed*=.85f;}
   else if(car_free_at(c,c->x,yy)){c->y=yy;c->speed*=.85f;}
-  else{c->a=oldAngle;c->hp-=fabsf(c->speed)*.025f;c->speed*=.2f;g.hitCD=.12f;}
+  else{c->hp-=fabsf(c->speed)*.025f;c->speed*=.2f;g.hitCD=.12f;}
   g.x=c->x;g.y=c->y;
   if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }

@@ -490,3 +490,16 @@ al render. Ojo tambien con `savecheck()`: el checksum no detecta cambios de layo
 - `src/render3d.c`: UV de carretera y andén ancladas a coordenadas del mundo y tamaño físico constante. Los dos materiales usan mipmap RGB565 de 64×64 en RAM (16 KB nuevos, sin consumo adicional de VRAM), para reducir el centelleo al avanzar. `tools/road_materials.py` suaviza el ruido de píxel del asfalto.
 - `tools/car_materials.py`: pintura metálica con reflejos y árido fino; laterales con nervio de chapa, umbrales y pasos de rueda. `src/shapes.inc` conserva el patrón longitudinal a través de las piezas de la carrocería y da marco a las ventanillas. Doce acabados de color estables por vehículo; los detalles menores se simplifican si el lote PSP llega al límite de vértices.
 - Pruebas nuevas: `tools/qa_gait_v217.c` (caminata/trote continuos y cámara estable) y `tools/qa_cars_v217.c` (24 coches cercanos sin desbordar materiales). La prueba de tráfico v2.16, la campaña, el guardado y las 512 vistas de ciudad también deben seguir pasando.
+
+### 19. Narcade 2.18 (Codex) — dirección libre y giro a pie
+
+- `src/game.c`: el coche conducido por el jugador sigue fuera de `civilian_traffic_tick`. La dirección responde antes a baja velocidad; un contacto con el entorno frena el desplazamiento sin deshacer un giro que cabe en el lugar. Los edificios siguen siendo sólidos y `separate_cars` mantiene las colisiones con otros vehículos.
+- La dirección del joystick a pie se fija al comenzar cada gesto y cambia según el ángulo que mueve el jugador, sin que la rotación retrasada de la cámara vuelva a introducir giro por sí sola. Se aumentó la respuesta del giro al caminar, trotar y correr, y la orientación visual alcanza antes el rumbo de desplazamiento. Solo se usan campos transitorios existentes: `Save` no cambia.
+- `tools/qa_controls_v218.c` comprueba un giro sostenido a las tres velocidades mientras sigue la cámara, y un coche conducido fuera del carril. ISO 2.18 en `tools/package_iso.py`.
+
+### 20. Narcade 2.19 (Codex) — pintura y detalles 3D de los coches
+
+- `tools/car_materials.py` genera una nueva pintura metálica original con reflejos amplios de cielo y entorno, brillo longitudinal, nervio lateral y sombra en los bajos. Se mantienen los dos materiales RGB565 existentes (128×128), sin incrementar VRAM. No se incrustó una fotografía de un modelo concreto porque las ventanas y puertas quedarían fuera de sitio en las otras carrocerías.
+- `src/shapes.inc`: la textura lateral usa ahora UV ancladas a la altura real de la pieza; las líneas del panel ya no se doblan al pasar de capó a puerta. `car_skin()` calcula la superficie inclinada de cada perfil para colocar elementos sobre ella.
+- `src/render3d.c`: las juntas de puertas, manillas con hueco y pieza brillante, y retrovisores siguen la cabina de cada una de las seis siluetas. El presupuesto de vértices METAL conserva margen para atascos; `tools/qa_cars_v217.c` comprueba 24 coches simultáneos.
+- Atlas y binario de texturas regenerados. ISO 2.19. Formato `Save` sin cambios.

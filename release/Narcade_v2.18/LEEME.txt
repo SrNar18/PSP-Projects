@@ -1,0 +1,5 @@
+Narcade 3D v2.18 - Control libre y giros
+Copia Narcade_v2.18.iso a ms0:/ISO/ o PSP/GAME/NARCADE a ms0:/PSP/GAME/.
+El coche del jugador gira libremente fuera de los carriles; el trafico civil conserva sus rutas.
+Caminar, trotar y correr giran sin que el retraso de la camara cambie el rumbo.
+El formato de guardado no ha cambiado. Made by Naresz.

@@ -1,0 +1,4 @@
+Narcade 3D v2.19 - Carrocerias detalladas
+Copia Narcade_v2.19.iso a ms0:/ISO/ o PSP/GAME/NARCADE a ms0:/PSP/GAME/.
+Pintura metalica original con reflejos, puertas y manillas alineadas con las seis carrocerias.
+Incluye los arreglos de control de v2.18. El formato de guardado no cambia. Made by Naresz.
