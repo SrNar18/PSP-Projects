@@ -48,7 +48,7 @@ static struct {
  int screen,back,mission,step,cash,reputation,ending,car,station,menu,titleStage,seenIntro,dialogAction,mapSel,journalPage;
  int jobs,side,checkpoint,route[6],saveOK,active; uint32_t caches,prev,pressed,held;
  float x,y,a,health,heat,escape,clock,playtime,timer,noticeT,hitCD,cameraX,cameraY,screenT,raceTime,missionTimer;
- float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw;int carCamInit;int stickActive;
+ float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw;int carCamInit,carYawOwner;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
  float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
@@ -650,13 +650,23 @@ static void world_tick(float ax,float ay,float dt){
   float mag=0;
   if(g.stickActive){
    float ang=atan2f(sx,-sy);
-   if(!g.moveActive){g.stickAngle=ang;g.frameYaw=g.viewYaw;g.wallGuide=0;}
+   if(!g.moveActive){g.stickAngle=g.stickAnchor=ang;g.frameYaw=g.viewYaw;g.wallGuide=0;}
    else{
     float d=angle_delta(ang,g.stickAngle);
-    float step=fabsf(d)>.35f?d:d*(1-expf(-dt*25)); /* temblor fuera, giro deliberado inmediato */
+    /* temblor fuera (cambios diminutos muy filtrados), giro deliberado inmediato */
+    float rate=fabsf(d)<.10f?5.f:25.f;
+    float step=fabsf(d)>.35f?d:d*(1-expf(-dt*rate));
     g.stickAngle+=step;
-    float k=clampf(fabsf(step)/.6f,0,1);
-    g.frameYaw+=angle_delta(g.viewYaw,g.frameYaw)*k;g.wallGuide*=1-k;
+    /* v2.27 (Claude): el marco solo se acerca a la camara cuando la palanca se
+       aleja mas de 0,2 rad (11 grados) de donde estaba anclada. El temblor del
+       pulgar en el analogico movia el marco un poco cada fotograma y, con la camara
+       persiguiendo al personaje, el rumbo giraba solo (en diagonal 4 veces mas que
+       con la cruceta). Ahora el ruido no toca el marco, igual que con la cruceta. */
+    float dev=angle_delta(g.stickAngle,g.stickAnchor);
+    if(fabsf(dev)>.20f){
+     float excess=dev-(dev>0?.20f:-.20f),k=clampf(fabsf(excess)/.6f,0,1);
+     g.frameYaw+=angle_delta(g.viewYaw,g.frameYaw)*k;g.wallGuide*=1-k;g.stickAnchor+=excess;
+    }
    }
    /* Palanca a mas de ~55% = velocidad completa; la cruceta siempre lo es. */
    mag=.4f+.6f*clampf((fminf(raw,1)-.22f)/.33f,0,1);
@@ -732,7 +742,10 @@ static void world_tick(float ax,float ay,float dt){
   /* v2.25 (Claude): el giro se aplica en pantalla (espacio proyectado): la misma
      presion del volante gira lo mismo en cualquier zona del valle. En espacio
      del mapa, las zonas deformadas giraban mucho mas o mucho menos. */
-  float h0=proj_heading(c->x,c->y,oldAngle);
+  /* Rumbo en pantalla guardado aparte: solo cambia cuando el jugador gira (sin
+     deriva por convertir ida y vuelta entre mapa y pantalla). */
+  if(g.carYawOwner!=g.car+1){g.carScreenYaw=proj_heading(c->x,c->y,c->a);g.carYawOwner=g.car+1;}
+  float h0=g.carScreenYaw,applied=1;
 #define CAR_TURNED(px,py,f) (turn==0?oldAngle:logical_heading_from_projected((px),(py),h0+turn*(f)))
   c->a=CAR_TURNED(c->x,c->y,1);
   if(!car_free_at(c,c->x,c->y)){
@@ -740,7 +753,7 @@ static void world_tick(float ax,float ay,float dt){
       Reverting the whole turn made the wheel appear unresponsive. */
    float lo=0,hi=1;
    for(int k=0;k<5;k++){float mid=(lo+hi)*.5f;c->a=CAR_TURNED(c->x,c->y,mid);if(car_free_at(c,c->x,c->y))lo=mid;else hi=mid;}
-   c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;
+   c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;applied=lo;
    /* v2.24 (Claude): pegado a una pared el giro quedaba bloqueado del todo.
       Si no cabe ninguna fraccion, se prueba el giro completo separando el
       coche 1-3 unidades de la pared (nunca atraviesa edificios). */
@@ -748,32 +761,37 @@ static void world_tick(float ax,float ay,float dt){
     int done=0;
     for(float r=1.f;r<=3.f&&!done;r+=1.f)for(int k=0;k<8&&!done;k++){
      float oa=k*(PI*.25f),ox=c->x+cosf(oa)*r,oy=c->y+sinf(oa)*r;
-     c->a=CAR_TURNED(ox,oy,1);if(car_free_at(c,ox,oy)){c->x=ox;c->y=oy;done=1;}
+     c->a=CAR_TURNED(ox,oy,1);if(car_free_at(c,ox,oy)){c->x=ox;c->y=oy;done=1;applied=1;}
     }
-    if(!done)c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;
+    if(!done){c->a=lo>0?CAR_TURNED(c->x,c->y,lo):oldAngle;applied=lo;}
    }
   }
-  /* Sweep along the same logical road coordinates as collision and traffic.
-     Projected-space translation drifts into facades as the valley bends. */
-  float distance=c->speed*dt;
+  /* v2.27 (Claude): el coche del jugador avanza recto EN PANTALLA. Antes avanzaba con
+     rumbo fijo en el mapa, y como el valle deforma el mapa (las calles norte-sur se
+     desplazan cientos de unidades de un cruce a otro), al llegar a cada cruce el coche
+     giraba solo siguiendo la calle: parecia una regla de carril. Ahora solo gira
+     cuando el jugador gira. Al rozar una pared se desliza sin cambiar la direccion
+     del morro. */
+  g.carScreenYaw=h0+turn*applied;
+  float distance=c->speed*dt,hp=g.carScreenYaw;
   int steps=(int)ceilf(fabsf(distance)/3.f);if(steps<1)steps=1;int scraped=0;
   for(int step=0;step<steps;step++){
-   float xx=c->x+cosf(c->a)*distance/steps,yy=c->y+sinf(c->a)*distance/steps;
-   if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;continue;}
-   /* v2.24 (Claude): roce lateral = deslizar a lo largo de la pared. Antes
-      cualquier contacto paraba el coche en seco (simulado: 72% de los choques
-      eran roces que podian deslizar). Solo un choque casi frontal detiene. */
-   int slid=0;float seg=distance/steps;
-   for(int k=1;k<=4&&!slid;k++)for(int sd=-1;sd<=1&&!slid;sd+=2){
-    float off=sd*k*(PI/12.f),dir=c->a+off,len=seg*cosf(off);
-    Car t=*c;t.a=c->a+off*.35f;
-    float sx=c->x+cosf(dir)*len,sy=c->y+sinf(dir)*len;
-    if(car_free_at(&t,sx,sy)){c->x=sx;c->y=sy;c->a=t.a;slid=k;}
+   float seg=distance/steps,px,pz;physics_project(c->x,c->y,&px,&pz);
+#define CAR_TRY(OFF,T) (physics_unproject(px+cosf(hp+(OFF))*seg*cosf(OFF),pz+sinf(hp+(OFF))*seg*cosf(OFF),&(T).x,&(T).y),   (T).a=logical_heading_from_projected((T).x,(T).y,hp),car_free_at(&(T),(T).x,(T).y))
+   Car t=*c;int slid=-1;
+   if(CAR_TRY(0,t))slid=0;
+   else for(int k=1;k<=4&&slid<0;k++)for(int sd=-1;sd<=1&&slid<0;sd+=2){
+    float off=sd*k*(PI/12.f);
+    if(CAR_TRY(off,t)){
+     /* angulo minimo libre por biseccion: deslizamiento continuo, sin golpes */
+     float lo=sd*(k-1)*(PI/12.f),hi=off;Car m=*c;
+     for(int it=0;it<5;it++){float mid=(lo+hi)*.5f;if(CAR_TRY(mid,m)){hi=mid;t=m;}else lo=mid;}
+     slid=k;
+     if(!scraped){float keep=cosf(hi);c->speed*=.35f+.65f*keep;if(k>=3)c->hp-=fabsf(c->speed)*.004f;scraped=1;}
+    }
    }
-   if(slid){
-    if(!scraped){float keep=cosf(slid*(PI/12.f));c->speed*=.35f+.65f*keep;if(slid>=3)c->hp-=fabsf(c->speed)*.004f;scraped=1;}
-    distance=c->speed*dt;continue;
-   }
+#undef CAR_TRY
+   if(slid>=0){c->x=t.x;c->y=t.y;c->a=t.a;if(slid>0)distance=c->speed*dt;continue;}
    {float impact=fabsf(c->speed);c->hp-=impact*.025f;c->speed=impact>65?-c->speed*.13f:0;g.hitCD=.12f;break;}
   }
 #undef CAR_TURNED
@@ -820,7 +838,7 @@ static void world_tick(float ax,float ay,float dt){
   if(!g.carCamInit){g.carCamYaw=h;g.carCamInit=1;}
   else g.carCamYaw+=angle_delta(h,g.carCamYaw)*(1-expf(-dt*5));
   camera_follow(g.carCamYaw,dt);
- }else g.carCamInit=0;
+ }else{g.carCamInit=0;g.carYawOwner=0;}
  if(g.car<0&&!g.walking)g.cameraVelocity=0;
  camera_clearance(dt);
 #endif

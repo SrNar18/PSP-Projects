@@ -74,7 +74,13 @@ int main(void){
  assert(fabsf(other->x-1080)<.01f&&fabsf(other->y-1002)<.01f);
  game_init();fresh_game();g.screen=WORLD;clear_traffic();
  g.car=30;c=&g.cars[g.car];c->x=62;c->y=1000;c->a=PI*.5f;c->speed=50;c->parked=0;c->hp=100;
+ /* v2.27 (Claude): sin volante el coche va recto EN PANTALLA (ya no sigue solo la
+    calle deformada del mapa). Se comprueba rumbo en pantalla constante y avance. */
+ float h0=proj_heading(c->x,c->y,c->a),sx0,sz0,sx1,sz1;physics_project(c->x,c->y,&sx0,&sz0);
  for(int i=0;i<120;i++)game_tick(B_CROSS,0,0,1.f/60);
- assert(fabsf(c->x-62)<1.f&&c->y>1170&&car_free_at(c,c->x,c->y));
+ physics_project(c->x,c->y,&sx1,&sz1);
+ assert(car_free_at(c,c->x,c->y));
+ assert(hypotf(sx1-sx0,sz1-sz0)>60.f||c->speed==0);
+ assert(fabsf(angle_delta(proj_heading(c->x,c->y,c->a),h0))<.03f);
  puts("PASS: walking/jogging/sprinting turns remain stable; player drives outside traffic lanes and collides with other cars.");
 }

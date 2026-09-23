@@ -581,3 +581,15 @@ Tirones (`tools/qa_smooth_v226.c`, mide ojo de camara, giro, distancia y velocid
 - Deslizamiento en paredes con saltos de 13 grados = velocidad a golpes. Ahora se afina por biseccion (5 pasos) el angulo minimo libre: cambios bruscos de velocidad 0,67% -> 0,29%.
 - `camera_clearance`: solo edificios y borde del mundo acercan la camara (farolas/pilares/fuentes la hacian saltar); se acerca en pocos fotogramas (exp 16/s) en vez de golpe.
 - `qa_render3d.c` ya fallaba antes (road_covers linea 86); no es de este cambio.
+
+### 28. Narcade 2.27 (Claude) — joystick igual que la cruceta; coche del jugador sin "regla de carril"
+
+Joystick (`tools/qa_stick_vs_dpad_v227.c`, misma direccion mantenida con cruceta y con analogico con ruido real):
+- Causa: con el analogico, el temblor del pulgar generaba pequenos cambios de angulo que cada fotograma acercaban un poco el marco de la palanca a la camara; la camara persigue al personaje, asi que el rumbo giraba solo (en diagonal 2,02 rad en 4,5 s frente a 0,51 con cruceta).
+- Arreglo: `g.stickAnchor`. El marco solo se re-ancla cuando la palanca se aleja mas de 0,2 rad del ancla (y solo por el exceso). Cambios diminutos (<0,1 rad) filtrados a 5/s; medianos a 25/s; >0,35 inmediatos. Resultado: mismo giro total que la cruceta, zigzag 0,29 frente a 1,28.
+
+Coche del jugador:
+- No habia reglas de carril aplicadas al coche del jugador (el bucle de trafico salta `i==g.car`). Lo que se sentia como regla: el coche avanzaba con rumbo fijo EN EL MAPA y el valle deforma el mapa (las calles norte-sur se desplazan cientos de unidades en pantalla de un cruce a otro), asi que en cada cruce el coche giraba solo siguiendo la calle. Ademas el deslizamiento de v2.24 alineaba el morro con la pared.
+- Ahora el coche del jugador avanza recto en pantalla con `g.carScreenYaw` (solo cambia al girar; sin deriva de conversion). Deslizamiento con biseccion sin girar el morro. Atascos en la simulacion 1740 -> 1233.
+- Los coches NPC siguen con su logica de carriles y semaforos sin cambios.
+- `qa_controls_v218.c`: la prueba de coche recto comprueba rumbo constante en pantalla.
