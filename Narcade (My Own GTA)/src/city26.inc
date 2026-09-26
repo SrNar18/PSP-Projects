@@ -25,7 +25,7 @@ static int inside_block(float x,float z,float m){
    radio y con una parcela a menos de 8-c. Devuelve 0 si no hay acera cerca (no se dibuja). */
 typedef struct{float x[4],z[4];signed char ok[4];}FurnMemo; /* 0 semaforo, 1 parada, 2 farola, 3 papelera */
 static FurnMemo furnMemo[56];static unsigned char furnMemoDone[56];
-static float takenX[8],takenZ[8],takenR[8],spotPad;static int nTaken; /* objetos ya colocados en la manzana; spotPad: brazo de la farola */
+static float takenX[16],takenZ[16],takenR[16],spotPad;static int nTaken; /* objetos ya colocados en la manzana; spotPad: brazo de la farola */
 static int sidewalk_spot(float *x,float *z,float c){
     for(float r=0;r<=36;r+=1.f)for(int k=0,n=r==0?1:(int)(r*1.5f)+8;k<n;k++){
         float a=k*(2*PI/n),px=*x+cosf(a)*r,pz=*z+sinf(a)*r;
@@ -36,7 +36,7 @@ static int sidewalk_spot(float *x,float *z,float c){
         for(int q=0;q<16&&clear;q++){float b=q*(PI/8);
             if(block_at(px+cosf(b)*c,pz+sinf(b)*c))clear=0;
             if(block_at(px+cosf(b)*(8-c),pz+sinf(b)*(8-c)))near=1;}
-        if(clear&&near){*x=px;*z=pz;if(nTaken<8){takenX[nTaken]=px;takenZ[nTaken]=pz;takenR[nTaken]=c+spotPad;nTaken++;}return 1;}
+        if(clear&&near){*x=px;*z=pz;if(nTaken<16){takenX[nTaken]=px;takenZ[nTaken]=pz;takenR[nTaken]=c+spotPad;nTaken++;}return 1;}
     }
     return 0;
 }
@@ -376,7 +376,8 @@ static void fill_park(const CmParcel *p,int far,unsigned h){
         if(w>120&&d>120){garden(x0+10,z0+10,w*.35f,d*.3f,h,far);garden(x1-10-w*.35f,z1-10-d*.34f,w*.35f,d*.34f,h>>3,far);}
         if(!cityMid){for(int k=0;k<(int)(w/19)-1;k++)box(x0+10+k*19,z0+2,1.8f,8,4,5,0,GRASS,GRASS,COLOR(50,110,55));
             cylinder(cx+6,cz+7,2,6,1,8,0,CONCRETE,CONCRETE,0xffffffffu);cylinder(cx+6,cz+7,3,4.5f,3.5f,8,.39f,WATER,WATER,0xffffffffu);
-            for(int k=0;k<3;k++)bench(x0+30+k*(w-60)*.5f,cz-16,0);}
+            {int nb=w>=110?3:w>=80?2:1;float span=w-60; /* v2.35 (Claude): en parques estrechos los 3 bancos caian en el mismo sitio */
+             for(int k=0;k<nb;k++)bench(nb==1?(x0+x1)*.5f:x0+30+k*span/(nb-1),cz-16,0);}}
     }else{ if(far)return;tree(cx,cz);CmParcel s;parcel_shrunk(p,18,&s);for(int i=0;i<p->n&&i<4;i++)tree(s.x[i],s.z[i]); }
 }
 /* A public parking court beside a planted pocket park. Its fountain stays
@@ -395,7 +396,7 @@ static void fill_parking_park(const CmParcel *p,int far,unsigned h){
     tree(x0+18,z1-20);tree(x1-18,z1-20);
     cylinder(cx+6,cz+7,2,6,1,8,0,CONCRETE,CONCRETE,0xffffffffu);
     cylinder(cx+6,cz+7,3,4.5f,3.5f,8,.39f,WATER,WATER,0xffffffffu);
-    if(!cityMid){bench(x0+30,cz+30,0);bench(x1-30,cz+30,0);}
+    if(!cityMid){if(x1-x0>=74){bench(x0+30,cz+30,0);bench(x1-30,cz+30,0);}else bench((x0+x1)*.5f,cz+30,0);} /* v2.35: sin bancos encimados */
 }
 /* Plaza Botero: plaza dura con esculturas de bronce sobre pedestales, palmas y fuente. */
 static void fill_plaza(const CmParcel *p,int far,unsigned h){
@@ -662,8 +663,15 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         {FurnMemo *memo=furnMemo;unsigned char *memoDone=furnMemoDone;
          int ci=bz*8+bx;
          if(!memoDone[ci]){memoDone[ci]=1;nTaken=0;
+            /* v2.35 (Claude): el coche aparcado y el terminal de cada punto de mision ocupan su sitio:
+               antes la parada de bus o la papelera caian encima del coche aparcado. */
+            for(int hb=0;hb<30&&nTaken<6;hb++){float hx=view->hubs[hb][0],hz=view->hubs[hb][1];
+                if(hx==0&&hz==0)continue;if(hx<x-60||hx>x+380||hz<z-60||hz>z+380)continue;
+                takenX[nTaken]=hx+54;takenZ[nTaken]=hz+18;takenR[nTaken]=12;nTaken++;
+                takenX[nTaken]=hx+18;takenZ[nTaken]=hz;takenR[nTaken]=6;nTaken++;}
             float tx=x+82,tz=z+82;memo[ci].ok[0]=(bx==0||bx==3||bx==5)&&(bz==0||bz==3)&&sidewalk_spot(&tx,&tz,1.5f);memo[ci].x[0]=tx;memo[ci].z[0]=tz;
-            float sx=x+116,sz=z+80;memo[ci].ok[1]=(h>>9)%3==0&&!westMerged&&sidewalk_spot(&sx,&sz,3.6f);memo[ci].x[1]=sx;memo[ci].z[1]=sz;
+            float sx=x+116,sz=z+80;spotPad=6;memo[ci].ok[1]=(h>>9)%3==0&&!westMerged&&sidewalk_spot(&sx,&sz,3.6f);spotPad=0;memo[ci].x[1]=sx;memo[ci].z[1]=sz; /* v2.35: la marquesina mide 18: reserva su largo */
+            if(memo[ci].ok[1])for(float dx=-9;dx<=9&&memo[ci].ok[1];dx+=1.5f)for(float dz=-3.5f;dz<=3.5f;dz+=1.75f)if(block_at(sx+dx,sz+dz)){memo[ci].ok[1]=0;break;} /* v2.35: el rectangulo entero en la acera */
             float lx=x+84,lz=z+59;spotPad=6;memo[ci].ok[2]=sidewalk_spot(&lx,&lz,1.4f);spotPad=0;memo[ci].x[2]=lx;memo[ci].z[2]=lz;
             float px=x+90,pz=z+70;memo[ci].ok[3]=(h&1024)&&sidewalk_spot(&px,&pz,1.3f);memo[ci].x[3]=px;memo[ci].z[3]=pz;}
          if(!cityMid&&memo[ci].ok[0])traffic_light(memo[ci].x[0],memo[ci].z[0],0);
