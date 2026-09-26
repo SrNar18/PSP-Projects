@@ -1,7 +1,8 @@
 """Compila PSP-IA con el toolchain pspdev de Narcade y genera EBOOT.PBP + PSP_IA.iso (ELF estatico como EBOOT.BIN)."""
 import os, pathlib, subprocess, sys, shutil, io, hashlib
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-NARC=pathlib.Path(r'C:\Users\carmo\Downloads\Narcade_v1.1_fuente')
+NARC=pathlib.Path(__file__).resolve().parents[2]/'Narcade' # repositorio proyectos-psp: IA/ y Narcade/ son carpetas hermanas
+if not (NARC/'build/pspdev').exists():NARC=pathlib.Path(r'C:\Users\carmo\Downloads\Narcade_v1.1_fuente\Narcade')
 sdk=NARC/'build/pspdev';os.chdir(ROOT)
 env=os.environ.copy();env['PATH']=str(sdk/'bin')+os.pathsep+env['PATH']
 def posix(p):return pathlib.Path(p).resolve().as_posix()
