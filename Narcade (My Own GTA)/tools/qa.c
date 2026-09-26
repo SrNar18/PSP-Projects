@@ -8,7 +8,7 @@
 static uint32_t frame[W*H];
 static void snap(const char *name){game_draw(frame,W);char path[256];snprintf(path,sizeof(path),"build/%s.ppm",name);FILE *f=fopen(path,"wb");assert(f);fprintf(f,"P6\n480 272\n255\n");for(int i=0;i<W*H;i++){unsigned char rgb[3]={frame[i]&255,(frame[i]>>8)&255,(frame[i]>>16)&255};fwrite(rgb,1,3,f);}fclose(f);}
 static void tick(unsigned b){game_tick(b,0,0,1.0f/60);}
-static void tap(unsigned b){tick(0);tick(b);tick(0);}
+static void tap(unsigned b){if(b==B_SQUARE&&g.car<0)b|=B_R;/* On-foot mission interaction shares R+square. */tick(0);tick(b);tick(0);}
 static void finishdialog(void){for(int i=0;i<12;i++)tick(0);tap(B_CROSS);}
 static void solve(void){
  Puzzle *p=&g.p;int kind=p->kind;

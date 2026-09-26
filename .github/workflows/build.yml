@@ -4,9 +4,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container: ghcr.io/pspdev/pspdev:latest
-    defaults:
-      run:
-        working-directory: "Narcade (My Own GTA)"
     steps:
       - uses: actions/checkout@v4
       - name: Dependencias Python
@@ -15,11 +12,13 @@ jobs:
           python3 -m pip install --break-system-packages pycryptodome pycdlib || python3 -m pip install pycryptodome pycdlib
       - name: Compilar (PRX + EBOOT.PBP)
         run: |
+          cd 'Narcade (My Own GTA)'
           make
           make -f Makefile.iso
           file narcade_static.elf || true
       - name: Firmar y empaquetar ISO
         run: |
+          cd 'Narcade (My Own GTA)'
           mkdir -p build
           python3 tools/package_iso.py
           mkdir -p out/PSP/GAME/NARCADE

@@ -80,7 +80,9 @@ def main():
         raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664+14*8192
+    from weapon_textures import append_weapon_tiles
+    append_weapon_tiles(result,ROOT)
     (ROOT/'assets/textures3d.bin').write_bytes(result)
-    print('21 VRAM materials + 8 pedestrian + 12 extra RAM materials + 2 street mips:',len(result),'bytes')
+    print('21 VRAM materials + 8 pedestrian + 12 extra RAM materials + 2 street mips + 2 weapon RAM tiles:',len(result),'bytes')
 
 if __name__=='__main__':main()

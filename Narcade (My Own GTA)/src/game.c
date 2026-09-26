@@ -112,7 +112,8 @@ static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,
 static void footer(const char *s){rect(0,252,W,20,INK);text(12,257,s,MUTED,1);}
 static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].steps[g.step];}
 static int parkblock(int bx,int by){return cm_park(bx,by);}
-static int solid(float x,float y){
+#include "climb_walls.inc"
+static int world_solid(float x,float y){
  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8)return 1;
  int ly=(int)y%320;
  if(x>1396&&x<1460&&ly>86){
@@ -122,13 +123,14 @@ static int solid(float x,float y){
  /* v2.6: manzanas irregulares (fusionadas, partidas, triangulares): la huella la define citymap.h */
  return cm_solid(x,y)||cm_obstacle(x,y);
 }
+static int solid(float x,float y){return world_solid(x,y)||combat_wall_at(x,y,0);}
 static int free_at(float x,float y,int radius){
  /* A circular footprint matches the character's body. The old 3x3 square
     extended 41% farther at its corners and snagged diagonal facades. */
  if(solid(x,y))return 0;
  for(int k=0;k<8;k++){
   float a=k*(PI*.25f);
-  if(solid(x+cosf(a)*radius,y+sinf(a)*radius))return 0;
+  if(world_solid(x+cosf(a)*radius,y+sinf(a)*radius))return 0;
  }
  return 1;
 }
@@ -170,7 +172,7 @@ static int lift_ok(float x,float y){
  return 1;
 }
 static int foot_free(float x,float y){
- if(!free_at(x,y,5))return 0;
+ if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
  for(int i=0;i<CAR_COUNT;i++){
   const Car *c=&g.cars[i];float px,py,cx,cy;physics_project(x,y,&px,&py);physics_project(c->x,c->y,&cx,&cy);float dx=px-cx,dy=py-cy;if(fabsf(dx)>27||fabsf(dy)>27)continue;
   float angle=physics_heading(c),ca=cosf(angle),sa=sinf(angle);if(fabsf(dx*ca+dy*sa)<22&&fabsf(-dx*sa+dy*ca)<13)return 0;
@@ -349,6 +351,7 @@ static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)r
 static const char *districts[]={"SAN JAVIER / COMUNA 13","LAURELES / ESTADIO","BELEN","ARANJUEZ / CASTILLA","EL POBLADO","VILLA HERMOSA / BUENOS AIRES","LA CANDELARIA / RIO","POPULAR / SANTO DOMINGO","ROBLEDO / DOCE DE OCTUBRE"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
 static void map_grid_build(void);
+static void combat_init_peds(void);
 static void world_cars_init(void);static void world_peds_init(void);
 static void world_init(void){
  map_grid_build();
@@ -390,6 +393,7 @@ static void world_cars_init(void){
  }
 }
 static void world_peds_init(void){
+ combat_init_peds();
  for(int i=0;i<42;i++){
   /* v2.34 (Claude): el peaton se coloca en el centro de una acera real (4 antes del borde de la
      parcela; las manzanas empiezan entre 86 y 100). Antes iba en x local 82, que en la mayoria de
@@ -554,7 +558,7 @@ static void race_start(int side){g.side=side;g.checkpoint=0;g.raceTime=side?140:
  notice("RUTA INICIADA: cruza los seis aros amarillos en carro.");}
 static void interact(void){
  if(g.inMetro){if(g.metroWait>0){int bz=cm_station_near(g.metroZ,2);if(bz>=0){g.inMetro=0;g.x=CM_METRO_X-14;g.y=cm_station_z(bz);g.lift=CM_PLAT_H;g.a=PI;notice("Bajaste del Metro. Escalera al sur del anden.");}}return;}
- if(metro_boardable()){g.inMetro=1;notice("METRO: viaje en marcha. [] para bajar en la siguiente estacion.");return;}
+ if(metro_boardable()){g.inMetro=1;notice("METRO: viaje en marcha. R+[] para bajar en la siguiente estacion.");return;}
  if(g.lift>15){if(g.metroWait<=0||cm_station_near(g.metroZ,2)!=(int)floorf(g.y/320))notice("Espera el Metro en el anden: para 6 segundos en cada estacion.");return;} /* en el anden no se toman carros de la calle */
  if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(dist(g.x,g.y,l->x,l->y)<58){
   if(s->kind==K_DRIVE){if(g.car<0){notice("Este objetivo requiere llegar en un carro.");return;}advance();return;}
@@ -699,6 +703,8 @@ static void civilian_traffic_tick(int i,float dt){
   if(car_free_at(&next,next.x,next.y)&&!traffic_ahead(i,55)){c->x=next.x;c->y=next.y;c->speed=0;}
  }
 }
+#include "combat.inc"
+static void combat_init_peds(void){combat_reset();combat_walls_init();}
 static void world_tick(float ax,float ay,float dt){
  g.footTravel=0;
  if(pressed(B_SELECT)){g.zoom=(g.zoom+1)&3;notice(g.zoom==0?"Camara: lejana":g.zoom==1?"Camara: normal":g.zoom==2?"Camara: cercana":"Camara: muy cercana");} /* v2.6.2: zoom; el mapa esta en PAUSA > MAPA */
@@ -709,8 +715,9 @@ static void world_tick(float ax,float ay,float dt){
 #else
  if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
 #endif
- if(pressed(B_CIRCLE)){g.screen=JOURNAL;g.journalPage=0;return;}
- if(g.car<0&&!g.inMetro){
+ combat_tick(ax,ay,dt);
+ if(pressed(B_CIRCLE)&&!combat.aiming){g.screen=JOURNAL;g.journalPage=0;return;}
+ if(g.car<0&&!g.inMetro&&!combat.aiming&&combat.vault<=0){
   /* v2.25 (Claude): controlador a pie reescrito desde cero. Todo se calcula en
      el espacio que se ve (proyectado), y se pasa al mapa con geo_unproject, que
      es la inversa exacta: sin sondas ni factores de escala que den tirones al
@@ -948,16 +955,14 @@ static void world_tick(float ax,float ay,float dt){
  camera_clearance(dt);
  camera_heights(dt);
 #endif
- for(int i=0;i<42;i++){Ped *p=&g.peds[i];float oy=p->y;p->y+=p->v*dt;int local=(int)p->y%320;
-  /* v2.34 (Claude): media vuelta tambien donde acaba la acera (cruces, callejones, manzanas cortas) */
-  if(local<91||local>283||cm_parcel_at(p->x+5,p->y)<0){p->y=oy;p->v=-p->v;}}
+ combat_peds_tick(dt);
  if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
  if(g.raceTime>0){g.raceTime-=dt;int l=g.route[g.checkpoint];if(g.car>=0&&dist(g.x,g.y,locations[l].x,locations[l].y)<66){g.checkpoint++;g.raceTime+=3;if(g.checkpoint==6){g.raceTime=0;advance();}else notice("PUNTO ALCANZADO +3 segundos. Sigue el siguiente aro.");}
   if(g.raceTime<=0&&g.checkpoint<6){g.raceTime=0;g.side=0;g.checkpoint=0;notice("Tiempo agotado. Vuelve al inicio para repetir el recorrido.");}
  }
- if(g.health<=0){g.health=100;g.heat=0;g.car=-1;g.x=locations[14].x;g.y=locations[14].y;g.cash=g.cash>100?g.cash-100:0;g.raceTime=0;g.side=0;g.missionTimer=0;notice("HOSPITAL: te recuperaste. El objetivo sigue disponible.");game_save();}
- if(pressed(B_SQUARE)&&g.car<0)interact();
+ if(g.health<=0){combat.jump=combat.velocity=combat.vault=combat.punch=combat.alert=0;combat.aiming=0;combat.target=-1;g.health=100;g.heat=0;g.car=-1;g.x=locations[14].x;g.y=locations[14].y;g.cash=g.cash>100?g.cash-100:0;g.raceTime=0;g.side=0;g.missionTimer=0;notice("HOSPITAL: te recuperaste. El objetivo sigue disponible.");game_save();}
+ if(pressed(B_SQUARE)&&g.car<0){if(held(B_R))interact();else combat_jump();}
  /* Animate distance actually travelled: pushing into a wall no longer runs
     the feet in place. Keep phase continuous through all three gaits. */
  stamina_tick(dt);
@@ -1162,10 +1167,11 @@ static void hud(void){
  const char *line=NULL;uint32_t col=WHITE;
  if(g.noticeT>0){line=g.notice;col=WHITE;}
  else if(g.mission<36){const Step *st=step_now();
-  if(g.inMetro){line=g.metroWait>0?"[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
-  else if(metro_boardable()){line="[] SUBIR AL METRO";col=LIME;}
-  else if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"[]",act);line=b;col=LIME;}
+  if(g.inMetro){line=g.metroWait>0?"R+[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
+  else if(metro_boardable()){line="R+[] SUBIR AL METRO";col=LIME;}
+  else if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
+ if(!line&&!combat.aiming&&combat_wall_at(g.x,g.y,14))line="[] ESCALAR MURO";
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
   int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
   box_center(cx,H-14-lines*13,w,lines*13+8,INK);
@@ -1300,7 +1306,7 @@ static void journal_draw(void){
   snprintf(b,sizeof(b),"HISTORIA %d/36   VINILOS %d/24",g.mission,cachecount());text(21,62,b,LIME,1);snprintf(b,sizeof(b),"REPUTACION %d   ENCARGOS %d   TIEMPO %dh %02dm",g.reputation,g.jobs,(int)g.playtime/3600,((int)g.playtime/60)%60);text(21,82,b,MUTED,1);
   const char *lines[]={"Nico / Mensajero. Una firma falsa cambio su vida.","Sara / Hermana de Nico. Investiga a Prisma.","Vera / Periodista. Sigue los documentos.","Luna / Mecanica. Conoce cada ruta de la ciudad.","Mara / DJ de Radio Ladera. Escucha lo oculto.","Tiza / Artista. Las paredes guardan sus pistas."};for(int i=0;i<6;i++)text(21,115+i*20,lines[i],WHITE,1);
  }else{
-  const char *lines[]={"A PIE: analogico/cruceta mover. X correr.","TRIANGULO: entrar o salir de un carro cercano.","[]: interactuar a pie. ARRIBA: desde el carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","Camara automatica al mover el joystick.","O: mensajes. SELECT: mapa. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: [] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
+  const char *lines[]={"A PIE: mover. X trotar; pulsar X correr.","TRIANGULO: entrar o salir de un carro cercano.","[] saltar. R+[] interactuar. ARRIBA en carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","R apuntar + O atacar. L rueda de armas.","O: mensajes. SELECT: mapa. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: R+[] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
  }
  footer("L/R paginas  O volver");
 }
@@ -1326,16 +1332,13 @@ static void pause_draw(void){
  if(g.noticeT>0&&g.pauseTab>=2){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
  footer(g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
 }
+#include "weapon_icons.h"
 static void weapon_icon(int x,int y,int id,uint32_t color){
- if(id==0){rect(x-8,y-3,16,10,color);for(int k=0;k<4;k++)rect(x-8+k*4,y-8,3,6,color);rect(x+7,y,4,5,color);return;}
- if(id==7){line(x-11,y+9,x+10,y-9,color);line(x-10,y+10,x+11,y-8,color);line(x-2,y+2,x+12,y-8,color);return;}
- int len=id<3?15:id==3?21:30;
- rect(x-len/2,y-4,len,5,color);rect(x-5,y,4,9,color);
- if(id>=3)rect(x-12,y,8,3,color);
- if(id==2)circle(x,y-2,4,color);
- if(id==3||id==4)rect(x+2,y,4,8,color);
- if(id==6){rect(x-3,y-9,12,3,color);rect(x,y-6,2,3,color);}
- if(id==5)rect(x+3,y+1,10,3,color);
+ (void)color;
+ for(int yy=0;yy<32;yy++)for(int xx=0;xx<64;xx++){
+  unsigned v=weapon_icons[id][yy*64+xx];if(!v)continue;
+  px(x+xx-32,y+yy-16,RGB((v&31)*255/31,((v>>5)&63)*255/63,((v>>11)&31)*255/31));
+ }
 }
 static void weapon_wheel_draw(void){
  /* Solid, high-contrast sectors remain legible on the 480x272 display. */
@@ -1360,13 +1363,15 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
  scene.camBase=g.camBase;scene.camClear=g.camClear;
  scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
- scene.weapon=g.weapon;
- scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
+ scene.wallCount=climbWallCount;for(int i=0;i<climbWallCount;i++){scene.walls[i][0]=climbWall[i][0];scene.walls[i][1]=climbWall[i][1];scene.walls[i][2]=logical_heading_from_projected(climbWall[i][0],climbWall[i][1],0);}
+ scene.shotX=combat.shotX;scene.shotZ=combat.shotY;scene.shotHeight=combat.shotHeight;scene.shotTime=combat.shotTime;
+ scene.weapon=g.weapon;scene.aiming=combat.aiming;scene.cameraPitch=combat.pitch;scene.aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);scene.aimPitch=atanf(slope);}scene.recoil=combat.recoil;scene.punch=combat.punch;scene.combo=combat.combo;scene.jump=combat.jump;scene.climb=combat.vault;
+ scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift+combat.jump;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
  scene.metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
  scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
  for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police,(i*7+g.cars[i].type*3)%12};
- for(int i=0;i<42;i++)scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,g.peds[i].v>0?PI*.5f:-PI*.5f,i};
+ for(int i=0;i<42;i++){CombatPed *p=&combat.ped[i];scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,p->yaw,i,p->health,p->flee,p->fall,p->hit,p->phase};}
  for(int i=0;i<30;i++){scene.hubs[i][0]=locations[i].x;scene.hubs[i][1]=locations[i].y;}
  scene.target=g.raceTime>0?g.route[g.checkpoint]:g.mission<36?step_now()->loc:-1;
  if(scene.target>=0){scene.targetX=locations[scene.target].x;scene.targetZ=locations[scene.target].y;}
@@ -1375,7 +1380,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  world_draw();
 #endif
  if(g.weaponWheel){weapon_wheel_draw();return;}
- hud();
+ hud();combat_hud();
  if(g.screen==DIALOG){rect(16,70,448,144,INK);outline(16,70,448,144,RGB(67,92,93));rect(16,70,4,144,LIME);text(31,83,g.speaker,TEAL,1);textwrap(31,106,416,g.dialog,WHITE);text(31,196,g.dialogAction==3?"X empezar de nuevo  O cancelar":"X continuar",LIME,1);}
  if(g.screen==CHOICE){rect(16,62,448,173,INK);text(30,76,"TU DECISION / EL FUTURO DEL EXPEDIENTE",TEAL,1);textwrap(30,98,412,"Las dos opciones protegen los datos privados. Elige quien llevara las pruebas a la ciudad.",MUTED);const char *items[]={"VERA: entregar el expediente a la justicia","MARA: publicar tambien una memoria vecinal"};for(int i=0;i<2;i++){rect(25,146+i*35,429,28,i==g.menu?PANEL:INK);text(31,154+i*35,items[i],i==g.menu?LIME:WHITE,1);}text(31,219,"ARRIBA/ABAJO elegir  X confirmar",MUTED,1);}
 }
@@ -1395,10 +1400,11 @@ void game_draw(uint32_t *pixels,int stride){
 void game_audio(short *stereo,unsigned frames){
  int station=audioStation;if(station>3)station=0;if(station!=audioLast){audioPos=0;audioLast=station;}
  static unsigned bedPos=0,enginePos=0,hornPos=CITY_HORN_SAMPLES*2,seenHorn=0;
- static unsigned seenMenu=0,menuSample=4000;
+ static unsigned seenMenu=0,menuSample=4000,seenShot=0,shotSample=7000,noise=1234567;static int soundKind=0;
  static int hGain=0,hPan=0,fade=0,engineLevel=0;
  if(seenHorn!=hornEvent){seenHorn=hornEvent;if(audioAmbient){hornPos=0;hGain=hornGain;hPan=hornPan;}}
  if(seenMenu!=menuEvent){seenMenu=menuEvent;menuSample=0;}
+ if(seenShot!=shotEvent){seenShot=shotEvent;shotSample=0;soundKind=shotKind;}
  for(unsigned i=0;i<frames;i++){
   int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;
   if(audioEnabled){audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
@@ -1415,8 +1421,17 @@ void game_audio(short *stereo,unsigned frames){
    float phase=2*PI*(810*t-1050*t*t);
    click=(int)(2900*env*(sinf(phase)+.24f*sinf(phase*1.5f)));
   }
-  int l=music+(base+engine+horn*(128-hPan)/128)*fade/256+click;
-  int r=music+(baseRight+engine+horn*(128+hPan)/128)*fade/256+click;
+  int attack=0;
+  if(shotSample<6500){unsigned sample=shotSample++;noise^=noise<<13;noise^=noise>>17;noise^=noise<<5;
+   static short tone[64];static int toneReady;
+   if(!toneReady){for(int k=0;k<64;k++)tone[k]=(short)(sinf(2*PI*k/64)*8192);toneReady=1;}
+   int env=(6500-(int)sample)*256/6500;env=env*env/256;
+   int body=tone[(sample*(soundKind?115:82)*64/44100)&63];
+   int hiss=((int)(noise&65535)-32768)*(soundKind?55:8)/256;
+   attack=(body+hiss)*env/256;
+  }
+  int l=music+(base+engine+horn*(128-hPan)/128)*fade/256+click+attack;
+  int r=music+(baseRight+engine+horn*(128+hPan)/128)*fade/256+click+attack;
   stereo[i*2]=(short)(l<-32768?-32768:l>32767?32767:l);
   stereo[i*2+1]=(short)(r<-32768?-32768:r>32767?32767:r);
  }

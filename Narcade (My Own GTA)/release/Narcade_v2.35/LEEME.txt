@@ -1,0 +1,29 @@
+NARCADE 3D v2.35 — made by Naresz
+
+INSTALACION (elige una opcion):
+1. ISO: copia Narcade_v2.35.iso a ms0:/ISO/ de la PSP con CFW.
+2. PBP: extrae PSP/GAME/NARCADE del ZIP a la Memory Stick.
+Las partidas anteriores siguen usando el panel oficial de Sony y el mismo formato.
+
+CONTROLES A PIE:
+Joystick/cruceta: mover. X mantenida: trotar; X repetida: correr con estamina.
+L mantenida: rueda de armas; joystick elige y soltar L equipa.
+R mantenida: apuntar. NPC cercano visible: fijacion. Sin NPC: mira libre con joystick.
+R + circulo: disparar; con punos/bate, mantener circulo para golpes repetidos.
+Cuadrado: saltar. Frente a un muro escalable de parque: agarrarse y pasar al otro lado.
+R + cuadrado: interactuar con misiones/vinilos/Metro.
+Circulo sin apuntar: mensajes. START: pausa/mapa/guardar. SELECT: distancia de camara.
+Triangulo: entrar/salir del coche. En coche: X acelera, cuadrado frena, joystick gira, L/R radio.
+
+NOVEDADES:
+Poses de marcha mas suaves, pelo/mangas corregidos y agarre de armas a una o dos manos.
+Modelos con detalles y cañones redondeados, acero/madera propios e iconos nuevos.
+NPC con vida, impactos de sangre breves, huida y caida; la violencia aumenta las estrellas.
+Salto y escalada en tres muros de parques. Las fachadas altas no son escalables.
+Municion ilimitada. El estado de los peatones se reinicia al cargar/reconstruir el mundo.
+
+VERIFICACION:
+Compilacion PSP, pruebas de controles/combate/guardado/misiones y entrada real en PPSSPP.
+Las imagenes adjuntas son inspecciones en PC de la malla y la rueda, no capturas de PSP.
+El aspecto y FPS de esta version aun requieren prueba en una PSP fisica.
+La nota MD adjunta explica el codigo y la integracion con el trabajo de Claude.
