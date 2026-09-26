@@ -165,6 +165,10 @@ static void polygon(int mat,Vertex *input,int count){
 }
 static void polygon_emit(int mat,Vertex *input,int count,int lit){
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
+    /* Animate after cache replay, so a cached river never freezes its flow.
+       World-space UVs join the current across every strip and row. */
+    if(mat==WATER){float flow=fmodf(view->time*.055f,1.f);
+        for(int i=0;i<count;i++){buffers[0][i].u=buffers[0][i].x/24.f;buffers[0][i].v=buffers[0][i].z/36.f+flow;}}
     /* PSP rejects large triangles crossing its near/guard planes. Clip in
        world space before submission, including UV interpolation at cuts.
        Optimizacion (Claude): primero una prueba trivial por plano; si todos los vertices quedan fuera de un plano se
@@ -299,9 +303,11 @@ static int cityMid; /* LOD intermedio (definido en city3d.inc) */
 static void tree_shape(float x,float z,int kind,int simple); /* shapes.inc */
 static int treeKind=-1; /* -1: por hash de posicion; 0 frondoso, 1 palma, 2 cipres */
 static void tree(float x,float z){
+    float savedGround=fixedGround;if(savedGround<=-999999)fixedGround=geo_height(x,z);
     int kind=treeKind;
     if(kind<0){unsigned h=(unsigned)(x*1.7f)*2654435761u^(unsigned)(z*2.3f)*40503u;h^=h>>11;unsigned r=h%100;kind=r<58?0:r<80?1:2;}
     tree_shape(x,z,kind,cityMid||view_distance(x,z)>170);
+    fixedGround=savedGround;
 }
 static void (*phaseFn2)(const char*)=0;
 static void r3_phase(const char *s){if(phaseFn2)phaseFn2(s);}

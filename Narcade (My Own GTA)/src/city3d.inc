@@ -46,13 +46,27 @@ static void rooftop(float x,float z,float top,unsigned h){
     if(h&4)box(x-10,z-8,top,1,1,16,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,90));
     if(h&8)box(x+12,z-12,top,6,4,3,0,SIDEWALK,SIDEWALK,COLOR(200,200,200));
 }
+/* Windows have actual frames and panes instead of being a flat brick wall.
+   Only close LOD receives them; party-wall panes are naturally occluded. */
+static void residential_facade(float x,float z,float width,float base,int floors,float storey,float angle,int door){
+    if(cityMid||view_distance(x,z)>170)return;
+    float win=fminf(10,width*.18f);
+    for(int floor=0;floor<floors;floor++)for(int side=-1;side<=1;side+=2){
+        float xx=side*width*.25f,y=base+floor*storey+8;
+        quad(METAL,local(xx-win*.5f-1,y+10,-.12f,x,z,angle),local(xx+win*.5f+1,y+10,-.12f,x,z,angle),local(xx+win*.5f+1,y,-.12f,x,z,angle),local(xx-win*.5f-1,y,-.12f,x,z,angle),COLOR(74,79,75),1,1);
+        quad(GLASS,local(xx-win*.5f,y+9,-.25f,x,z,angle),local(xx+win*.5f,y+9,-.25f,x,z,angle),local(xx+win*.5f,y+1,-.25f,x,z,angle),local(xx-win*.5f,y+1,-.25f,x,z,angle),COLOR(120,169,190),1,1);
+    }
+    if(door)quad(ROOF,local(-3,base+15,-.3f,x,z,angle),local(3,base+15,-.3f,x,z,angle),local(3,base,-.3f,x,z,angle),local(-3,base,-.3f,x,z,angle),COLOR(105,82,61),1,1);
+}
 /* Casa colonial: 1-2 plantas, color pastel, balcon y tejado a dos aguas. */
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
     float top=6+floors*22;
     if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);return;}
-    for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,f?STUCCO:((h&3)==0?EATERY:RETAIL),ROOF,f?color:0xffffffffu);
+    for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,STUCCO,ROOF,f?color:shade(color,.92f));
     gable_roof(x,z,L,W,top,top+9,(h&1)?COLOR(190,90,60):COLOR(150,110,90));
     if(cityMid)return;
+    residential_facade(x,z-W*.5f,L,6,floors,22,0,1);
+    residential_facade(x,z+W*.5f,L,6,floors,22,PI,0);
     if(floors>1){box(x,z-W*.5f-3,6+22,L*.6f,6,1.2f,0,SIDEWALK,SIDEWALK,COLOR(120,70,50));box(x,z-W*.5f-6,6+23,L*.6f,.6f,7,0,CAR_PAINT,CAR_PAINT,COLOR(70,50,40));}
     box(x-L*.25f,z-W*.5f-4,17,L*.4f,8,.8f,-.25f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>3)&7]); /* toldo */
 }
@@ -63,22 +77,25 @@ static void comuna_house(float x,float z,float L,float W,float base,int floors,i
     for(int f=0;f<floors;f++)box(x,z,base+f*20,L,W,20,0,(h>>f)&1?BRICK:STUCCO,SIDEWALK,(h>>f)&1?tint:cityPastel[(h>>(4+f))&7]);
     box(x,z,base+floors*20,L+3,W+3,1.5f,0,SIDEWALK,SIDEWALK,COLOR(150,152,150)); /* techo de zinc */
     if(cityMid)return;
-    if(h&16)box(x+L*.5f+2,z,base,3,W*.4f,floors*20*.5f,0,SIDEWALK,SIDEWALK,COLOR(180,180,176)); /* escalera */
-    if(h&32)box(x,z-W*.5f-2,base+floors*20-6,L*.5f,3,6,0,CAR_PAINT,CAR_PAINT,COLOR(60,80,140)); /* tanque azul */
+    residential_facade(x,z-W*.5f,L,base,floors,20,0,1);
+    residential_facade(x,z+W*.5f,L,base,floors,20,PI,0);
+    if(h&32)box(x,z,base+floors*20+1.5f,6,6,6,0,CAR_PAINT,CAR_PAINT,COLOR(60,80,140)); /* tank supported by the roof */
 }
 /* Zona verde: cesped, arbustos redondeados y matas de flores de colores (deterministas por hash). */
 static void garden(float x,float z,float w,float d,unsigned h,int far){
-    ground(GRASS,x,z,w,d,6.3f,COLOR(200,230,190),3);
+    float base=fixedGround>-999999?6.3f:1.9f;
+    ground(GRASS,x,z,w,d,base,COLOR(200,230,190),3);
     if(far||cityMid)return;
     for(int k=0;k<3;k++){unsigned hk=city_hash((int)x+k,(int)z,9);float bx=x+6+(hk%97)/97.0f*(w-12),bz=z+6+((hk>>7)%97)/97.0f*(d-12);
-        box(bx,bz,6.3f,7+(hk>>14)%5,7+(hk>>17)%5,4+(hk>>20)%4,(hk>>10)%7*.4f,GRASS,GRASS,COLOR(60,120,60));}
+        box(bx,bz,base,7+(hk>>14)%5,7+(hk>>17)%5,4+(hk>>20)%4,(hk>>10)%7*.4f,GRASS,GRASS,COLOR(60,120,60));}
     static const uint32_t flowers[5]={COLOR(240,90,90),COLOR(250,200,70),COLOR(230,120,200),COLOR(255,250,240),COLOR(120,120,230)};
     for(int k=0;k<6;k++){unsigned hk=city_hash((int)x,(int)z+k,11);float fx=x+4+(hk%89)/89.0f*(w-8),fz=z+4+((hk>>7)%89)/89.0f*(d-8);
-        quad(CAR_PAINT,point(fx-2,7.6f,fz-2),point(fx+2,7.6f,fz-2),point(fx+2,7.6f,fz+2),point(fx-2,7.6f,fz+2),flowers[(hk>>14)%5],1,1);}
+        quad(CAR_PAINT,point(fx-2,base+1.3f,fz-2),point(fx+2,base+1.3f,fz-2),point(fx+2,base+1.3f,fz+2),point(fx-2,base+1.3f,fz+2),flowers[(hk>>14)%5],1,1);}
 }
 /* Semaforo en una esquina de manzana. */
 static void traffic_light(float x,float z,float angle){
     if(cacheRec){RecHdr h={3,0,0,0};cache_put(&h,4);float q[3]={x,z,angle};cache_put(q,sizeof q);return;} /* dinamico: se dibuja en vivo */
+    float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);
     box(x,z,0,1.2f,1.2f,28,angle,CAR_PAINT,CAR_PAINT,COLOR(70,74,76));
     box(x,z,22,3,3,9,angle,CAR_PAINT,CAR_PAINT,COLOR(40,40,40));
     int bx=(int)floorf(x/320),bz=(int)floorf(z/320);
@@ -87,11 +104,14 @@ static void traffic_light(float x,float z,float angle){
     box(x,z-1.7f,24,1.5f,.4f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(60,220,80):COLOR(46,65,48));
     box(x-1.7f,z,28,.4f,1.5f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(255,60,40):COLOR(68,62,56));
     box(x-1.7f,z,24,.4f,1.5f,1.5f,angle,CAR_PAINT,CAR_PAINT,horizontalGreen?COLOR(46,65,48):COLOR(60,220,80));
+    fixedGround=saved;
 }
 /* Parada de bus: marquesina sobre postes (visual, en la acera). */
 static void bus_stop(float x,float z){
+    float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);
     box(x-6,z,0,1,1,14,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));box(x+6,z,0,1,1,14,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
     box(x,z,14,18,7,1.2f,0,GLASS,GLASS,COLOR(160,200,210));box(x,z+3,5,16,.6f,7,0,GLASS,GLASS,COLOR(180,210,220));
+    fixedGround=saved;
 }
 /* Puente sobre el rio en la fila bz: tablero, barandillas, arcos y farolas. */
 static void river_bridge(int bz,uint32_t white){

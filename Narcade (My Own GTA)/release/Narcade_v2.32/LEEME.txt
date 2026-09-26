@@ -1,0 +1,8 @@
+Narcade 3D 2.32 - made by Naresz
+ISO: copia Narcade_v2.32.iso a ISO/ en una PSP con CFW compatible.
+EBOOT: copia PSP/GAME/NARCADE a PSP/GAME/ como alternativa a la ISO.
+El guardado y la solucion del movimiento de Claude se conservan.
+Mejoras: fachadas adosadas, balcones, parking ajardinado, rio continuo
+con meandro y flujo animado; apoyos de jardines, tanques y mobiliario.
+city-v232-preview.png es un render de inspeccion en PC de la malla real,
+no una captura de la PSP. Falta verificar la apariencia en hardware.
