@@ -39,7 +39,7 @@ static int used[MAT_COUNT];
    las manzanas se reconstruyen de una en una para seguir la luz del ciclo dia/noche.
    Si el espacio se agota, esa manzana se dibuja como antes (nunca falta nada). */
 #ifndef CITY_CACHE_BYTES
-#define CITY_CACHE_BYTES (2u*1024u*1024u) /* 2 MB: pico medido 1,8 MB recorriendo toda la ciudad; limite de RAM ~20 MB */
+#define CITY_CACHE_BYTES (5u*512u*1024u) /* 2,5 MB (v2.34: el suelo troceado en las transiciones ocupa mas); limite de RAM ~20 MB */
 #endif
 typedef struct{unsigned char kind,mat,count,lit;}RecHdr; /* kind: 0 poligono, 1 luz, 2 sombra, 3 semaforo */
 typedef struct{unsigned off,len;float day;int valid;unsigned chunk0,nchunks;}CellCache;
@@ -299,6 +299,10 @@ static void box(float x,float z,float bottom,float length,float width,float heig
 static void ground(int mat,float x,float z,float w,float d,float y,uint32_t color,float repeat){
     /* Subdivide at terrain lattice boundaries: roads genuinely climb hills. */
     for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,geo_next_z(zz));if(endz<=zz+.001f)endz=fminf(z+d,zz+.01f);
+        /* v2.34 (Claude): dentro de la franja de transicion del valle (z local 0..86) el borde de la
+           ciudad se curva mucho: tramos de 8 en vez de uno solo de 86. Antes quedaba un hueco sin
+           suelo en el borde oeste (justo donde empieza la partida, junto al taller de Luna). */
+        {float lz=zz-floorf(zz/320.f)*320.f;if(lz<86.f)endz=fminf(endz,zz+8.f);}
         for(float xx=x;xx<x+w-.001f;){float endx=fminf(x+w,(floorf(xx/80)+1)*80);if(endx<=xx+.001f)endx=fminf(x+w,xx+80);
             uint32_t lc=lit_color(color,0,1,0);float ou=0,ov=0;if(mat==WATER){ou=view->time*.045f;ov=view->time*.11f;} /* v2.7: el agua fluye */
             Vertex v[4]={{(xx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,xx,y,zz},{(endx-x)/w*repeat+ou,(zz-z)/d*repeat+ov,lc,endx,y,zz},
