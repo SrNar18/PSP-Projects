@@ -1,17 +1,17 @@
-"""Package the tested 2.33 ISO/PBP and handoff notes without touching other branches."""
+"""Package the tested 2.35 ISO/PBP and handoff notes without touching other branches."""
 from pathlib import Path
 import hashlib,shutil,zipfile
-root=Path(__file__).resolve().parents[1];release=root/'release/Narcade_v2.33';release.mkdir(parents=True,exist_ok=True)
-shutil.copy2(root/'Narcade.iso',release/'Narcade_v2.33.iso')
-shutil.copy2(root/'NOTAS_CODEX_PARA_CLAUDE_v2.33.md',release/'NOTAS_CODEX_PARA_CLAUDE_v2.33.md')
+root=Path(__file__).resolve().parents[1];release=root/'release/Narcade_v2.35';release.mkdir(parents=True,exist_ok=True)
+shutil.copy2(root/'Narcade.iso',release/'Narcade_v2.35.iso')
+shutil.copy2(root/'NOTAS_CODEX_PARA_CLAUDE_v2.35.md',release/'NOTAS_CODEX_PARA_CLAUDE_v2.35.md')
 shutil.copy2(root/'AVISOS.txt',release/'AVISOS.txt')
 for name in ['PSPSDK-LICENSE.txt','Newlib-LICENSE.txt','Allura-LICENSE.txt','DejaVu-LICENSE.txt']:shutil.copy2(root/'tools'/name,release/name)
 for source,target in [('character-combat-preview.png','personaje-inspeccion-PC.png'),('weapon-wheel.png','rueda-armas-inspeccion-PC.png')]:
  shutil.copy2(root/'build'/source,release/target)
-(release/'LEEME.txt').write_text('''NARCADE 3D v2.33 — made by Naresz
+(release/'LEEME.txt').write_text('''NARCADE 3D v2.35 — made by Naresz
 
 INSTALACION (elige una opcion):
-1. ISO: copia Narcade_v2.33.iso a ms0:/ISO/ de la PSP con CFW.
+1. ISO: copia Narcade_v2.35.iso a ms0:/ISO/ de la PSP con CFW.
 2. PBP: extrae PSP/GAME/NARCADE del ZIP a la Memory Stick.
 Las partidas anteriores siguen usando el panel oficial de Sony y el mismo formato.
 
@@ -38,16 +38,16 @@ Las imagenes adjuntas son inspecciones en PC de la malla y la rueda, no capturas
 El aspecto y FPS de esta version aun requieren prueba en una PSP fisica.
 La nota MD adjunta explica el codigo y la integracion con el trabajo de Claude.
 ''',encoding='utf-8')
-iso=release/'Narcade_v2.33.iso';pbp=root/'EBOOT.PBP'
-checks=hashlib.sha256(iso.read_bytes()).hexdigest()+'  Narcade_v2.33.iso\n'+hashlib.sha256(pbp.read_bytes()).hexdigest()+'  PSP/GAME/NARCADE/EBOOT.PBP (dentro del ZIP)\n'
+iso=release/'Narcade_v2.35.iso';pbp=root/'EBOOT.PBP'
+checks=hashlib.sha256(iso.read_bytes()).hexdigest()+'  Narcade_v2.35.iso\n'+hashlib.sha256(pbp.read_bytes()).hexdigest()+'  PSP/GAME/NARCADE/EBOOT.PBP (dentro del ZIP)\n'
 (release/'SHA256.txt').write_text(checks,encoding='utf-8')
-zip_path=root/'release/Narcade_v2.33_PSP.zip'
+zip_path=root/'release/Narcade_v2.35_PSP.zip'
 with zipfile.ZipFile(zip_path,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
- z.write(iso,'ISO/Narcade_v2.33.iso');z.write(pbp,'PSP/GAME/NARCADE/EBOOT.PBP')
+ z.write(iso,'ISO/Narcade_v2.35.iso');z.write(pbp,'PSP/GAME/NARCADE/EBOOT.PBP')
  for f in sorted(release.iterdir()):
-  if f!=iso:z.write(f,'Narcade_v2.33/'+f.name)
+  if f!=iso:z.write(f,'Narcade_v2.35/'+f.name)
 with zipfile.ZipFile(zip_path) as z:
  assert z.testzip() is None
- assert z.read('ISO/Narcade_v2.33.iso')==iso.read_bytes()
+ assert z.read('ISO/Narcade_v2.35.iso')==iso.read_bytes()
  assert z.read('PSP/GAME/NARCADE/EBOOT.PBP')==pbp.read_bytes()
 print(zip_path,zip_path.stat().st_size,'bytes; ISO and PBP verified')

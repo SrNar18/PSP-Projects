@@ -37,7 +37,7 @@ Progress is saved with the PSP's own save-data menu.
   long guns; jump and park-wall climb animations.
 - NPC health, impact effects, fleeing and death poses; assaults increase the wanted level.
 
-Version 2.33 has been compiled for PSP and checked in PPSSPP and host regressions.
+Version 2.35 has been compiled for PSP and checked in PPSSPP and host regressions.
 Its appearance and performance on physical PSP hardware still need a playtest.
 
 ## Folder layout

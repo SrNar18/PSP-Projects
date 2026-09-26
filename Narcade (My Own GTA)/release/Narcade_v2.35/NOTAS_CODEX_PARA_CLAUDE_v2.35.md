@@ -1,4 +1,4 @@
-# Narcade 2.33 — personaje, armas y combate (Codex)
+# Narcade 2.35 — personaje, armas y combate (Codex)
 
 Fecha: 27 de septiembre de 2026. Rama: `codex/character-combat`.
 Base: `0f4cf17`, producción 2.32. Se trabajó en un worktree dentro de `build/worktrees/character-combat`, no en el checkout de Claude.
@@ -42,7 +42,7 @@ Los NPC heridos corren alejándose del jugador y prueban direcciones alternativa
 
 `tools/weapon_textures.py` genera dos tiles originales de 64 × 64: acero cepillado y madera acabada. Se añaden DESPUÉS de los dos mipmaps antiguos de carretera/andén en `assets/textures3d.bin`. Los primeros 868.352 bytes del atlas anterior se conservan. Materiales 41/42 tienen una dirección especial al cargar; los offsets de ciudad y mipmaps NO se desplazan. `tools/textures3d.py` también añade estos tiles al regenerar todo. Los previews de personaje leen 43 materiales.
 
-VRAM, `MAX_VERTICES=6144` y cache de ciudad de 2 MB se mantienen. Se añaden dos lotes de geometría para armas en RAM (aprox. 295 KB) y 16 KB de tiles, además del pequeño estado de combate/iconos. Revisar memoria antes de aumentar materiales/cache nuevamente. El sonido de disparos/golpes se mezcla con el audio existente; ruido propio y tabla de tono, sin exponenciales ni senos por muestra del disparo.
+VRAM y `MAX_VERTICES=6144` se mantienen; la cache final de 2,5 MB procede de la revision 2.34 de Claude. Se añaden dos lotes de geometría para armas en RAM (aprox. 295 KB) y 16 KB de tiles, además del pequeño estado de combate/iconos. Revisar memoria antes de aumentar materiales/cache nuevamente. El sonido de disparos/golpes se mezcla con el audio existente; ruido propio y tabla de tono, sin exponenciales ni senos por muestra del disparo.
 
 ## Validación y reproducción
 
@@ -62,10 +62,13 @@ VRAM, `MAX_VERTICES=6144` y cache de ciudad de 2 MB se mantienen. Se añaden dos
 
 La ISO se compila con el SDK PSP existente y `package_iso.py` comprueba que `EBOOT.BIN` coincide byte a byte con el ELF estático. `tools/character_layout.c` permite una inspección de estado de sólo lectura en PPSSPP; `psp_character_smoke.py` envía controles reales, sin modificar memoria. Se usa una instancia aislada y otra Memory Stick. Comprueba apuntar, golpe mantenido, salto/aterrizaje, rueda/equipar y disparo sin abrir mensajes accidentalmente. El emulador oculto no permite validar visualmente la salida GPU: la revisión de apariencia realizada es la de la malla en PC. Queda pendiente el aspecto final y FPS en PSP física.
 
-Entrega en `release/Narcade_v2.33` y ZIP hermano. El README explica los controles, instalación y límites. Se incluyen SHA256, ISO, PBP en el ZIP, previews identificados y esta nota.
+Entrega en `release/Narcade_v2.35` y ZIP hermano. El README explica los controles, instalación y límites. Se incluyen SHA256, ISO, PBP en el ZIP, previews identificados y esta nota.
 
-Compilacion final: secciones estaticas de `narcade_static.elf` = 18.245.876 bytes (mas heap PSP de 1 MB existente). ISO de 16.087.040 bytes, SHA256 `997f106bfc3f75397184e327d726a65aacfe29409e90104077bcf273da96671f`. Tambien se comprueba cancelar salto/escalada al entrar en un vehiculo o recuperarse en el hospital, evitando volver a la posicion de una escalada anterior.
 
 Integracion antes de publicar: `origin/main` avanzo a `ab77c99` (Claude, objetos de ciudad fuera de la calzada y correcciones de parpadeo). Se fusiono sin conflictos en `62408e9`, se volvieron a pasar las nueve pruebas y se recompilaron ISO/PBP. La ISO entregada contiene esos cambios de Claude, no la base antigua. `qa_city28` tras fusionar: pico 35.133 vertices totales, ningun material desbordado; las 512 vistas y el smoke real de PPSSPP pasan. La rama local de Claude `claude/revision-bugs` se conserva intacta.
 
 CI: GitHub Actions fallaba antes de compilar con `No such container: (My` al usar el nombre del proyecto con espacios como `defaults.run.working-directory` dentro de Docker. `.github/workflows/build.yml` ahora ejecuta desde la raiz del checkout y entra con `cd` entre comillas dentro del script de compilacion/empaquetado. No se modifica el SDK ni se saltan comprobaciones.
+
+Integracion final de la revision 2.34 de Claude: se incorporo `211dea6` y se resolvio el unico conflicto en el bucle de peatones. Su colocacion en acera y media vuelta al acabar la parcela se conservan dentro de `combat_peds_tick`; la huida usa una huella propia menor que la del protagonista, para no quedarse pegada a la pared en esas aceras. Se mantienen sus cambios de trafico, averia/desembarco, patrullas, luces y suelo. La cache de ciudad ahora es de 2,5 MB por su revision 2.34; revisar el presupuesto conjunto, no restaurarla a 2 MB sin sus pruebas. La entrega conjunta se identifica como 2.35 para distinguirla de las dos revisiones paralelas.
+
+ISO final conjunta v2.35: SHA256 `7c335ee6d378d3d75afda37d00b2d40445154815e0e9c09513fa81fea2a475d0`. Pruebas host de personaje, misiones y renderer realizadas tras integrar 2.34; nueve suites.

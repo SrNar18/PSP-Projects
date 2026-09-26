@@ -125,7 +125,7 @@ static void combat_tick(float ax,float ay,float dt){
 }
 /* Pedestrians stand four logical units from the parcel edge in Claude's
    sidewalk placement. They need a smaller foot radius than the protagonist. */
-+static int combat_ped_free(float x,float y){
+static int combat_ped_free(float x,float y){
  if(!free_at(x,y,2)||combat_wall_at(x,y,2.8f))return 0;
  float px,pz;physics_project(x,y,&px,&pz);
  for(int i=0;i<CAR_COUNT;i++){Car *c=&g.cars[i];if(fabsf(c->x-x)>80||fabsf(c->y-y)>80)continue;
@@ -134,8 +134,8 @@ static void combat_tick(float ax,float ay,float dt){
  }
  for(int i=0;i<30;i++)if(dist(x,y,locations[i].x,locations[i].y)<9.5f)return 0;
  return 1;
-+}
-+static void combat_peds_tick(float dt){
+}
+static void combat_peds_tick(float dt){
  for(int i=0;i<42;i++){
   Ped *p=&g.peds[i];CombatPed *c=&combat.ped[i];c->hit=fmaxf(0,c->hit-dt);
   if(c->health<=0){c->fall=fminf(1,c->fall+dt*1.6f);continue;}

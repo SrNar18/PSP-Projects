@@ -1,7 +1,7 @@
-NARCADE 3D v2.33 — made by Naresz
+NARCADE 3D v2.35 — made by Naresz
 
 INSTALACION (elige una opcion):
-1. ISO: copia Narcade_v2.33.iso a ms0:/ISO/ de la PSP con CFW.
+1. ISO: copia Narcade_v2.35.iso a ms0:/ISO/ de la PSP con CFW.
 2. PBP: extrae PSP/GAME/NARCADE del ZIP a la Memory Stick.
 Las partidas anteriores siguen usando el panel oficial de Sony y el mismo formato.
 
