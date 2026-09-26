@@ -51,7 +51,7 @@ static struct {
  float viewYaw,walking,inputYaw,gaitPhase,motion,stickAngle,cameraVelocity,cameraDistance,followScale,frameYaw,bodyYaw,wallGuide,carCamYaw,stickAnchor,carScreenYaw,stickFX,stickFY,stickHX[2],stickHY[2],camBase,camClear,calX,calY;int carCamInit,carYawOwner;int stickActive;
  float tapAge,sprintTime,footSpeed,footTravel,footFiltered,footStall,moveGap;int runTaps;
  float stamina;int exhausted;
- float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT];
+ float trafficYield[CAR_COUNT],hornCooldown[CAR_COUNT],blockedTime[CAR_COUNT],wallTime[CAR_COUNT];
  int pauseTab,pauseBack;
  int weapon,weaponChoice,weaponWheel;float weaponHold;
  float lift,metroZ,metroWait;int metroDir,inMetro;float moveYaw,steerSmooth;int moveActive; /* v2.9: rumbo suavizado a pie */int zoom; /* v2.6.2: SELECT alterna 4 distancias de camara (1 = por defecto) */ /* v2.6: anden/escaleras y Metro (no se guardan) */
@@ -258,11 +258,19 @@ static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *dept
  }
  *depth=best;return 1;
 }
+/* v2.34 (Claude): para los coches, el borde del mundo solo cuenta a 2 unidades. En las franjas
+   de transicion del valle la huella girada del coche del carril mas externo tocaba el limite de 8
+   del peaton y el coche se quedaba parado para siempre. */
+static int car_solid(float x,float y){
+ if(x<-40||y<-40||x>WORLD_W+40||y>WORLD_H+40)return 1;
+ if(x>=8&&y>=8&&x<=WORLD_W-8&&y<=WORLD_H-8)return solid(x,y);
+ return cm_solid(x,y)||cm_obstacle(x,y);
+}
 static int car_free_at(const Car *c,float x,float y){
  Car test=*c;test.x=x;test.y=y;float angle=physics_heading(&test),ca=cosf(angle),sa=sinf(angle),gx,gy;physics_project(x,y,&gx,&gy);
  for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){
   float lx,ly;physics_unproject(gx+ca*i*18-sa*j*9,gy+sa*i*18+ca*j*9,&lx,&ly);
-  if(solid(lx,ly))return 0;
+  if(car_solid(lx,ly))return 0;
  }
  return 1;
 }
@@ -312,7 +320,10 @@ static void separate_cars(void){
     float den=(a->parked?0:an*an)+(b->parked?0:bn*bn);
     if(den>.001f){float impulse=closing*(1+restitution)/den;if(!a->parked)a->speed-=impulse*an;if(!b->parked)b->speed+=impulse*bn;}
     if(a->parked)a->speed=0;if(b->parked)b->speed=0;
-    if(i!=g.car)g.trafficYield[i]=.45f;if(j!=g.car)g.trafficYield[j]=.45f;
+    /* v2.34 (Claude): solo cede el coche que va hacia el otro. Antes cedian los dos y, si seguian
+       en contacto, se volvian a ceder cada fotograma: quedaban parados para siempre (atascos). */
+    {int ya=an>.2f&&!a->parked,yb=bn<-.2f&&!b->parked;if(ya&&yb){if(i<j)ya=0;else yb=0;}
+     if(ya&&i!=g.car)g.trafficYield[i]=.45f;if(yb&&j!=g.car)g.trafficYield[j]=.45f;}
    }
   }
   if(!changed)break;
@@ -384,7 +395,13 @@ static void world_cars_init(void){
 static void world_peds_init(void){
  combat_init_peds();
  for(int i=0;i<42;i++){
-  for(int k=0;k<12;k++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);if(!cm_solid(g.peds[i].x,g.peds[i].y))break;} /* v2.6: acera real */
+  /* v2.34 (Claude): el peaton se coloca en el centro de una acera real (4 antes del borde de la
+     parcela; las manzanas empiezan entre 86 y 100). Antes iba en x local 82, que en la mayoria de
+     manzanas era calzada (84% del tiempo en la calle, medido). */
+  Ped *p=&g.peds[i];int ok=0;
+  for(int k=0;k<40&&!ok;k++){float bx=(random_u()%8)*320.f;p->y=(random_u()%7)*320+100+(random_u()%180);
+   for(float lx=78;lx<=112;lx+=1)if(cm_parcel_at(bx+lx,p->y)>=0){p->x=bx+lx-4;ok=cm_parcel_at(p->x,p->y)<0;break;}}
+  if(!ok){p->x=-1000;p->y=-1000;p->v=0;} /* sin sitio: no se dibuja en la ciudad */
   g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
 }
 int cachecount_public(void);
@@ -631,7 +648,37 @@ static int traffic_ahead(int index,float distance){
  const Car *c=&g.cars[index];float a=physics_heading(c),gx,gz;physics_project(c->x,c->y,&gx,&gz);
  for(int j=0;j<CAR_COUNT;j++)if(j!=index){float x,z;physics_project(g.cars[j].x,g.cars[j].y,&x,&z);
   float dx=x-gx,dz=z-gz,forward=dx*cosf(a)+dz*sinf(a),side=-dx*sinf(a)+dz*cosf(a);
+  /* v2.34 (Claude): solo frenan los coches que van en el mismo sentido (o aparcados). Los del carril
+     contrario, que en la proyeccion del valle quedan muy cerca, se veian "delante" y los dos se
+     esperaban para siempre (atasco frente a frente). */
+  if(!g.cars[j].parked&&j!=g.car&&cosf(angle_delta(physics_heading(&g.cars[j]),a))<.3f)continue;
+  /* v2.34: ademas, en el mapa, a menos de 12 del carril (los carriles distan 28). Cerca del borde
+     oeste la proyeccion junta cosas que en el mapa estan lejos (coches aparcados, otros carriles). */
+  {float lx=g.cars[j].x-c->x,ly=g.cars[j].y-c->y;if(fabsf(-lx*sinf(c->a)+ly*cosf(c->a))>12)continue;}
   if(forward>8&&forward<distance&&fabsf(side)<19)return 1;
+ }
+ return 0;
+}
+/* v2.34 (Claude): un coche civil atascado contra algo (sobre todo en las franjas donde el valle
+   deforma las calles) reaparece en otro carril libre de la ciudad, lejos del jugador y fuera de su
+   vista. Antes se quedaban parados para siempre (31 atascos en 15 minutos de simulacion). */
+/* En pantalla: delante de la camara (±70 grados) y a menos de 450. */
+static int in_view(float x,float y){
+ float px,pz,cx,cz;physics_project(g.x,g.y,&px,&pz);physics_project(x,y,&cx,&cz);
+ float dx=cx-px,dz=cz-pz,d=hypotf(dx,dz);if(d>450)return 0;if(d<30)return 1;
+ return fabsf(angle_delta(atan2f(dz,dx),g.viewYaw))<1.22f;
+}
+static int respawn_civilian(int i){
+ Car *c=&g.cars[i];
+ for(int tries=0;tries<24;tries++){
+  Car t=*c;int east=random_u()&1,vertical=random_u()&1;
+  if(vertical){int col=random_u()%8;t.a=east?PI*.5f:-PI*.5f;t.x=col*320+42+(east?-14:14);t.y=150+(random_u()%1900);}
+  else{int row=random_u()%7;t.a=east?0:PI;t.x=150+(random_u()%2260);t.y=row*320+42+(east?14:-14);}
+  if(dist(t.x,t.y,g.x,g.y)<420||in_view(t.x,t.y))continue;
+  if(!car_free_at(&t,t.x,t.y))continue;
+  int crowded=0;for(int j=0;j<CAR_COUNT;j++)if(j!=i&&dist(g.cars[j].x,g.cars[j].y,t.x,t.y)<70)crowded=1;
+  if(crowded)continue;
+  c->x=t.x;c->y=t.y;c->a=t.a;c->speed=0;g.wallTime[i]=0;return 1;
  }
  return 0;
 }
@@ -644,9 +691,13 @@ static void civilian_traffic_tick(int i,float dt){
  float distance=c->speed*dt;
  if(red&&stopDist>=0&&distance>stopDist){distance=stopDist;c->speed=0;}
  float xx=c->x+cosf(c->a)*distance,yy=c->y+sinf(c->a)*distance;
- if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else c->speed=0;
+ if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;g.wallTime[i]=0;}
+ else{c->speed=0;if(target>0){g.wallTime[i]+=dt;if(g.wallTime[i]>3&&(dist(c->x,c->y,g.x,g.y)>250||!in_view(c->x,c->y)))respawn_civilian(i);}}
  /* Loop at the outside edge only when the entry lane is clear. */
- if(c->x<22||c->x>2538||c->y<22||c->y>2218){
+ /* v2.34: el morro (18) llega al borde antes que el centro: se da la vuelta a 32 del borde,
+    mirando solo el eje por el que circula (los carriles junto al borde no deben reaparecer). */
+ int horiz=fabsf(cosf(c->a))>.7f;
+ if(horiz?(c->x<32||c->x>2528):(c->y<32||c->y>2208)){
   Car next=*c;if(cosf(c->a)>.7f)next.x=70;else if(cosf(c->a)<-.7f)next.x=2490;
   else if(sinf(c->a)>.7f)next.y=70;else next.y=2170;
   if(car_free_at(&next,next.x,next.y)&&!traffic_ahead(i,55)){c->x=next.x;c->y=next.y;c->speed=0;}
@@ -847,7 +898,14 @@ static void world_tick(float ax,float ay,float dt){
   }
 #undef CAR_TURNED
   g.x=c->x;g.y=c->y;
-  if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
+  if(c->hp<=0){c->hp=20;c->speed=0;c->parked=1;g.car=-1;g.health-=25;
+   /* v2.34 (Claude): bajar por un lado libre, como con TRIANGULO. Antes el jugador quedaba en el
+      centro del coche y el coche, sin aparcar, se iba solo como si fuera trafico. */
+   float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;
+   if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}
+   if(!free_at(xx,yy,5)){xx=c->x+cosf(c->a)*30;yy=c->y+sinf(c->a)*30;}
+   if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a)*30;yy=c->y-sinf(c->a)*30;}
+   g.x=xx;g.y=yy;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
  for(int i=0;i<CAR_COUNT;i++){
   g.hornCooldown[i]=fmaxf(0,g.hornCooldown[i]-dt);
@@ -859,7 +917,10 @@ static void world_tick(float ax,float ay,float dt){
   }
   g.blockedTime[i]=0;
   if(g.trafficYield[i]>0){g.trafficYield[i]=fmaxf(0,g.trafficYield[i]-dt);c->speed=0;continue;}
-  if(!c->police){civilian_traffic_tick(i,dt);continue;}
+  /* v2.34 (Claude): sin persecucion, las patrullas circulan como el trafico normal (carriles y
+     semaforos). Antes iban rectas y giraban al azar: acababan fuera del mapa o dando vueltas contra
+     una pared para siempre. Al acabar una persecucion se alinean con el eje mas cercano. */
+  if(!c->police||g.heat<=0){if(c->police){c->a=roundf(c->a/(PI*.5f))*(PI*.5f);c->a=fmodf(c->a,2*PI);}civilian_traffic_tick(i,dt);continue;}
   if(c->police&&g.heat>0){
    float dd=dist(g.x,g.y,c->x,c->y);
    // Pursuers use the street grid, choosing the next junction toward the player.
@@ -875,7 +936,7 @@ static void world_tick(float ax,float ay,float dt){
    if(fabsf(lx-42)<2&&fabsf(ly-42)<2&&((int)(g.clock*10)+i)%4==0)c->a+=PI*.5f;
   }
   float xx=c->x+cosf(c->a)*c->speed*dt,yy=c->y+sinf(c->a)*c->speed*dt;
-  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a+=PI*.5f;}
+  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;}else{c->speed=0;c->a=fmodf(c->a+PI*.5f,2*PI);}
  }
  separate_cars();
  city_audio_update();

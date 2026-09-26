@@ -44,5 +44,9 @@ int main(void){
  setup();combat.vault=.01f;combat.startX=g.x;combat.startY=g.y;combat.vaultX=g.x;combat.vaultY=g.y+8;g.health=0;
  game_tick(0,0,0,.016f);CHECK(combat.vault==0&&combat.jump==0);float hx=g.x,hy=g.y;game_tick(0,0,0,.016f);CHECK(dist(g.x,g.y,hx,hy)<1);
  puts("PASS vehicle boarding and hospital recovery cancel airborne/climbing state");
+ setup();world_peds_init();int index=-1;for(int i=0;i<42;i++)if(combat_ped_free(g.peds[i].x,g.peds[i].y)){index=i;break;}CHECK(index>=0);
+ float ox=g.peds[index].x,oy=g.peds[index].y;g.x=ox-20;g.y=oy;combat_damage(index,26);
+ for(int i=0;i<12;i++)combat_peds_tick(1.f/60);CHECK(dist(g.peds[index].x,g.peds[index].y,ox,oy)>1);
+ puts("PASS Claude sidewalk spawn can flee after a hit without the protagonist's oversized footprint");
  return 0;
 }

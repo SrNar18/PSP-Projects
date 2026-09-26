@@ -23,6 +23,8 @@ static int inside_block(float x,float z,float m){
 }
 /* Punto de acera mas cercano para un objeto de radio c (c<4): fuera de toda parcela en su
    radio y con una parcela a menos de 8-c. Devuelve 0 si no hay acera cerca (no se dibuja). */
+typedef struct{float x[4],z[4];signed char ok[4];}FurnMemo; /* 0 semaforo, 1 parada, 2 farola, 3 papelera */
+static FurnMemo furnMemo[56];static unsigned char furnMemoDone[56];
 static float takenX[8],takenZ[8],takenR[8],spotPad;static int nTaken; /* objetos ya colocados en la manzana; spotPad: brazo de la farola */
 static int sidewalk_spot(float *x,float *z,float c){
     for(float r=0;r<=36;r+=1.f)for(int k=0,n=r==0?1:(int)(r*1.5f)+8;k<n;k++){
@@ -500,7 +502,9 @@ static void metro_train(void){
 }
 static void metro(int bz,int far){
     float z=bz*320;
-    for(int k=0;k<5;k++)cylinder(CM_METRO_X,z+32+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
+    /* v2.34 (Claude): pilares solo dentro de la manzana (z local 100..292). Antes habia uno cada 64
+       tambien en z local 32: en medio de la calle este-oeste, y los coches se quedaban atascados. */
+    for(int k=0;k<4;k++)cylinder(CM_METRO_X,z+100+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
     box(CM_METRO_X,z+160,CM_METRO_DECK,14,320,3,0,SIDEWALK,ROAD,COLOR(190,186,180));
     if(!far){box(CM_METRO_X-3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));box(CM_METRO_X+3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
         if(!cm_metro_station(bz)){box(CM_METRO_X-6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));box(CM_METRO_X+6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));}}
@@ -521,7 +525,10 @@ static void metro(int bz,int far){
 /* Metrocable: pilonas, cable y cabinas entre (CM_CABLE_X0,Z0) y (CM_CABLE_X1,Z1). */
 static void metrocable(int far){
     enum {N=5};float hs[N+1],px[N+1],pz[N+1];
-    for(int i=0;i<=N;i++){cm_cable_node(i,&px[i],&pz[i]);hs[i]=geo_height(px[i],pz[i])+96;
+    /* v2.34 (Claude): primero todas las pilonas. Antes la cruceta de cada una se orientaba hacia
+       la siguiente leyendo px[i+1] antes de calcularlo (valor sin inicializar: angulo al azar). */
+    for(int i=0;i<=N;i++){cm_cable_node(i,&px[i],&pz[i]);hs[i]=geo_height(px[i],pz[i])+96;}
+    for(int i=0;i<=N;i++){
         if(nearby(px[i],pz[i],700)){
             float bottom=(i==0||i==N)?46:0;
             box(px[i],pz[i],bottom,5,5,96-bottom,0,METAL,METAL,COLOR(118,143,152));
@@ -652,7 +659,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
         /* v2.33 (Claude): cada objeto se lleva al punto de acera mas cercano (ver sidewalk_spot).
            Las posiciones no cambian: se calculan una vez por manzana y se recuerdan (la busqueda
            es cara y las manzanas se reconstruyen al cambiar el nivel de detalle o la luz). */
-        {static struct{float x[4],z[4];signed char ok[4];}memo[56];static unsigned char memoDone[56];
+        {FurnMemo *memo=furnMemo;unsigned char *memoDone=furnMemoDone;
          int ci=bz*8+bx;
          if(!memoDone[ci]){memoDone[ci]=1;nTaken=0;
             float tx=x+82,tz=z+82;memo[ci].ok[0]=(bx==0||bx==3||bx==5)&&(bz==0||bz==3)&&sidewalk_spot(&tx,&tz,1.5f);memo[ci].x[0]=tx;memo[ci].z[0]=tz;

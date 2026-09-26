@@ -123,7 +123,19 @@ static void combat_tick(float ax,float ay,float dt){
  if(victim>=0)combat_damage(victim,damage[g.weapon]);
  else if(!melee){combat.alert=8;g.heat=clampf(g.heat+.08f,0,5);}
 }
-static void combat_peds_tick(float dt){
+/* Pedestrians stand four logical units from the parcel edge in Claude's
+   sidewalk placement. They need a smaller foot radius than the protagonist. */
++static int combat_ped_free(float x,float y){
+ if(!free_at(x,y,2)||combat_wall_at(x,y,2.8f))return 0;
+ float px,pz;physics_project(x,y,&px,&pz);
+ for(int i=0;i<CAR_COUNT;i++){Car *c=&g.cars[i];if(fabsf(c->x-x)>80||fabsf(c->y-y)>80)continue;
+  float cx,cz;physics_project(c->x,c->y,&cx,&cz);float dx=px-cx,dz=pz-cz,a=physics_heading(c);
+  if(fabsf(dx*cosf(a)+dz*sinf(a))<21&&fabsf(-dx*sinf(a)+dz*cosf(a))<12)return 0;
+ }
+ for(int i=0;i<30;i++)if(dist(x,y,locations[i].x,locations[i].y)<9.5f)return 0;
+ return 1;
++}
++static void combat_peds_tick(float dt){
  for(int i=0;i<42;i++){
   Ped *p=&g.peds[i];CombatPed *c=&combat.ped[i];c->hit=fmaxf(0,c->hit-dt);
   if(c->health<=0){c->fall=fminf(1,c->fall+dt*1.6f);continue;}
@@ -132,10 +144,12 @@ static void combat_peds_tick(float dt){
    float a=atan2f(z-pz,x-px),nx,ny;
    for(int k=0;k<7;k++){float off=k==0?0:((k+1)/2)*.55f*(k&1?1:-1);
     physics_unproject(x+cosf(a+off)*75*dt,z+sinf(a+off)*75*dt,&nx,&ny);
-    if(foot_free(nx,ny)){p->x=nx;p->y=ny;c->yaw=logical_heading_from_projected(nx,ny,a+off);break;}
+    if(combat_ped_free(nx,ny)){p->x=nx;p->y=ny;c->yaw=logical_heading_from_projected(nx,ny,a+off);break;}
    }
    c->phase+=dt*12;
-  }else{p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;c->yaw=p->v>0?PI*.5f:-PI*.5f;c->phase+=dt*6;}
+  }else{float oldY=p->y;p->y+=p->v*dt;int local=(int)p->y%320;
+   /* Preserve Claude 2.34: turn around at the end of the actual sidewalk. */
+   if(local<91||local>283||cm_parcel_at(p->x+5,p->y)<0){p->y=oldY;p->v=-p->v;}c->yaw=p->v>0?PI*.5f:-PI*.5f;c->phase+=dt*6;}
  }
 }
 static void combat_hud(void){

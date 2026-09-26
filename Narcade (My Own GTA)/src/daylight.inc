@@ -115,7 +115,7 @@ static void facade_lights(Point a,Point b,float height,float nx,float nz,int mat
         Point q=point(a.x+dx*(t+w)+nx*.25f,y,a.z+dz*(t+w)+nz*.25f);
         Point r=q,s=p;r.y+=hh;s.y+=hh;
         uint32_t rgb=hash&1?COLOR(255,204,130):COLOR(170,202,228);
-        uint32_t color=((int)(night*125)<<24)|(rgb&0xffffff);
+        uint32_t color=((uint32_t)(int)(night*125)<<24)|(rgb&0xffffff);
         glow_quad(fx_building(p),fx_building(q),fx_building(r),fx_building(s),color);
     }
 }
@@ -143,7 +143,7 @@ static void cast_shadow(float x,float z,float radius,float height){
     float len=sunY>.15f?height*(1-sunY)/sunY:height*5.6f;if(len>radius*4)len=radius*4;
     float dx=-sunX,dz=-sunZ;float n=sqrtf(dx*dx+dz*dz);if(n<.001f){dx=1;dz=0;n=1;}dx/=n;dz/=n;
     len*=1-night;float alpha=.25f+(1-night)*.35f;
-    uint32_t c=((int)(alpha*255)<<24)|0x000000;
+    uint32_t c=((uint32_t)(int)(alpha*255)<<24)|0x000000;
     soft_ground(x+dx*len*.35f,z+dz*len*.35f,radius+len*.65f,radius,atan2f(dz,dx),c,1);
 }
 /* Charco de luz en el suelo (farolas, faros): rombo aditivo. */
@@ -171,13 +171,13 @@ static void light_pool(float x,float z,float rx,float rz,float angle,uint32_t co
 /* Cono de faros delante de un coche (dos haces + el propio faro encendido). */
 static void headlights(float x,float z,float angle){
     if(night<.2f)return;
-    float c=cosf(angle),s=sinf(angle);uint32_t beam=((int)(110*night)<<24)|(COLOR(255,240,190)&0x00ffffff);
+    float c=cosf(angle),s=sinf(angle);uint32_t beam=((uint32_t)(int)(110*night)<<24)|(COLOR(255,240,190)&0x00ffffff);
     for(int side=-1;side<=1;side+=2){
         float ox=x+c*18-s*side*6,oz=z+s*18+c*side*6;             /* posicion del faro */
         float reach=64;for(float d=8;d<64;d+=8)if(cm_solid(ox+c*d,oz+s*d)){reach=d;break;}
         light_pool(ox+c*reach*.4f,oz+s*reach*.4f,reach*.6f,10,angle,beam);
         Point f=geo_point(ox,9,oz);
-        glow_quad(point(f.x-s*1.6f,f.y-1.4f,f.z+c*1.6f),point(f.x+s*1.6f,f.y-1.4f,f.z-c*1.6f),point(f.x+s*1.6f,f.y+1.4f,f.z-c*1.6f),point(f.x-s*1.6f,f.y+1.4f,f.z+c*1.6f),((int)(230*night)<<24)|COLOR(255,250,220)&0x00ffffff);
+        glow_quad(point(f.x-s*1.6f,f.y-1.4f,f.z+c*1.6f),point(f.x+s*1.6f,f.y-1.4f,f.z-c*1.6f),point(f.x+s*1.6f,f.y+1.4f,f.z-c*1.6f),point(f.x-s*1.6f,f.y+1.4f,f.z+c*1.6f),((uint32_t)(int)(230*night)<<24)|COLOR(255,250,220)&0x00ffffff);
     }
 }
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
@@ -189,9 +189,9 @@ static void clouds(float time){
         float y=290+(h>>22&63),w=145+(h>>5&127),d=75+(h>>9&63);
         if(!nearby(cx,cz,1100))continue;
         float bright=lerpf(1,.30f,night);int a=(int)(lerpf(150,110,night));
-        uint32_t col=(a<<24)|COLOR((int)(255*bright),(int)(250*bright),(int)(252*bright))&0x00ffffff;
+        uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)(250*bright),(int)(252*bright))&0x00ffffff;
         float gx,gz;geo_project(cx,cz,&gx,&gz);
-        uint32_t underside=((a/3)<<24)|COLOR((int)(183*bright),(int)(192*bright),(int)(203*bright))&0x00ffffff;
+        uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)(183*bright),(int)(192*bright),(int)(203*bright))&0x00ffffff;
         sky_disc(point(gx,y-11,gz),w*.51f,d*.17f,underside);
         sky_disc(point(gx-w*.21f,y+4,gz),w*.26f,d*.23f,col);
         sky_disc(point(gx+w*.19f,y+8,gz),w*.24f,d*.24f,col);
@@ -200,21 +200,23 @@ static void clouds(float time){
     }
     /* disco solar / luna */
     float sx=eye.x+sunX*600,sy=eye.y+sunY*600,sz=eye.z+sunZ*600;
-    if(sunY>-.1f){uint32_t sc=(200<<24)|COLOR(255,(int)lerpf(240,180,1-sunY),(int)lerpf(200,90,1-sunY))&0x00ffffff;float r=26;
+    if(sunY>-.1f){uint32_t sc=(200u<<24)|COLOR(255,(int)lerpf(240,180,1-sunY),(int)lerpf(200,90,1-sunY))&0x00ffffff;float r=26;
         sky_disc(point(sx,sy,sz),r,r,sc);}
     float mx=eye.x-sunX*600,my=eye.y-sunY*600,mz=eye.z-sunZ*600;
-    if(-sunY>-.1f){uint32_t mc=(170<<24)|COLOR(220,225,240)&0x00ffffff;float r=16;
+    if(-sunY>-.1f){uint32_t mc=(170u<<24)|COLOR(220,225,240)&0x00ffffff;float r=16;
         sky_disc(point(mx,my,mz),r,r,mc);}
 }
 /* Farolas encendidas de noche: charco de luz en cada esquina de manzana visible. */
 static void street_lamps_glow(void){
     if(night<.2f)return;
-    uint32_t warm=((int)(120*night)<<24)|COLOR(255,225,150)&0x00ffffff;
+    uint32_t warm=((uint32_t)(int)(120*night)<<24)|COLOR(255,225,150)&0x00ffffff;
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
-        float x=bx*320+82,z=bz*320+59;
+        /* v2.34 (Claude): el charco de luz va donde esta la farola (movida a la acera en v2.33) */
+        int ci=bz*8+bx;if(!furnMemoDone[ci]||!furnMemo[ci].ok[2])continue;
+        float x=furnMemo[ci].x[2],z=furnMemo[ci].z[2];
         if(!nearby(x,z,420)||!sphere_visible(x,z,40))continue;
         light_pool(x,z,26,20,0,warm);
         Point l=geo_point(x,34,z);
-        glow_quad(point(l.x-4,l.y-1.5f,l.z-3),point(l.x+4,l.y-1.5f,l.z-3),point(l.x+4,l.y+1.5f,l.z+3),point(l.x-4,l.y+1.5f,l.z+3),((int)(240*night)<<24)|COLOR(255,240,190)&0x00ffffff);
+        glow_quad(point(l.x-4,l.y-1.5f,l.z-3),point(l.x+4,l.y-1.5f,l.z-3),point(l.x+4,l.y+1.5f,l.z+3),point(l.x-4,l.y+1.5f,l.z+3),((uint32_t)(int)(240*night)<<24)|COLOR(255,240,190)&0x00ffffff);
     }
 }
