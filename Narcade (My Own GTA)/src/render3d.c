@@ -15,7 +15,7 @@
 #endif
 
 #define PI 3.14159265358979323846f
-#define MAT_COUNT 41 /* 21 VRAM + 8 NPC + 12 urban/detail materials in RAM */
+#define MAT_COUNT 43 /* 21 VRAM + 8 NPC + 12 city + 2 weapon RAM materials */
 #define VRAM_MATERIALS 21
 #ifndef MAX_VERTICES /* v2.26: las pruebas en PC pueden ampliarlo */
 #define MAX_VERTICES 6144 /* v2.13.2 (Claude): 8190 -> 6144 = 2 MB menos de RAM estatica (mesh). El pico medido
@@ -27,6 +27,7 @@ enum { ROAD,SIDEWALK,BRICK,STUCCO,SHOP,ROOF,GRASS,WATER,JACKET,JEANS,FACE,WHEEL,
 enum { FLAT=20 }; /* Existing opaque white tile, tintable without car-paint glints. */
 enum { BARK=29,LEAVES,METAL,CONCRETE,CURTAIN,AWNING,COBBLE,MODERN }; /* v2.7: materiales 64px en RAM (tools/extra_textures.py) */
 enum { RETAIL=37,EATERY,OFFICE_FRONT,WORKSHOP_FRONT };
+enum { WEAPON_METAL=41,WEAPON_WOOD };
 typedef struct { float u,v; uint32_t color; float x,y,z; } Vertex;
 typedef struct { float x,y,z; } Point;
 static Vertex __attribute__((aligned(16))) mesh[MAT_COUNT][MAX_VERTICES];
@@ -71,6 +72,7 @@ static int clipEnabled=1;
 static int geographic=0,rigid=0;
 static float objectX,objectZ,objectYaw;
 static float fixedGround=-1000000;
+static float npcFall=0,npcPhase=0,npcFlee=0;
 
 static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
@@ -83,7 +85,7 @@ static void camera(const R3Scene *s){
     if(s->inMetro){ /* v2.6: camara dentro del coche del Metro, mirando en el sentido de la marcha */
         float dir=s->metroDir>0?1:-1;float mx,mz;geo_project(CM_METRO_X,s->metroZ+dir*(CM_TRAIN_CAR*.5f+3-26),&mx,&mz);float base=geo_height(CM_METRO_X,s->metroZ)+CM_PLAT_H;
         eye=point(mx-3,base+13,mz);float tx,tz;geo_project(CM_METRO_X,s->metroZ+dir*160,&tx,&tz);target=point(tx,base+9,tz); /* coche delantero, mirando por el testero */
-    }else if(s->lift>15){ /* en el anden: camara baja y cercana para no ver la marquesina desde arriba */
+    }else if(s->lift-s->jump>15){ /* en el anden: camara baja y cercana para no ver la marquesina desde arriba */
         float d=s->cameraDistance<48?s->cameraDistance:48;
         eye=point(px-cosf(yaw)*d,h+16,pz-sinf(yaw)*d);target=point(px+cosf(yaw)*25,h+9,pz+sinf(yaw)*25);
     }
@@ -91,6 +93,13 @@ static void camera(const R3Scene *s){
     /* solo pruebas: vista aerea oblicua para revisar el trazado (NARCADE_EXTRA_CFLAGS=-DNARCADE_TOPVIEW) */
     eye=point(px-cosf(yaw)*260,h+NARCADE_TOPVIEW,pz-sinf(yaw)*260);target=point(px+cosf(yaw)*60,h,pz+sinf(yaw)*60);
 #endif
+    if(s->aiming&&!s->driving&&!s->inMetro){
+        float cp=cosf(yaw),sp=sinf(yaw),pitch=tanf(s->cameraPitch),d=geo_clamp(s->cameraDistance,10,38);
+        float base=geo_height(s->x,s->z)+s->lift;
+        eye=point(px-cp*d-sp*5,base+14,pz-sp*d+cp*5);
+        float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,geo_height(lx,lz)+2);
+        target=point(px+cp*60-sp*5,base+10+pitch*60,pz+sp*60+cp*5);
+    }
     float fx=target.x-eye.x,fy=target.y-eye.y,fz=target.z-eye.z;
     float n=sqrtf(fx*fx+fy*fy+fz*fz);fx/=n;fy/=n;fz/=n;
     float rx=-fz,rz=fx,rn=sqrtf(rx*rx+rz*rz);rx/=rn;rz/=rn;
@@ -107,6 +116,16 @@ static void camera(const R3Scene *s){
         float length=sqrtf(planes[k][0]*planes[k][0]+planes[k][1]*planes[k][1]+planes[k][2]*planes[k][2]);
         for(int j=0;j<4;j++)planes[k][j]/=length;
     }
+}
+int r3_target_screen(float x,float z,float height,float *sx,float *sy){
+    float px,pz;geo_project(x,z,&px,&pz);Point p=point(px-eye.x,geo_height(x,z)+height-eye.y,pz-eye.z);
+    float fx=target.x-eye.x,fy=target.y-eye.y,fz=target.z-eye.z,n=sqrtf(fx*fx+fy*fy+fz*fz);fx/=n;fy/=n;fz/=n;
+    float rx=-fz,rz=fx,rn=hypotf(rx,rz);rx/=rn;rz/=rn;
+    float ux=-rz*fy,uy=rz*fx-rx*fz,uz=rx*fy;
+    float depth=p.x*fx+p.y*fy+p.z*fz;if(depth<=5)return 0;
+    float focal=136/tanf(31*PI/180);
+    *sx=240+(p.x*rx+p.z*rz)*focal/depth;*sy=136-(p.x*ux+p.y*uy+p.z*uz)*focal/depth;
+    return *sx>12&&*sx<468&&*sy>12&&*sy<250;
 }
 static float plane_distance(const Vertex *v,int k){return planes[k][0]*v->x+planes[k][1]*v->y+planes[k][2]*v->z+planes[k][3];}
 static Vertex interpolate(Vertex a,Vertex b,float t){
@@ -153,6 +172,11 @@ static void polygon(int mat,Vertex *input,int count){
         if(rigid){
             rigid_cache();
             float dx=v->x-objectX,dz=v->z-objectZ;
+            if(rigid==1&&npcFall>0){
+                float c=cosf(objectYaw),q=sinf(objectYaw),f=dx*c+dz*q,l=-dx*q+dz*c;
+                float sn=sinf(npcFall*PI*.5f),cs=cosf(npcFall*PI*.5f),nf=f*cs+v->y*sn;
+                v->y=fmaxf(.15f,v->y*cs-f*sn+2.8f*sn);dx=nf*c-l*q;dz=nf*q+l*c;
+            }
             if(rigid==2){float h=v->y;
                 v->x=rigGX+rigBX.x*dx+rigBY.x*h+rigBZ.x*dz;
                 v->z=rigGZ+rigBX.z*dx+rigBY.z*h+rigBZ.z*dz;
@@ -450,7 +474,7 @@ static void simple_person_body(float x,float z,float angle,int style,int walking
     uint32_t pants=variant%3==0?COLOR(150,168,170):variant%3==1?COLOR(90,101,117):COLOR(212,209,183);
     float shoulderWidth=woman?4.1f:variant==6?5.9f:5.1f;
     float hipWidth=woman?2.45f:2.2f,legWidth=variant==2||variant==5?2.15f:1.65f;
-    float phase=view->time*8.5f+style,swing=walking?sinf(phase):0,bob=walking?fabsf(cosf(phase))*.3f:0;
+    float phase=npcPhase,swing=walking?sinf(phase)*(npcFlee>0?1.5f:1):0,bob=walking?fabsf(cosf(phase))*.3f:0;
     for(int s=-1;s<=1;s+=2){
         float stride=s*swing*3.4f,lift=walking?fmaxf(0,s*swing)*1.7f:0;
         Point hip=point(0,12+bob,s*hipWidth),knee=point(stride*.55f+.6f,7+lift,s*hipWidth),ankle=point(stride,2+lift,s*hipWidth);
@@ -543,7 +567,7 @@ static void pose_prepare(void){
     poseMotion=geo_clamp(view->motion,0,2.1f);poseWave=sinf(view->gaitPhase);
     poseRun=geo_clamp((poseMotion-1)/1.08f,0,1);
     elbowSin=sinf(poseRun*1.05f);elbowCos=cosf(poseRun*1.05f);
-    if(view->weapon>0){elbowSin=sinf(1.12f);elbowCos=cosf(1.12f);}
+
     float moving=geo_clamp(poseMotion,0,1);
     poseBreath=sinf(view->time*2.2f)*.08f*(1-moving);
     poseBob=(1-cosf(view->gaitPhase*2))*(.13f+.22f*poseRun)*moving;
@@ -552,16 +576,18 @@ static void pose_prepare(void){
     for(int i=0;i<2;i++){
         float phase=fmodf(view->gaitPhase/(2*PI)+i*.5f,1);
         if(phase<0)phase+=1;
-        float support=.59f-.13f*poseRun,stride=(5.7f+1.8f*poseRun)*moving;
-        if(phase<support){footStep[i]=stride*(1-2*phase/support);footLift[i]=0;}
-        else{float t=(phase-support)/(1-support),ease=t*t*(3-2*t);
-            footStep[i]=stride*(-1+2*ease);
+        float support=.59f-.10f*poseRun,stride=(4.9f+2.5f*poseRun)*moving;
+        if(phase<support){float t=phase/support;footStep[i]=stride*cosf(PI*t);footLift[i]=0;}
+        else{float t=(phase-support)/(1-support);
+            footStep[i]=-stride*cosf(PI*t);
             footLift[i]=sinf(PI*t)*(1.15f+4.1f*poseRun)*moving;
         }
     }
 }
+#include "character_pose.inc"
 static Point player_pose(Point p,int bone){
     float motion=poseMotion,wave=poseWave,run=poseRun;
+    if(view->jump>0&&bone>0&&bone<3){float tuck=geo_clamp(view->jump/7,0,1)*geo_clamp(1-p.y/15,0,1);p.x-=tuck*1.5f;p.y+=tuck*2.5f;}
     int side=(bone&1)?-1:1;
     /* Animacion procedural (Claude v2.4): ademas del paso, contragiro de hombros y cadera, brazos con codo,
        inclinacion hacia delante al correr y arco del pie. Todo en funcion de la fase de marcha ya existente. */
@@ -576,10 +602,12 @@ static Point player_pose(Point p,int bone){
         /* La cadera gira ligeramente con la pierna que avanza. */
         float hip=geo_clamp((p.y-6)/8,0,1)*wave*.06f*motion;p.z+=p.x*hip;
     }else if(bone>=3){
+        int posed=view->climb>0||view->aiming||(view->weapon>0&&(bone==3||view->weapon>=3));
+        if(posed){p=pose_arm(p,bone);}else{
         float weight=geo_clamp((24-p.y)/12,0,1);
         /* Brazo: balanceo opuesto a la pierna, mas amplio al correr; el codo se dobla y sube (antebrazo adelantado). */
-        float swing=-footStep[(bone-3)&1]*.62f;
-        if(view->weapon>0)swing*=.12f;
+        float swing=-footStep[(bone-3)&1]*(.43f+.19f*run);
+
         /* Rotate the forearm around the elbow instead of stretching it up. */
         if(p.y<16.5f){float dy=p.y-16.5f,xx=p.x;
             p.x=xx*elbowCos-dy*elbowSin;p.y=16.5f+xx*elbowSin+dy*elbowCos;
@@ -587,10 +615,11 @@ static Point player_pose(Point p,int bone){
         p.x+=swing*weight;
         p.y+=fmaxf(0,swing)*.35f*weight*weight;
         p.z-=side*weight*run*.8f; /* los brazos se cierran hacia el cuerpo al correr */
+        }
     }
     float upper=geo_clamp((p.y-13)/12,0,1);
     /* Contragiro de hombros respecto a la cadera (torsion del torso). */
-    if(bone==0||bone>=3){float tw=-wave*.10f*motion*upper;float nx=p.x-p.z*tw,nz=p.z+p.x*tw;p.x=nx;p.z=nz;}
+    if(bone==0||bone>=3){float tw=-wave*.055f*motion*upper;float nx=p.x-p.z*tw,nz=p.z+p.x*tw;p.x=nx;p.z=nz;}
     p.y+=poseBreath*upper;
     p.y+=poseBob*geo_clamp(p.y/4,0,1);
     /* Inclinacion hacia delante proporcional a la velocidad. */
@@ -610,7 +639,7 @@ static void player_index_build(void){
         for(int k=0;k<8192;k++){int slot=(h+k)&8191;int u=table[slot];
             if(u<0){if(playerUniqueCount<PLAYER_UNIQUE_MAX){table[slot]=(short)playerUniqueCount;playerUnique[playerUniqueCount]=(unsigned short)i;found=playerUniqueCount++;}else found=0;break;}
             const PlayerVertex *b=&player_mesh[playerUnique[u]];
-            if(a->x==b->x&&a->y==b->y&&a->z==b->z&&a->u==b->u&&a->v==b->v&&a->color==b->color&&a->bone==b->bone){found=u;break;}
+            if(a->x==b->x&&a->y==b->y&&a->z==b->z&&a->u==b->u&&a->v==b->v&&a->color==b->color&&a->bone==b->bone&&a->mat==b->mat){found=u;break;}
         }
         playerIndex[i]=(unsigned short)found;
     }
@@ -621,15 +650,28 @@ static void weapon_part(Point grip,float fx,float fy,float fz,float length,float
   float xx=fx+((i&1)?1:-1)*length*.5f;
   float yy=fy+((i&2)?1:-1)*height*.5f;
   float zz=fz+((i&4)?1:-1)*width*.5f;
-  p[i]=local(grip.x+xx,grip.y+yy,grip.z+zz,x,z,angle);
+  float pitch=view->aiming?view->aimPitch:0;
+  if(view->weapon==7)pitch=view->punch>0?-sinf(PI*geo_clamp(1-view->punch/.32f,0,1))*1.3f:0;
+  float c=cosf(pitch),sn=sinf(pitch);
+  p[i]=local(grip.x+xx*c-yy*sn,grip.y+xx*sn+yy*c,grip.z+zz,x,z,angle);
  }
  const int faces[6][4]={{0,1,3,2},{4,6,7,5},{0,4,5,1},{2,3,7,6},{0,2,6,4},{1,5,7,3}};
- for(int f=0;f<6;f++)quad(20,p[faces[f][0]],p[faces[f][1]],p[faces[f][2]],p[faces[f][3]],shade(color,f==3?1:.72f+.04f*f),1,1);
+ int material=color==COLOR(145,89,48)?WEAPON_WOOD:color==COLOR(41,45,49)?WHEEL:WEAPON_METAL;
+ for(int f=0;f<6;f++)quad(material,p[faces[f][0]],p[faces[f][1]],p[faces[f][2]],p[faces[f][3]],shade(color,f==3?1:.72f+.04f*f),1,1);
 }
+#include "weapon_detail.inc"
 static void equipped_weapon(float x,float z,float angle){
  int id=view->weapon;if(id<1||id>7)return;
  Point grip=player_pose(point(.95f,12.8f,-3.95f),3);
  uint32_t steel=COLOR(105,115,123),dark=COLOR(41,45,49),wood=COLOR(145,89,48);
+ /* Trigger guard, safety, rear sight and grip grooves are actual geometry. */
+ weapon_part(grip,1,-.5f,0,1.3f,.18f,1.15f,steel,x,z,angle);
+ weapon_part(grip,1.5f,.25f,0,.18f,1.4f,1.05f,dark,x,z,angle);
+ if(id!=7){weapon_part(grip,-.4f,1.9f,0,.35f,.35f,.6f,dark,x,z,angle);
+  for(int k=0;k<3;k++)weapon_part(grip,-.58f,-.25f-k*.45f,0,.13f,.16f,1.08f,steel,x,z,angle);}
+ if(view->recoil>.09f&&view->aiming&&id<7){float muzzle=id<3?3.7f:id==3?7.2f:id==4?13.3f:id==5?15.3f:11.3f;
+  weapon_part(grip,muzzle,1.25f,0,1.5f,.8f,.8f,COLOR(255,211,76),x,z,angle);}
+
  if(id==7){
   weapon_part(grip,0,2.2f,0,.65f,5,.65f,wood,x,z,angle);
   weapon_part(grip,0,9,0,1.25f,9,1.25f,wood,x,z,angle);return;
@@ -637,11 +679,12 @@ static void equipped_weapon(float x,float z,float angle){
  weapon_part(grip,0,-.2f,0,1.15f,2.2f,1.0f,dark,x,z,angle);
  if(id<3){
   weapon_part(grip,1.2f,1.1f,0,id==1?4:4.8f,.95f,.85f,steel,x,z,angle);
-  if(id==2)weapon_part(grip,.7f,.7f,0,1.5f,1.4f,1.4f,dark,x,z,angle);
+  if(id==2)weapon_tube(grip,-.05f,1.45f,.7f,.72f,x,z,angle);
+  weapon_tube(grip,2.3f,id==1?3.25f:3.65f,1.1f,.32f,x,z,angle);
  }else{
   float len=id==3?6:id==5?13:id==6?15:11;
   weapon_part(grip,2,1,0,5,1.6f,1.3f,steel,x,z,angle);
-  weapon_part(grip,len*.55f,1.25f,0,len*.70f,.48f,.48f,dark,x,z,angle);
+  weapon_tube(grip,len*.20f,len*.90f,1.25f,.27f,x,z,angle);
   weapon_part(grip,-2.7f,.5f,0,3.2f,1.9f,1.3f,id==4||id==5?wood:dark,x,z,angle);
   weapon_part(grip,4,.55f,0,3.5f,1.05f,1.4f,id==4||id==5?wood:dark,x,z,angle);
   if(id==3||id==4)weapon_part(grip,1.8f,-1,0,1.1f,3.8f,.85f,dark,x,z,angle);
@@ -661,7 +704,7 @@ static void person(float x,float z,float angle,int style,int walking){
     player_index_build();
     static Vertex posed[PLAYER_UNIQUE_MAX];
     for(int u=0;u<playerUniqueCount;u++){
-        const PlayerVertex *a=&player_mesh[playerUnique[u]];Point q=player_pose(point(a->x,a->y,a->z),a->bone);
+        const PlayerVertex *a=&player_mesh[playerUnique[u]];Point q=player_pose(player_surface(a),a->bone);
         q.x*=PERSON_SCALE;q.y*=PERSON_SCALE;q.z*=PERSON_SCALE;
         float wx=x+q.x*localC-q.z*localS,wz=z+q.x*localS+q.z*localC,wy=q.y;
         if(geographic){
@@ -819,6 +862,11 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #ifndef AB_NOCITY
     TRACE("r3:ciudad");city();TRACE("r3:ciudad-ok");R3PROF(1);
 #endif
+    rigid=1;
+    for(int i=0;i<s->wallCount;i++){objectX=s->walls[i][0];objectZ=s->walls[i][1];objectYaw=s->walls[i][2];rigX=-1e9f;
+        box(objectX,objectZ,0,24,2.4f,18,objectYaw,CONCRETE,CONCRETE,COLOR(225,215,195));
+        box(objectX,objectZ,18,25,3.1f,.7f,objectYaw,METAL,METAL,COLOR(160,173,168));
+    }
     TRACE("r3:coches");rigid=2;
 #ifndef AB_NOCARS
     for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
@@ -830,9 +878,26 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #endif
     playerLift=0;rigX=-1e9f;
 #ifndef AB_NOPEOPLE
-    for(int i=0;i<s->personCount;i++){objectX=s->people[i].x;objectZ=s->people[i].z;objectYaw=s->people[i].angle;person(objectX,objectZ,objectYaw,s->people[i].style,1);}
+    for(int i=0;i<s->personCount;i++){
+        const R3Person *p=&s->people[i];objectX=p->x;objectZ=p->z;objectYaw=p->angle;npcFall=p->fall;npcPhase=p->phase;npcFlee=p->flee;
+        person(objectX,objectZ,objectYaw,p->style,p->fall==0);
+        npcFall=0;
+        if(p->hit>0&&nearby(p->x,p->z,220)){
+            for(int k=0;k<5;k++){float t=.32f-p->hit;Point a=point(p->x+(k-2)*t*12,9-t*t*45+(k%2)*.7f,p->z+t*15);
+                quad(FLAT,a,point(a.x+.35f,a.y,a.z),point(a.x+.35f,a.y+.4f,a.z),point(a.x,a.y+.4f,a.z),COLOR(170,30,35),1,1);}
+        }
+    }
+    npcFall=0;
 #endif
     rigid=0;
+    if(s->shotTime>0){
+        float gx,gz,px,pz;geo_project(s->shotX,s->shotZ,&gx,&gz);geo_project(s->x,s->z,&px,&pz);
+        float yaw=geo_heading(s->x,s->z,s->angle);Point start=point(px+cosf(yaw)*7,geo_height(s->x,s->z)+s->lift+10,pz+sinf(yaw)*7);
+        Point end=point(gx,s->shotHeight,gz);int saved=geographic;geographic=0;
+        quad(FLAT,start,point(start.x,start.y+.09f,start.z),point(end.x,end.y+.09f,end.z),end,COLOR(247,216,143),1,1);
+        quad(FLAT,point(end.x-.3f,end.y-.3f,end.z),point(end.x+.3f,end.y-.3f,end.z),point(end.x+.3f,end.y+.3f,end.z),point(end.x-.3f,end.y+.3f,end.z),COLOR(245,220,166),1,1);
+        geographic=saved;
+    }
     TRACE("r3:hubs");landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
@@ -879,6 +944,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
         sceGuTexMode(GU_PSM_5650,streetMip,0,1);
         sceGuTexFilter(streetMip?GU_LINEAR_MIPMAP_LINEAR:GU_LINEAR,GU_LINEAR);
         if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
+        else if(m>=WEAPON_METAL)sceGuTexImage(0,64,64,64,textures3d_data+753664+14*8192+(m-WEAPON_METAL)*8192);
         else sceGuTexImage(0,64,64,64,textures3d_data+VRAM_MATERIALS*128*128*2+(m-VRAM_MATERIALS)*64*64*2);
         if(streetMip)sceGuTexImage(1,64,64,64,textures3d_data+753664+12*8192+m*64*64*2);
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,used[m],0,mesh[m]);

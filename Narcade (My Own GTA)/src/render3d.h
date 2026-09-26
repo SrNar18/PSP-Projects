@@ -4,7 +4,7 @@
 
 /* World X/Z use the same units as the original game X/Y. Height is Y. */
 typedef struct { float x,z,angle,speed; int type,police,paint; } R3Car;
-typedef struct { float x,z,angle; int style; } R3Person;
+typedef struct { float x,z,angle; int style; float health,flee,fall,hit,phase; } R3Person;
 typedef struct {
     float x,z,angle,yaw,time,cameraDistance,gaitPhase,motion;
     int driving,moving,target,carCount,personCount;
@@ -17,8 +17,12 @@ typedef struct {
     float metroDoors; /* 0 closed, 1 open; driven by the station dwell timer */
     float camBase,camClear; /* v2.30: altura base y suelo minimo de camara ya suavizados por el juego (0 = calcular aqui) */
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
+    float shotX,shotZ,shotHeight,shotTime;
+    int wallCount;float walls[3][3];
+    int aiming,combo;float aimPitch,cameraPitch,recoil,punch,jump,climb;
     int weapon; /* 0 fists; 1..7 handheld models */
 } R3Scene;
+int r3_target_screen(float x,float z,float height,float *sx,float *sy);
 void r3_init(void);
 void r3_set_draw_buffer(uint32_t *fb);
 void r3_gu_buffers(uint32_t *draw,uint32_t *disp);void r3_gu_display(int on);void r3_gu_idle(void);void r3_gu_swap(void); /* v2.9.1: dialogos del sistema */ /* v2.9: buffer de dibujo del GE para los dialogos del sistema */

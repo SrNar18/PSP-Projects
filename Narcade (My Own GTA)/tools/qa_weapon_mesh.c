@@ -7,10 +7,10 @@ int main(void){
  for(int id=1;id<=7;id++)for(int gait=0;gait<3;gait++)for(int frame=0;frame<24;frame++){
   s.weapon=id;s.motion=gait;s.gaitPhase=frame*PI/12;pose_prepare();
   memset(used,0,sizeof(used));overflow=0;localScale=PERSON_SCALE;equipped_weapon(0,0,0);localScale=1;
-  assert(used[20]>0&&!overflow);
+  int total=0;for(int m=0;m<MAT_COUNT;m++)total+=used[m];assert(total>0&&!overflow);
   Point grip=player_pose(point(.95f,12.8f,-3.95f),3);
-  for(int i=0;i<used[20];i++){
-   Vertex v=mesh[20][i];assert(isfinite(v.x)&&isfinite(v.y)&&isfinite(v.z));
+  for(int m=0;m<MAT_COUNT;m++)for(int i=0;i<used[m];i++){
+   Vertex v=mesh[m][i];assert(isfinite(v.x)&&isfinite(v.y)&&isfinite(v.z));
    assert(fabsf(v.x-grip.x*PERSON_SCALE)<12&&fabsf(v.z-grip.z*PERSON_SCALE)<2);
   }
  }

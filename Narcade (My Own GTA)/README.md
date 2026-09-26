@@ -20,7 +20,7 @@ PPSSPP emulator. Made by **Naresz**.
 | Analog stick / D-pad: move (the camera follows) | X: accelerate |
 | Hold X: jog · tap X repeatedly: sprint | Square: brake / reverse |
 | Triangle: get in / out of a nearby car | Analog stick / D-pad left-right: steer (harder at high speed) |
-| Square: interact | L / R: change radio station |
+| Square: jump / climb a park wall � R + Square: interact | L / R: change radio station |
 
 Circle: messages · SELECT: camera distance · START: pause menu (map, save).
 Progress is saved with the PSP's own save-data menu.
@@ -33,6 +33,12 @@ Progress is saved with the PSP's own save-data menu.
 - Hand-built 3D renderer on the PSP's GE: per-face day/night lighting, night lights,
   shadows, and a **city geometry cache** so the CPU does not rebuild the city every frame.
 - 36 missions, mini-games, radio stations, collectibles and a native save system.
+- Character poses for walking, jogging, sprinting, one-handed pistols and two-handed
+  long guns; jump and park-wall climb animations.
+- NPC health, impact effects, fleeing and death poses; assaults increase the wanted level.
+
+Version 2.33 has been compiled for PSP and checked in PPSSPP and host regressions.
+Its appearance and performance on physical PSP hardware still need a playtest.
 
 ## Folder layout
 
