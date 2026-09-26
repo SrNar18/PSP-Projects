@@ -64,4 +64,6 @@ La ISO se compila con el SDK PSP existente y `package_iso.py` comprueba que `EBO
 
 Entrega en `release/Narcade_v2.33` y ZIP hermano. El README explica los controles, instalación y límites. Se incluyen SHA256, ISO, PBP en el ZIP, previews identificados y esta nota.
 
-Compilacion final: secciones estaticas de `narcade_static.elf` = 18.240.616 bytes (mas heap PSP de 1 MB existente). ISO de 16.082.944 bytes, SHA256 `e400ad957883891d9a0fccd80aa20f3d9e1abf4e759366ad42def2f085de2a81`. Tambien se comprueba cancelar salto/escalada al entrar en un vehiculo o recuperarse en el hospital, evitando volver a la posicion de una escalada anterior.
+Compilacion final: secciones estaticas de `narcade_static.elf` = 18.245.876 bytes (mas heap PSP de 1 MB existente). ISO de 16.087.040 bytes, SHA256 `997f106bfc3f75397184e327d726a65aacfe29409e90104077bcf273da96671f`. Tambien se comprueba cancelar salto/escalada al entrar en un vehiculo o recuperarse en el hospital, evitando volver a la posicion de una escalada anterior.
+
+Integracion antes de publicar: `origin/main` avanzo a `ab77c99` (Claude, objetos de ciudad fuera de la calzada y correcciones de parpadeo). Se fusiono sin conflictos en `62408e9`, se volvieron a pasar las nueve pruebas y se recompilaron ISO/PBP. La ISO entregada contiene esos cambios de Claude, no la base antigua. `qa_city28` tras fusionar: pico 35.133 vertices totales, ningun material desbordado; las 512 vistas y el smoke real de PPSSPP pasan. La rama local de Claude `claude/revision-bugs` se conserva intacta.
