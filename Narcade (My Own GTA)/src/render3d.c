@@ -241,6 +241,20 @@ static Point local(float x,float y,float z,float cx,float cz,float a){
 }
 /* Object forward is +X. Faces have UVs with their top at v=0. */
 static void box(float x,float z,float bottom,float length,float width,float height,float angle,int side,int top,uint32_t color){
+    /* v2.33 (Claude): una caja larga que cruza una franja de transicion del valle se dibujaba
+       recta en pantalla y se salia de su manzana (edificios y puente sobre la calzada). Se
+       trocea a lo largo de z para que siga la misma curva que el mapa. */
+    if(geographic&&!rigid&&angle==0&&width>40){float z0=z-width*.5f,z1=z+width*.5f;
+        if(floorf((z0-86.f)/320.f)!=floorf((z1-86.f)/320.f)){
+            /* cortes cada ~14 solo dentro de las franjas de transicion (z local 0..86); fuera, una pieza */
+            float cut[48];int nc=0;cut[nc++]=z0;
+            for(int r=(int)floorf(z0/320.f);r<=(int)floorf(z1/320.f)&&nc<44;r++){
+                float t0=fmaxf(z0,r*320.f),t1=fminf(z1,r*320.f+86.f);if(t1<=t0)continue;
+                int k=(int)ceilf((t1-t0)/14.f);for(int i=0;i<=k&&nc<46;i++){float c=t0+(t1-t0)*i/k;if(c>cut[nc-1]+.01f&&c<z1-.01f)cut[nc++]=c;}
+            }
+            cut[nc++]=z1;
+            for(int i=0;i+1<nc;i++)box(x,(cut[i]+cut[i+1])*.5f,bottom,length,cut[i+1]-cut[i],height,0,side,top,color);
+            return;}}
     float l=length*.5f,w=width*.5f,h=bottom+height;
     float savedGround=fixedGround;
     if(geographic&&!rigid){

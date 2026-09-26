@@ -53,10 +53,11 @@ static void residential_facade(float x,float z,float width,float base,int floors
     float win=fminf(10,width*.18f);
     for(int floor=0;floor<floors;floor++)for(int side=-1;side<=1;side+=2){
         float xx=side*width*.25f,y=base+floor*storey+8;
-        quad(METAL,local(xx-win*.5f-1,y+10,-.12f,x,z,angle),local(xx+win*.5f+1,y+10,-.12f,x,z,angle),local(xx+win*.5f+1,y,-.12f,x,z,angle),local(xx-win*.5f-1,y,-.12f,x,z,angle),COLOR(74,79,75),1,1);
-        quad(GLASS,local(xx-win*.5f,y+9,-.25f,x,z,angle),local(xx+win*.5f,y+9,-.25f,x,z,angle),local(xx+win*.5f,y+1,-.25f,x,z,angle),local(xx-win*.5f,y+1,-.25f,x,z,angle),COLOR(120,169,190),1,1);
+        quad(METAL,local(xx-win*.5f-1,y+10,-.4f,x,z,angle),local(xx+win*.5f+1,y+10,-.4f,x,z,angle),local(xx+win*.5f+1,y,-.4f,x,z,angle),local(xx-win*.5f-1,y,-.4f,x,z,angle),COLOR(74,79,75),1,1);
+        quad(GLASS,local(xx-win*.5f,y+9,-.6f,x,z,angle),local(xx+win*.5f,y+9,-.6f,x,z,angle),local(xx+win*.5f,y+1,-.6f,x,z,angle),local(xx-win*.5f,y+1,-.6f,x,z,angle),COLOR(120,169,190),1,1);
     }
-    if(door)quad(ROOF,local(-3,base+15,-.3f,x,z,angle),local(3,base+15,-.3f,x,z,angle),local(3,base,-.3f,x,z,angle),local(-3,base,-.3f,x,z,angle),COLOR(105,82,61),1,1);
+    /* v2.33: marcos a 0,4 y cristal a 0,6 de la pared (antes 0,12/0,25: parpadeaban) */
+    if(door)quad(ROOF,local(-3,base+15,-.7f,x,z,angle),local(3,base+15,-.7f,x,z,angle),local(3,base,-.7f,x,z,angle),local(-3,base,-.7f,x,z,angle),COLOR(105,82,61),1,1);
 }
 /* Casa colonial: 1-2 plantas, color pastel, balcon y tejado a dos aguas. */
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
@@ -119,7 +120,7 @@ static void river_bridge(int bz,uint32_t white){
     ground(ROAD,1392,z,72,86,1.6f,white,4);
     box(1428,z+43,-6,80,90,7.6f,0,SIDEWALK,SIDEWALK,COLOR(196,190,178)); /* tablero visto desde el rio */
     for(int side=0;side<2;side++){float zz=side?z+85:z+1;
-        box(1428,zz,1.6f,80,1.2f,1,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));
+        box(1428,zz,1.6f,80,1.0f,1,0,SIDEWALK,SIDEWALK,COLOR(210,206,196)); /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
         for(int k=0;k<7;k++)box(1392+k*12,zz,1.6f,1.2f,1.2f,6,0,CAR_PAINT,CAR_PAINT,COLOR(80,84,88));
         box(1428,zz,7.2f,74,1,1,0,CAR_PAINT,CAR_PAINT,COLOR(80,84,88));
         box(1395,zz,7.2f,2,2,26,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(1395,zz,32,6,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));
@@ -127,7 +128,7 @@ static void river_bridge(int bz,uint32_t white){
     }
     /* Arco: pilas en las orillas y dovelas escalonadas bajo el tablero. */
     box(1400,z+43,-12,8,92,14,0,BRICK,BRICK,COLOR(200,190,180));box(1456,z+43,-12,8,92,14,0,BRICK,BRICK,COLOR(200,190,180));
-    for(int k=0;k<4;k++){float t=k/3.0f;box(1428,z+43,-6-6*(1-t)*(1-t)*0,56-k*14,92,1.5f,0,BRICK,BRICK,COLOR(180,170,160));}
+    for(int k=0;k<4;k++){float t=k/3.0f;box(1428,z+43,-6-6*(1-t)*(1-t)*0,56-k*14,88,1.5f,0,BRICK,BRICK,COLOR(180,170,160));} /* v2.33: 88 (tablero 90, pilas 92) */
 }
 /* Pasarela cubierta que cruza la calle entre dos manzanas (a 38 de altura, por encima de todo lo transitable). */
 static void skybridge(float x0,float x1,float z,float w){
