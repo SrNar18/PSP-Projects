@@ -184,8 +184,10 @@ static inline int cm_station_near(float z,float tol){for(int bz=1;bz<=5;bz+=2)if
 /* Stations occupy buildable parcels; intermediate pylons are set on open
    sidewalk plots rather than passing through houses or traffic lanes. */
 static inline void cm_cable_node(int i,float *x,float *z){
-    static const float nodes[6][2]={{CM_CABLE_X0,CM_CABLE_Z0},{1886.f,444.f},
-        {2006.f,408.f},{2150.f,317.f},{2326.f,253.f},{CM_CABLE_X1,CM_CABLE_Z1}};
+    /* v2.33 (Claude): pilonas 1-4 movidas dentro de una manzana (antes 3 de ellas estaban
+       en la calzada: tools/qa_street_objects_v233.c). */
+    static const float nodes[6][2]={{CM_CABLE_X0,CM_CABLE_Z0},{1871.f,444.f},
+        {2020.f,420.f},{2150.f,272.f},{2346.f,253.f},{CM_CABLE_X1,CM_CABLE_Z1}};
     if(i<0)i=0;if(i>5)i=5;*x=nodes[i][0];*z=nodes[i][1];
 }
 static inline void cm_centroid(const CmParcel *p,float *cx,float *cz){float sx=0,sz=0;for(int i=0;i<p->n;i++){sx+=p->x[i];sz+=p->z[i];}*cx=sx/p->n;*cz=sz/p->n;}
@@ -197,6 +199,12 @@ static inline void cm_shrunk(const CmParcel *p,float inset,CmParcel *out){
 }
 /* Obstaculos menores que tambien son solidos (mismas posiciones que dibuja city26.inc): pilares y escaleras del
    Metro, pedestales y fuente de Plaza Botero, fuentes de los parques. */
+/* v2.33: el circulo de radio m cae dentro de alguna parcela (igual que inside_block en city26.inc). */
+static inline int cm_inside_margin(float x,float z,float m){
+    if(cm_parcel_at(x,z)<0)return 0;
+    for(int k=0;k<12;k++){float a=k*0.5235988f;if(cm_parcel_at(x+cosf(a)*m,z+sinf(a)*m)<0)return 0;}
+    return 1;
+}
 static inline int cm_obstacle(float x,float z){
     for(int i=1;i<5;i++){float px,pz;cm_cable_node(i,&px,&pz);
         if(fabsf(x-px)<4.5f&&fabsf(z-pz)<4.5f)return 1;
@@ -219,7 +227,7 @@ static inline int cm_obstacle(float x,float z){
             if(f&CM_PLAZA){
                 if(fabsf(x-cx)<8&&fabsf(z-cz)<8)return 1;                       /* fuente */
                 CmParcel g;cm_shrunk(p,22,&g);
-                for(int k=0;k<g.n;k++){float sx=(g.x[k]+cx)*.5f,sz=(g.z[k]+cz)*.5f;if(fabsf(x-sx)<5&&fabsf(z-sz)<5)return 1;} /* pedestales */
+                for(int k=0;k<g.n;k++){float sx=(g.x[k]+cx)*.5f,sz=(g.z[k]+cz)*.5f;if(fabsf(x-sx)<5&&fabsf(z-sz)<5&&cm_inside_margin(sx,sz,6))return 1;} /* pedestales (v2.33: solo los que se dibujan) */
             }else if(cm_is_rect(p)&&fabsf(x-(cx+6))<6&&fabsf(z-(cz+7))<6)return 1;  /* fuente del parque */
         }
     }

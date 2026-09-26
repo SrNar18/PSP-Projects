@@ -11,6 +11,33 @@ static void frustum(float x,float z,float bottom,float r0,float r1,float height,
 static void vault(float x,float z,float L,float W,float bottom,float h,int mat,uint32_t color);
 static void chamfered_rect(CmParcel *p,float x0,float z0,float x1,float z1,float c);
 static void bench(float x,float z,float angle);static void lamp_post(float x,float z,float angle);
+/* v2.33 (Claude): mobiliario sin invadir la calzada. La acera son las 8 unidades que rodean
+   cada parcela, y las manzanas no empiezan todas en el mismo sitio (86-100): las posiciones
+   fijas dejaban farolas, semaforos, paradas y papeleras en medio de la calle. */
+static int block_at(float x,float z){return cm_parcel_at(x,z)>=0;}
+/* Todo el circulo de radio m cae dentro de una parcela (para objetos de plazas y parques). */
+static int inside_block(float x,float z,float m){
+    if(!block_at(x,z))return 0;
+    for(int k=0;k<12;k++){float a=k*(PI/6);if(!block_at(x+cosf(a)*m,z+sinf(a)*m))return 0;}
+    return 1;
+}
+/* Punto de acera mas cercano para un objeto de radio c (c<4): fuera de toda parcela en su
+   radio y con una parcela a menos de 8-c. Devuelve 0 si no hay acera cerca (no se dibuja). */
+static float takenX[8],takenZ[8],takenR[8],spotPad;static int nTaken; /* objetos ya colocados en la manzana; spotPad: brazo de la farola */
+static int sidewalk_spot(float *x,float *z,float c){
+    for(float r=0;r<=36;r+=1.f)for(int k=0,n=r==0?1:(int)(r*1.5f)+8;k<n;k++){
+        float a=k*(2*PI/n),px=*x+cosf(a)*r,pz=*z+sinf(a)*r;
+        if(block_at(px,pz)||cm_on_diag(px,pz))continue;
+        int busy=0;for(int q=0;q<nTaken;q++)if(hypotf(px-takenX[q],pz-takenZ[q])<c+spotPad+takenR[q]+1.f)busy=1; /* sin objetos encimados */
+        if(busy)continue;
+        int clear=1,near=0;
+        for(int q=0;q<16&&clear;q++){float b=q*(PI/8);
+            if(block_at(px+cosf(b)*c,pz+sinf(b)*c))clear=0;
+            if(block_at(px+cosf(b)*(8-c),pz+sinf(b)*(8-c)))near=1;}
+        if(clear&&near){*x=px;*z=pz;if(nTaken<8){takenX[nTaken]=px;takenZ[nTaken]=pz;takenR[nTaken]=c+spotPad;nTaken++;}return 1;}
+    }
+    return 0;
+}
 #define parcel_centroid cm_centroid
 #define parcel_shrunk cm_shrunk
 /* Prisma vertical sobre un poligono convexo: lados iluminados por su normal, tapa iluminada como techo. */
@@ -38,7 +65,7 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
         /* v2.26 (Claude): en el valle deformado un lado largo (manzanas dobles de 500) se
            dibujaba recto en pantalla mientras la colision seguia la curva del mapa: quedaba
            un triangulo de pared invisible. Los lados largos se trocean cada ~40 unidades. */
-        int parts=(warped&&len>60)?(int)ceilf(len/40):1;
+        int parts=(warped&&len>24)?(int)ceilf(len/12):1; /* v2.33: trozos de 12 (antes 40) */
         for(int k=0;k<parts;k++){
             float t0=(float)k/parts,t1=(float)(k+1)/parts;
             float x0=p->x[i]+ex*t0,z0=p->z[i]+ez*t0,x1=p->x[i]+ex*t1,z1=p->z[i]+ez*t1;
@@ -53,7 +80,7 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
     if(warped&&cm_is_rect(p)&&(spanZ>60||spanX>60)){
         /* tapa rectangular en franjas para que siga la misma curva que la colision */
         float x0=p->x[0],x1=p->x[1],z0=p->z[0],z1=p->z[2];
-        int nzp=(int)ceilf((z1-z0)/40),nxp=(int)ceilf((x1-x0)/40);if(nzp<1)nzp=1;if(nxp<1)nxp=1;
+        int nzp=(int)ceilf((z1-z0)/12),nxp=(int)ceilf((x1-x0)/40);if(nzp<1)nzp=1;if(nxp<1)nxp=1;
         for(int a=0;a<nzp;a++)for(int b=0;b<nxp;b++){
             float za=z0+(z1-z0)*a/nzp,zb=z0+(z1-z0)*(a+1)/nzp,xa=x0+(x1-x0)*b/nxp,xb=x0+(x1-x0)*(b+1)/nxp;
             Vertex q[4]={{(xa-cx)/90,(za-cz)/90,tc,xa,h,za},{(xb-cx)/90,(za-cz)/90,tc,xb,h,za},{(xb-cx)/90,(zb-cz)/90,tc,xb,h,zb},{(xa-cx)/90,(zb-cz)/90,tc,xa,h,zb}};
@@ -141,10 +168,10 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
         {u+.5f-eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.85f},
         {u+eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.85f}};
     litAlready=1;polygon(mat,sign,4);litAlready=0;
-    box(cx,z0+4.5f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim);
+    box(cx,z0+4.3f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim); /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
     if(w>42){
         float xx=cx+w*.23f-5;
-        box(xx,z0+1.5f,7,2,1,13,0,METAL,METAL,COLOR(225,210,175));
+        box(xx,z0+1.1f,7,2,1,13,0,METAL,METAL,COLOR(225,210,175)); /* v2.33: por delante de la fachada */
     }
     (void)h;
 }
@@ -375,12 +402,13 @@ static void fill_plaza(const CmParcel *p,int far,unsigned h){
     if(far)return;
     CmParcel g;parcel_shrunk(p,22,&g);
     for(int i=0;i<g.n;i++){float sx=(g.x[i]+cx)*.5f,sz=(g.z[i]+cz)*.5f;
+        if(!inside_block(sx,sz,6))continue; /* v2.33: nada fuera de la plaza */
         box(sx,sz,1.6f,8,8,3,0,SIDEWALK,SIDEWALK,COLOR(200,196,186));
         box(sx,sz,4.6f,5,4,6,(i*.7f),CAR_PAINT,CAR_PAINT,COLOR(70,60,40));box(sx,sz,10.6f,3.4f,3.4f,3,0,CAR_PAINT,CAR_PAINT,COLOR(70,60,40)); /* figura rotunda */
-        if(!cityMid)tree(g.x[i],g.z[i]);}
+        if(!cityMid&&inside_block(g.x[i],g.z[i],3))tree(g.x[i],g.z[i]);}
     cylinder(cx,cz,1.6f,8,1.2f,8,0,CONCRETE,CONCRETE,0xffffffffu);cylinder(cx,cz,2.8f,6,3.5f,8,.39f,WATER,WATER,0xffffffffu);cylinder(cx,cz,2.8f,1.4f,8,6,0,CONCRETE,CONCRETE,0xffffffffu); /* fuente redonda */
-    for(int k=0;k<4;k++)bench(cx-30+k*20,cz+24,0);
-    cylinder(cx+34,cz-20,1.6f,6,9,6,0,STUCCO,ROOF,cityPastel[h&7]);frustum(cx+34,cz-20,10.6f,8,0,6,6,0,ROOF,COLOR(150,90,70)); /* kiosco */
+    for(int k=0;k<4;k++)if(inside_block(cx-30+k*20,cz+24,6))bench(cx-30+k*20,cz+24,0); /* v2.33: bancos solo dentro de la plaza */
+    if(inside_block(cx+34,cz-20,10)){cylinder(cx+34,cz-20,1.6f,6,9,6,0,STUCCO,ROOF,cityPastel[h&7]);frustum(cx+34,cz-20,10.6f,8,0,6,6,0,ROOF,COLOR(150,90,70));} /* kiosco */
     (void)h;
 }
 /* Pueblito Paisa sobre el cerro Nutibara: cerro escalonado, plazuela, iglesia y casitas coloniales. */
@@ -439,16 +467,16 @@ static void metro_train(void){
         if(!nearby(CM_METRO_X,zc,700))continue;
         float previousGround=fixedGround;fixedGround=geo_height(CM_METRO_X,zc);
         float fl=CM_PLAT_H-.6f;
-        box(CM_METRO_X,zc,fl,24,CM_TRAIN_CAR,1.2f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso */
-        box(CM_METRO_X,zc,fl-3,20,CM_TRAIN_CAR-8,3,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos */
+        box(CM_METRO_X,zc,fl+.15f,24,CM_TRAIN_CAR,1.05f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso (v2.33: separado de los rieles) */
+        box(CM_METRO_X,zc,fl-3,20,CM_TRAIN_CAR-8,2.85f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
         for(int sd=-1;sd<=1;sd+=2){float x=CM_METRO_X+sd*11.6f;
             box(x,zc,fl+1.2f,.8f,CM_TRAIN_CAR,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));                  /* panel bajo */
-            box(x,zc,fl+5.4f,1.0f,CM_TRAIN_CAR,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80));               /* franja verde */
+            box(x,zc,fl+5.4f,1.0f,CM_TRAIN_CAR-.4f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80));               /* franja verde (v2.33: sin testeros coplanares) */
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
             for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
                 float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
-                box(x+sd*.1f,dz,fl+1.2f,.9f,4.7f,17,0,METAL,METAL,COLOR(226,232,226));
-                if(!view->inMetro)box(x+sd*.65f,dz,fl+10,.12f,3.2f,5.4f,0,GLASS,GLASS,COLOR(101,143,147));
+                box(x+sd*.25f,dz,fl+1.2f,.9f,4.7f,17,0,METAL,METAL,COLOR(226,232,226));
+                if(!view->inMetro)box(x+sd*.8f,dz,fl+10,.12f,3.2f,5.4f,0,GLASS,GLASS,COLOR(101,143,147)); /* v2.33: por fuera de la puerta */
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
         }
@@ -460,9 +488,9 @@ static void metro_train(void){
             for(int bogie=-1;bogie<=1;bogie+=2)box(CM_METRO_X,zc+bogie*34,fl-4,21,13,3,0,METAL,METAL,COLOR(58,63,67));
         }
         for(int e=-1;e<=1;e+=2){float ze=zc+e*CM_TRAIN_CAR*.5f;                                                   /* testeros abiertos: panel bajo, pilares y dintel */
-            box(CM_METRO_X,ze,fl+1.2f,24,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,24.2f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80));
+            box(CM_METRO_X,ze,fl+1.2f,22.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,22.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
             box(CM_METRO_X-7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X+7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            box(CM_METRO_X,ze,fl+18.2f,24,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));}
+            box(CM_METRO_X,ze,fl+18.2f,22.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));}
         if(view->inMetro||view_distance(CM_METRO_X,zc)<200){
             for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*8,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
             for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */
@@ -479,14 +507,14 @@ static void metro(int bz,int far){
     if(cm_metro_station(bz)){
         box(CM_METRO_X,z+160,CM_PLAT_H-1.2f,36,200,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                /* anden 60..260 */
         for(int k=0;k<3;k++)for(int sd=-1;sd<=1;sd+=2)cylinder(CM_METRO_X+sd*14,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu); /* pilares del anden */
-        for(int k=0;k<4;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*17,z+70+k*60,CM_PLAT_H,2,2,24,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
-        rail_canopy(CM_METRO_X,z+160,44,208,CM_PLAT_H+24,5);
+        for(int k=0;k<4;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*16.6f,z+70+k*60,CM_PLAT_H,2,2,24,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96)); /* v2.33: dentro del borde del anden */
+        rail_canopy(CM_METRO_X,z+160,38,208,CM_PLAT_H+24,5); /* v2.33: 38 de ancho (con 44 se metia 2 unidades en los edificios de la orilla) */
         if(!far)for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+25,38,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
         for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*17.5f,z+160,CM_PLAT_H,.6f,200,.4f,0,CAR_PAINT,CAR_PAINT,COLOR(250,200,60)); /* linea amarilla de borde */
         /* escalera: 10 peldanos de 6 x 3.02 subiendo hacia el norte (z 318 -> 258), x 1465..1476 */
         for(int k=0;k<10;k++)box(1470.5f,z+315-k*6,0,11,6,(k+1)*(CM_PLAT_H/10),0,STUCCO,SIDEWALK,COLOR(226,222,214));
         for(int sd=-1;sd<=1;sd+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+sd*5.8f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,1,1,10,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));}
-        box(1470.5f,z+257,CM_PLAT_H-1.2f,11,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                    /* rellano hacia el anden */
+        box(1470.5f,z+257,CM_PLAT_H-1.2f,10.8f,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                    /* rellano hacia el anden (v2.33: 10,8) */
         if(!far){box(CM_METRO_X,z+58,CM_PLAT_H+2,22,1.2f,5,0,CAR_PAINT,CAR_PAINT,COLOR(60,130,90));box(1470.5f,z+322,0,10,1,12,0,CAR_PAINT,CAR_PAINT,COLOR(60,130,90));} /* carteles */
     }
 }
@@ -521,9 +549,9 @@ static void metrocable(int far){
         abox(x,z,y-11,8,6,1,ang,METAL,COLOR(52,64,68));
         abox(x,z,y-.8f,.8f,.8f,2,ang,METAL,COLOR(59,66,70));
         for(int side=-1;side<=1;side+=2){
-            float ox=-sinf(ang)*side*3.1f,oz=cosf(ang)*side*3.1f;
+            float ox=-sinf(ang)*side*3.3f,oz=cosf(ang)*side*3.3f; /* v2.33: cristal separado de la cabina */
             abox(x+ox,z+oz,y-8.3f,5.9f,.24f,4.7f,ang,GLASS,COLOR(92,170,193));
-            abox(x+ox,z+oz,y-8.3f,.45f,.4f,5,ang,METAL,COLOR(224,228,220));
+            abox(x+ox,z+oz,y-8.45f,.45f,.4f,5.2f,ang,METAL,COLOR(224,228,220)); /* v2.33: sin base coplanar con el cristal */
         }
     }
 }
@@ -561,10 +589,10 @@ static void bench(float x,float z,float angle){
 static void river_footbridge(int bz){
     float cz=cm_footbridge_z(bz);if(cz<0)return;
     box(1428,cz,-5,72,32,7,0,SIDEWALK,SIDEWALK,COLOR(202,194,177));
-    ground(COBBLE,1392,cz-13,72,26,2.1f,COLOR(226,217,194),4);
+    ground(COBBLE,1392,cz-13,72,26,2.3f,COLOR(226,217,194),4); /* v2.33: separado del tablero */
     for(int side=-1;side<=1;side+=2){
         float zz=cz+side*14.5f;
-        box(1428,zz,2,72,2,2,0,CONCRETE,CONCRETE,COLOR(200,191,170));
+        box(1428,zz,2,71.6f,2,2,0,CONCRETE,CONCRETE,COLOR(200,191,170)); /* v2.33: sin extremos coplanares con el tablero */
         for(int k=0;k<7;k++)box(1394+k*11,zz,4,1.5f,1.5f,7,0,METAL,METAL,COLOR(64,74,77));
         box(1428,zz,11,72,1.5f,1.5f,0,METAL,METAL,COLOR(72,81,84));
     }
@@ -621,10 +649,22 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
             if(!westMerged&&road_mark_clear(x+41.4f,z+k,1.2f,16))
                 ground(FLAT,x+41.4f,z+k,1.2f,16,.45f,COLOR(244,208,100),1);
         }
-        if(!cityMid){if((bx==0||bx==3||bx==5)&&(bz==0||bz==3))traffic_light(x+82,z+82,0);if((h>>9)%3==0&&!westMerged)bus_stop(x+116,z+80);}
-        if(cityMid){box(x+82,z+59,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x+79,z+59,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
-        else lamp_post(x+84,z+59,PI);
-        if(!cityMid&&(h&1024))cylinder(x+90,z+70,1.2f,2.2f,5,6,0,METAL,METAL,COLOR(70,120,80)); /* v2.7: papelera */
+        /* v2.33 (Claude): cada objeto se lleva al punto de acera mas cercano (ver sidewalk_spot).
+           Las posiciones no cambian: se calculan una vez por manzana y se recuerdan (la busqueda
+           es cara y las manzanas se reconstruyen al cambiar el nivel de detalle o la luz). */
+        {static struct{float x[4],z[4];signed char ok[4];}memo[56];static unsigned char memoDone[56];
+         int ci=bz*8+bx;
+         if(!memoDone[ci]){memoDone[ci]=1;nTaken=0;
+            float tx=x+82,tz=z+82;memo[ci].ok[0]=(bx==0||bx==3||bx==5)&&(bz==0||bz==3)&&sidewalk_spot(&tx,&tz,1.5f);memo[ci].x[0]=tx;memo[ci].z[0]=tz;
+            float sx=x+116,sz=z+80;memo[ci].ok[1]=(h>>9)%3==0&&!westMerged&&sidewalk_spot(&sx,&sz,3.6f);memo[ci].x[1]=sx;memo[ci].z[1]=sz;
+            float lx=x+84,lz=z+59;spotPad=6;memo[ci].ok[2]=sidewalk_spot(&lx,&lz,1.4f);spotPad=0;memo[ci].x[2]=lx;memo[ci].z[2]=lz;
+            float px=x+90,pz=z+70;memo[ci].ok[3]=(h&1024)&&sidewalk_spot(&px,&pz,1.3f);memo[ci].x[3]=px;memo[ci].z[3]=pz;}
+         if(!cityMid&&memo[ci].ok[0])traffic_light(memo[ci].x[0],memo[ci].z[0],0);
+         if(!cityMid&&memo[ci].ok[1])bus_stop(memo[ci].x[1],memo[ci].z[1]);
+         if(memo[ci].ok[2]){float lx=memo[ci].x[2],lz=memo[ci].z[2];
+            if(cityMid){box(lx,lz,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(lx-3,lz,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
+            else lamp_post(lx,lz,PI);}
+         if(!cityMid&&memo[ci].ok[3])cylinder(memo[ci].x[3],memo[ci].z[3],1.2f,2.2f,5,6,0,METAL,METAL,COLOR(70,120,80));} /* v2.7: papelera */
     }
     const CmParcel *ps;int n=cm_parcels(bx,bz,&ps);
     for(int i=0;i<n;i++){
@@ -748,7 +788,7 @@ static void river_row(int bx,int bz,int far,uint32_t white){(void)bx;
     river_channel(bz,white);
     river_bridge(bz,white);
     river_footbridge(bz);
-    ground(SIDEWALK,1462,bz*320+86,44,234,1.2f,COLOR(226,222,214),6);
+    ground(SIDEWALK,1462,bz*320+86,35.5f,234,1.2f,COLOR(226,222,214),6); /* v2.33: hasta 1497,5; desde 1498 es la acera de las manzanas (misma altura: parpadeaba) */
     if(!far)for(int k=0;k<3;k++){tree(1388,bz*320+120+k*60);if(!cm_metro_station(bz))tree(1466,bz*320+150+k*60);}
     metro(bz,far);
 }
@@ -772,6 +812,16 @@ static void city_v26(void){
     {float cx=(CM_CABLE_X0+CM_CABLE_X1)*.5f,cz=(CM_CABLE_Z0+CM_CABLE_Z1)*.5f;if(nearby(cx,cz,1100))metrocable(view_distance(cx,cz)>600);}
     for(int side=0;side<2;side++)for(int row=0;row<28;row++){
         float x=side?2560:-320,z=row*80;
-        if(nearby(x,z,1000))ground(GRASS,x,z,320,80,0,COLOR(125,167,132),5);
+        if(nearby(x,z,1000)){
+            /* v2.33 (Claude): franjas en rebanadas de 8 a lo largo de z. La proyeccion es lineal en x
+               (una sola rebanada lo cubre exacto) pero en las transiciones de fila el borde del valle
+               salta mucho en z: con la teselacion de 64 el cesped de la ladera se montaba sobre la
+               calle del borde oeste (zona donde empieza la partida). */
+            uint32_t gc=lit_color(COLOR(125,167,132),0,1,0);litAlready=1;
+            for(int k=0;k<10;k++){float z0=z+k*8,z1=z0+8;
+                float v0=k*.125f,v1=v0+.125f; /* textura continua entre rebanadas */
+                Vertex q[4]={{0,v0,gc,x,0,z0},{5,v0,gc,x+320,0,z0},{5,v1,gc,x+320,0,z1},{0,v1,gc,x,0,z1}};polygon(GRASS,q,4);}
+            litAlready=0;
+        }
     }
 }
