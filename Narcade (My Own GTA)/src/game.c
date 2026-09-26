@@ -391,7 +391,13 @@ static void world_cars_init(void){
 }
 static void world_peds_init(void){
  for(int i=0;i<42;i++){
-  for(int k=0;k<12;k++){g.peds[i].x=(random_u()%8)*320+82;g.peds[i].y=(random_u()%7)*320+100+(random_u()%180);if(!cm_solid(g.peds[i].x,g.peds[i].y))break;} /* v2.6: acera real */
+  /* v2.34 (Claude): el peaton se coloca en el centro de una acera real (4 antes del borde de la
+     parcela; las manzanas empiezan entre 86 y 100). Antes iba en x local 82, que en la mayoria de
+     manzanas era calzada (84% del tiempo en la calle, medido). */
+  Ped *p=&g.peds[i];int ok=0;
+  for(int k=0;k<40&&!ok;k++){float bx=(random_u()%8)*320.f;p->y=(random_u()%7)*320+100+(random_u()%180);
+   for(float lx=78;lx<=112;lx+=1)if(cm_parcel_at(bx+lx,p->y)>=0){p->x=bx+lx-4;ok=cm_parcel_at(p->x,p->y)<0;break;}}
+  if(!ok){p->x=-1000;p->y=-1000;p->v=0;} /* sin sitio: no se dibuja en la ciudad */
   g.peds[i].v=(i%2?1:-1)*13;g.peds[i].vertical=1;g.peds[i].phase=i;}
 }
 int cachecount_public(void);
@@ -885,7 +891,14 @@ static void world_tick(float ax,float ay,float dt){
   }
 #undef CAR_TURNED
   g.x=c->x;g.y=c->y;
-  if(c->hp<=0){c->hp=20;c->speed=0;g.car=-1;g.health-=25;g.x=c->x;g.y=c->y;notice("Motor averiado. Busca otro carro o ve al taller.");}
+  if(c->hp<=0){c->hp=20;c->speed=0;c->parked=1;g.car=-1;g.health-=25;
+   /* v2.34 (Claude): bajar por un lado libre, como con TRIANGULO. Antes el jugador quedaba en el
+      centro del coche y el coche, sin aparcar, se iba solo como si fuera trafico. */
+   float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;
+   if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}
+   if(!free_at(xx,yy,5)){xx=c->x+cosf(c->a)*30;yy=c->y+sinf(c->a)*30;}
+   if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a)*30;yy=c->y-sinf(c->a)*30;}
+   g.x=xx;g.y=yy;notice("Motor averiado. Busca otro carro o ve al taller.");}
  }
  for(int i=0;i<CAR_COUNT;i++){
   g.hornCooldown[i]=fmaxf(0,g.hornCooldown[i]-dt);
@@ -935,7 +948,9 @@ static void world_tick(float ax,float ay,float dt){
  camera_clearance(dt);
  camera_heights(dt);
 #endif
- for(int i=0;i<42;i++){Ped *p=&g.peds[i];p->y+=p->v*dt;int local=(int)p->y%320;if(local<91||local>283)p->v=-p->v;}
+ for(int i=0;i<42;i++){Ped *p=&g.peds[i];float oy=p->y;p->y+=p->v*dt;int local=(int)p->y%320;
+  /* v2.34 (Claude): media vuelta tambien donde acaba la acera (cruces, callejones, manzanas cortas) */
+  if(local<91||local>283||cm_parcel_at(p->x+5,p->y)<0){p->y=oy;p->v=-p->v;}}
  if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
  if(g.raceTime>0){g.raceTime-=dt;int l=g.route[g.checkpoint];if(g.car>=0&&dist(g.x,g.y,locations[l].x,locations[l].y)<66){g.checkpoint++;g.raceTime+=3;if(g.checkpoint==6){g.raceTime=0;advance();}else notice("PUNTO ALCANZADO +3 segundos. Sigue el siguiente aro.");}
