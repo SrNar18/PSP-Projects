@@ -4,6 +4,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container: ghcr.io/pspdev/pspdev:latest
+    defaults:
+      run:
+        working-directory: Narcade
     steps:
       - uses: actions/checkout@v4
       - name: Dependencias Python
@@ -26,4 +29,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: narcade-psp
-          path: out
+          path: Narcade/out
