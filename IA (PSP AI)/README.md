@@ -34,7 +34,7 @@ The data files are **not** in this repository: the full Wikipedia build is tens 
 | `tools/make_titles.py` | Builds the title table used to re-rank results. |
 | `tools/make_dialog.py`, `tools/train_lm.py` | Build a Spanish dialogue corpus and train the byte-level GPT (6 layers, d=256, 8 heads, context 192) with PyTorch; exported as int8 with per-row scales (`lm.bin`). |
 | `tools/make_font.py` | Generates the bitmap font (`src/font.h`). |
-| `tools/build.py` | Compiles the app with the PSPDEV toolchain from `../Narcade/build/pspdev` and packages `EBOOT.PBP` + `PSP_IA.iso`. |
+| `tools/build.py` | Compiles the app with the PSPDEV toolchain from `../Narcade (My Own GTA)/build/pspdev` and packages `EBOOT.PBP` + `PSP_IA.iso`. |
 | `tools/query.py` | Tests searches on the PC against the built index. |
 | `src/search.c` | On-PSP search: binary search in the index, score accumulation, answer-sentence selection. |
 | `src/chat.c` | Language-model inference in C with a K/V cache and top-p sampling. |

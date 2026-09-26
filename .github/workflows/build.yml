@@ -6,7 +6,7 @@ jobs:
     container: ghcr.io/pspdev/pspdev:latest
     defaults:
       run:
-        working-directory: Narcade
+        working-directory: "Narcade (My Own GTA)"
     steps:
       - uses: actions/checkout@v4
       - name: Dependencias Python
@@ -29,4 +29,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: narcade-psp
-          path: Narcade/out
+          path: "Narcade (My Own GTA)/out"
