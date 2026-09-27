@@ -106,3 +106,12 @@ Tecnicas (render3d.c, world_geo.h):
   bancos con respaldo; kiosco en la plaza.
 - 8 texturas nuevas (corteza, follaje, metal, hormigon, muro cortina, toldo, adoquin, fachada moderna).
 - v2.6.2: menu de guardado propio (sin dialogo lento de Sony), SELECT = zoom de camara, edificios ya no flotan.
+
+
+## v2.36 — 27 septiembre 2026 (Codex: texturas y animaciones)
+- Asfalto menos repetitivo, juntas suaves en andenes, escala fija y variacion de tono continua.
+- Rodillas articuladas, talon/punta y apoyos independientes del balanceo de la pelvis.
+- Tejidos streetwear nuevos: algodon charcoal, sarga denim, costuras y pequenos detalles.
+- Sin cambiar controles, conduccion, guardado, geometria urbana ni presupuestos de texturas.
+- Diez suites host y compilacion PSP; inspecciones PC de la malla, prueba fisica pendiente.
+- Detalles y limites en NOTAS_CODEX_TEXTURAS_ANIMACIONES.md.
