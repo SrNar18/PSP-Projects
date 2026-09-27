@@ -24,46 +24,33 @@ def periodic_noise(seed, cells, amplitude):
     return out
 
 def asphalt():
-    rng = random.Random(21501)
-    coarse = periodic_noise(1, 4, 13)
-    medium = periodic_noise(2, 16, 8)
-    fine = periodic_noise(3, 64, 4)
-    img = Image.new('RGB', (128, 128))
-    pix = img.load()
+    # No large cracks/spots: recognizable landmarks betray a repeating tile.
+    rng = random.Random(23601)
+    coarse = periodic_noise(41, 4, 2.0)
+    medium = periodic_noise(42, 16, 2.8)
+    fine = periodic_noise(43, 64, 2.2)
+    img = Image.new('RGB', (128, 128)); pix = img.load()
     for y in range(128):
         for x in range(128):
-            v = coarse[y][x] + medium[y][x] + fine[y][x] + rng.gauss(0, 4)
-            pix[x, y] = tuple(max(0, min(255, int(base + v))) for base in (86, 88, 87))
-    draw = ImageDraw.Draw(img, 'RGBA')
-    for _ in range(1250):
-        x, y = rng.randrange(128), rng.randrange(128)
-        q = rng.randrange(18, 46)
-        draw.point((x, y), fill=(q, q + 2, q + 1, rng.randrange(25, 85)))
-    for _ in range(500):
-        x, y = rng.randrange(128), rng.randrange(128)
-        q = rng.randrange(147, 203)
-        draw.point((x, y), fill=(q, q - 1, q - 4, rng.randrange(45, 105)))
-    # Fine tar repairs are subtle and stop short of becoming fake lane markings.
-    for j in range(3):
-        y = (j * 47 + 13) % 128
-        points = [((x + j * 29) % 128, y + int(2 * math.sin(x * .11 + j))) for x in range(0, 27, 3)]
-        draw.line(points, fill=(27, 28, 28, 55), width=1)
-    return img.filter(ImageFilter.GaussianBlur(radius=.55))
+            v = coarse[y][x] + medium[y][x] + fine[y][x] + rng.gauss(0, 2.3)
+            if rng.random() < .09: v += rng.choice((-7, 8))
+            pix[x,y] = tuple(max(0,min(255,round(base+v))) for base in (98,100,98))
+    return img.filter(ImageFilter.GaussianBlur(.25))
 
 def pavement():
-    rng = random.Random(21502)
-    broad = periodic_noise(5, 8, 8)
-    fine = periodic_noise(6, 64, 3)
-    img = Image.new('RGB', (128, 128))
-    px = img.load()
+    rng = random.Random(23602)
+    broad = periodic_noise(45, 4, 3)
+    fine = periodic_noise(46, 64, 1.7)
+    img = Image.new('RGB', (128,128)); px = img.load()
+    # Four different concrete slabs with hairline joints and bevel highlights.
+    tones=((0,2),(-2,1))
     for y in range(128):
         for x in range(128):
-            slab = ((x // 32) * 17 + (y // 32) * 11) % 7 - 3
-            v = broad[y][x] + fine[y][x] + rng.gauss(0, 2.8) + slab
-            edge = min(x % 32, y % 32, 31 - x % 32, 31 - y % 32)
-            if edge == 0: v -= 18
-            elif edge == 1: v -= 7
-            px[x, y] = tuple(max(0, min(255, int(base + v))) for base in (177, 169, 154))
+            v=broad[y][x]+fine[y][x]+rng.gauss(0,1.5)+tones[y//64][x//64]
+            edge=min(x%64,y%64,63-x%64,63-y%64)
+            if edge==0: v-=13
+            elif edge==1: v+=4
+            px[x,y]=tuple(max(0,min(255,round(base+v))) for base in (183,177,163))
     return img
 
 def create(name):

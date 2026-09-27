@@ -10,6 +10,7 @@ from npc_textures import create, NAMES as NPC_NAMES
 from extra_textures import create as create_extra, NAMES as EXTRA_NAMES
 from road_materials import create as create_road
 from car_materials import create as create_car
+from surface_materials import create as create_surface, NAMES as SURFACE_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['asphalt','sidewalk','brick','stucco','shop','roof','grass','water',
@@ -45,6 +46,8 @@ def main():
         if name in replacements:
             j=replacements[name];w,h=refreshed.size;x,y=j%4,j//4
             tile=refreshed.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
+        if name in SURFACE_NAMES:
+            tile=create_surface(name)
         if name in ('asphalt','sidewalk'):
             tile=create_road(name)
         if name in ('car-side','car-paint'):

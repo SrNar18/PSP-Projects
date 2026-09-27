@@ -320,6 +320,7 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     litAlready=0;
     fixedGround=savedGround;
 }
+#include "street_surface.inc"
 static void ground(int mat,float x,float z,float w,float d,float y,uint32_t color,float repeat){
     /* Subdivide at terrain lattice boundaries: roads genuinely climb hills. */
     for(float zz=z;zz<z+d-.001f;){float endz=fminf(z+d,geo_next_z(zz));if(endz<=zz+.001f)endz=fminf(z+d,zz+.01f);
@@ -333,8 +334,8 @@ static void ground(int mat,float x,float z,float w,float d,float y,uint32_t colo
                          {(endx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,endx,y,endz},{(xx-x)/w*repeat+ou,(endz-z)/d*repeat+ov,lc,xx,y,endz}};
             /* World-space phase and fixed tile size prevent adjacent parcels
                from changing the apparent paving scale as the camera moves. */
-            if(mat==ROAD||mat==SIDEWALK){float scale=mat==ROAD?36.f:28.f;
-                for(int k=0;k<4;k++){v[k].u=v[k].x/scale;v[k].v=v[k].z/scale;}}
+            if(mat==ROAD||mat==SIDEWALK){float scale=mat==ROAD?64.f:28.f;
+                for(int k=0;k<4;k++){v[k].u=v[k].x/scale;v[k].v=v[k].z/scale;v[k].color=street_tint(lc,v[k].x,v[k].z);}}
             litAlready=1;polygon(mat,v,4);litAlready=0;xx=endx;
         }zz=endz;
     }
@@ -576,32 +577,7 @@ static void cloth(const BodyRing *r,int count,int front,int back,uint32_t tint,f
         polygon(back,v,3);
     }
 }
-/* Optimizacion (Claude): las ~7.000 llamadas por fotograma compartian los mismos senos/cosenos de la marcha;
-   se calculan una vez por fotograma. sin(pi*w) se aproxima con 4w(1-w) (error < 6%, invisible en la rodilla). */
-static float poseWave,poseRun,poseMotion,poseBreath,poseBob;
-static float footStep[2],footLift[2];
-static float elbowSin,elbowCos;
-static void pose_prepare(void){
-    poseMotion=geo_clamp(view->motion,0,2.1f);poseWave=sinf(view->gaitPhase);
-    poseRun=geo_clamp((poseMotion-1)/1.08f,0,1);
-    elbowSin=sinf(poseRun*1.05f);elbowCos=cosf(poseRun*1.05f);
-
-    float moving=geo_clamp(poseMotion,0,1);
-    poseBreath=sinf(view->time*2.2f)*.08f*(1-moving);
-    poseBob=(1-cosf(view->gaitPhase*2))*(.13f+.22f*poseRun)*moving;
-    /* Contact: planted foot travels backwards. Recovery: bent knee and foot
-       lift only while swinging forwards. Calculated once, not per vertex. */
-    for(int i=0;i<2;i++){
-        float phase=fmodf(view->gaitPhase/(2*PI)+i*.5f,1);
-        if(phase<0)phase+=1;
-        float support=.59f-.10f*poseRun,stride=(4.9f+2.5f*poseRun)*moving;
-        if(phase<support){float t=phase/support;footStep[i]=stride*cosf(PI*t);footLift[i]=0;}
-        else{float t=(phase-support)/(1-support);
-            footStep[i]=-stride*cosf(PI*t);
-            footLift[i]=sinf(PI*t)*(1.15f+4.1f*poseRun)*moving;
-        }
-    }
-}
+#include "human_gait.inc"
 #include "character_pose.inc"
 static Point player_pose(Point p,int bone){
     float motion=poseMotion,wave=poseWave,run=poseRun;
@@ -610,15 +586,7 @@ static Point player_pose(Point p,int bone){
     /* Animacion procedural (Claude v2.4): ademas del paso, contragiro de hombros y cadera, brazos con codo,
        inclinacion hacia delante al correr y arco del pie. Todo en funcion de la fase de marcha ya existente. */
     if(bone==1||bone==2){
-        float weight=geo_clamp(1-p.y/14.8f,0,1);
-        float lift=footLift[bone-1],step=footStep[bone-1];
-        /* Flexible knee blend preserves a continuous baggy pant surface. */
-        p.x+=step*weight+lift*.42f*(4*weight*(1-weight));
-        p.y+=lift*weight;
-        /* Arco del pie: el pie que avanza se eleva mas en mitad del paso (pierna casi recta al apoyar). */
-        p.y+=lift*.12f*(4*weight*(1-weight));
-        /* La cadera gira ligeramente con la pierna que avanza. */
-        float hip=geo_clamp((p.y-6)/8,0,1)*wave*.06f*motion;p.z+=p.x*hip;
+        p=gait_leg(p,bone-1);
     }else if(bone>=3){
         int posed=view->climb>0||view->aiming||(view->weapon>0&&(bone==3||view->weapon>=3));
         if(posed){p=pose_arm(p,bone);}else{
@@ -639,7 +607,7 @@ static Point player_pose(Point p,int bone){
     /* Contragiro de hombros respecto a la cadera (torsion del torso). */
     if(bone==0||bone>=3){float tw=-wave*.055f*motion*upper;float nx=p.x-p.z*tw,nz=p.z+p.x*tw;p.x=nx;p.z=nz;}
     p.y+=poseBreath*upper;
-    p.y+=poseBob*geo_clamp(p.y/4,0,1);
+    if(bone!=1&&bone!=2){p.y+=poseBob;p.z+=poseSway;}
     /* Inclinacion hacia delante proporcional a la velocidad. */
     p.x+=(run*1.65f+geo_clamp(motion,0,1)*.25f)*upper;return p;
 }
