@@ -59,6 +59,12 @@ static void cache_put(const void *p,unsigned n){
 }
 #ifndef R3_HOST
 static unsigned int __attribute__((aligned(16))) commands[65536];
+#ifndef R3_HOST
+/* v2.37 (Claude): la escena 3D se envia sin esperar al GE; la CPU dibuja el HUD mientras tanto.
+   Toda reutilizacion de la lista (y de las mallas en el siguiente r3_draw) espera antes aqui. */
+static int geBusy;
+static void ge_wait(void){if(geBusy){sceGuSync(0,0);geBusy=0;}}
+#endif
 extern const unsigned char textures3d_data[];
 static void *textureBase;
 #endif
@@ -758,7 +764,7 @@ static void landmarks(void){
 /* v2.9.1: estado interno de sceGu para los dialogos del sistema (ver psp_main.c savedata_dialog). */
 void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
 #ifndef R3_HOST
-    sceGuStart(GU_DIRECT,commands);
+    ge_wait(),sceGuStart(GU_DIRECT,commands);
     sceGuDrawBuffer(GU_PSM_8888,(void*)((uintptr_t)draw&0x001fffff),512);sceGuDispBuffer(480,272,(void*)((uintptr_t)disp&0x001fffff),512);
     sceGuOffset(2048-240,2048-136);sceGuViewport(2048,2048,480,272);sceGuScissor(0,0,480,272);sceGuEnable(GU_SCISSOR_TEST);
     sceGuFinish();sceGuSync(0,0);sceDisplayWaitVblankStart();
@@ -780,7 +786,7 @@ void r3_gu_display(int on){
 }
 void r3_gu_idle(void){
 #ifndef R3_HOST
-    sceGuStart(GU_DIRECT,commands);sceGuFinish();sceGuSync(0,0);
+    ge_wait(),sceGuStart(GU_DIRECT,commands);sceGuFinish();sceGuSync(0,0);
 #endif
 }
 void r3_gu_swap(void){
@@ -790,7 +796,7 @@ void r3_gu_swap(void){
 }
 void r3_set_draw_buffer(uint32_t *fb){
 #ifndef R3_HOST
-    sceGuStart(GU_DIRECT,commands);sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);sceGuFinish();sceGuSync(0,0);
+    ge_wait(),sceGuStart(GU_DIRECT,commands);sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);sceGuFinish();sceGuSync(0,0);
 #else
     (void)fb;
 #endif
@@ -804,6 +810,19 @@ void r3_phase_hook(void (*fn)(const char*)){phaseFn=fn;phaseFn2=fn;}
 #define TRACE(s) do{PHASE(s);if(traceFn&&traceFrames>0)traceFn(s);}while(0)
 void r3_trace(void (*fn)(const char*),int frames){traceFn=fn;traceFrames=frames;traceFn2=fn;traceFrames2=&traceFrames;}
 int r3_overflow(void){return overflow;}
+/* v2.37 (Claude): pantalla de carga real. Construye en la cache de ciudad las manzanas que vera la
+   camara (sin dibujar nada) hasta 6 piezas por llamada; devuelve cuantas construyo (0 = listo).
+   Antes la cache se llenaba a 1 pieza por fotograma ya en juego: segundos de fotogramas lentos. */
+int r3_prewarm(const R3Scene *s){
+    unsigned long before=r3CacheNew+r3CacheLight;
+#ifndef R3_HOST
+    ge_wait();
+#endif
+    view=s;overflow=0;memset(used,0,sizeof(used));r3Frame+=2;day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
+    camera(s);r3WarmBudget=6;prefetchOnly=1;city();prefetchOnly=0;r3WarmBudget=0;
+    memset(used,0,sizeof(used));overflow=0;geographic=0;
+    return (int)(r3CacheNew+r3CacheLight-before);
+}
 int r3_used(int m){return m<MAT_COUNT?used[m]:0;}
 void r3_init(void){
 #ifndef R3_HOST
@@ -900,7 +919,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #endif
     geographic=0;
 #ifndef R3_HOST
-    R3PROF(2);TRACE("r3:ge-inicio");sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
+    R3PROF(2);TRACE("r3:ge-inicio");sceKernelDcacheWritebackAll();ge_wait(),sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
     sceGuClearColor(skyColor);sceGuClearDepth(0);sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
     sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuDisable(GU_BLEND);sceGuDisable(GU_LIGHTING);
@@ -947,7 +966,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     if(shadowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,shadowUsed,0,shadowMesh);}
     if(glowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_FIX,0,0xffffff);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,glowUsed,0,glowMesh);}
     sceGuDisable(GU_BLEND);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
-    sceGuFinish();sceGuSync(0,0);R3PROF(3);
+    sceGuFinish();geBusy=1;R3PROF(3); /* sin sceGuSync: ver ge_wait */
     TRACE("r3:ge-fin");if(traceFrames>0)traceFrames--;
 #else
     (void)fb;
@@ -961,7 +980,7 @@ void r3_shutdown(void){
 void r3_overlay(uint32_t *fb,const uint32_t *rgba){
 #ifndef R3_HOST
     typedef struct {float u,v,x,y,z;} SpriteVertex;
-    sceKernelDcacheWritebackAll();sceGuStart(GU_DIRECT,commands);
+    sceKernelDcacheWritebackAll();ge_wait(),sceGuStart(GU_DIRECT,commands);
     sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
     sceGuDisable(GU_DEPTH_TEST);sceGuDisable(GU_FOG);sceGuDisable(GU_LIGHTING);
     sceGuEnable(GU_TEXTURE_2D);sceGuEnable(GU_BLEND);

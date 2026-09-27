@@ -22,5 +22,5 @@ int main(void){
   for(int u=t+1;u<30;u++){float ux,uz;terminal_xy(u,&ux,&uz);if(dist(tx,tz,ux,uz)<14){issues++;printf("TERMINALES %d y %d encimados",t,u);putchar(10);}}
  }
  printf("TOTAL problemas: %d",issues);putchar(10);
- return 0;
+ return issues?1:0;
 }

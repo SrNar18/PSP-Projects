@@ -22,7 +22,7 @@ static int combat_line(float x,float y,float xx,float yy){
 static void combat_damage(int i,float damage){
  CombatPed *p=&combat.ped[i];if(p->health<=0)return;
  p->health=fmaxf(0,p->health-damage);p->hit=.32f;p->flee=18;p->fall=0;
- combat.alert=12;g.escape=0;g.heat=clampf(g.heat+(p->health<=0?1.f:.35f),0,5);
+ combat.alert=12;wanted_crime(p->health<=0?1:0);
  if(p->health<=0&&combat.target==i)combat.target=-1;
 }
 static void combat_camera_ray(float *origin,float *slope){
@@ -121,7 +121,7 @@ static void combat_tick(float ax,float ay,float dt){
  }
  if(!melee){physics_unproject(px+cosf(aim)*nearest,pz+sinf(aim)*nearest,&combat.shotX,&combat.shotY);combat.shotHeight=origin+slope*nearest;combat.shotTime=.09f;}
  if(victim>=0)combat_damage(victim,damage[g.weapon]);
- else if(!melee){combat.alert=8;g.heat=clampf(g.heat+.08f,0,5);}
+ else if(!melee){combat.alert=8;if(cop_near(300))wanted_crime(0);}
 }
 /* Pedestrians stand four logical units from the parcel edge in Claude's
    sidewalk placement. They need a smaller foot radius than the protagonist. */

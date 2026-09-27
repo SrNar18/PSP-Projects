@@ -151,7 +151,7 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
   if(ok){
    /* v2.13.3: carga por etapas. Cada etapa hace un trozo acotado, se dibuja el progreso y se registra: si la consola
       se reinicia, la ultima linea del registro dice en que etapa exacta ocurrio. */
-   for(int stage=0;stage<8;stage++){
+   for(int stage=0;stage<24;stage++){ /* v2.37: + etapas de ciudad visible (terminan antes si ya esta) */
     char m[40];snprintf(m,sizeof(m),"etapa-%d-inicio",stage);dbg(m);
     int done=game_load_stage(buffers[*index],512,stage);
     snprintf(m,sizeof(m),"etapa-%d-ok",stage);dbg(m);

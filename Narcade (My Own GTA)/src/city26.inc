@@ -29,7 +29,7 @@ static float takenX[16],takenZ[16],takenR[16],spotPad;static int nTaken; /* obje
 static int sidewalk_spot(float *x,float *z,float c){
     for(float r=0;r<=36;r+=1.5f)for(int k=0,n=r==0?1:(int)r+6;k<n;k++){ /* v2.36: busqueda mas ligera */
         float a=k*(2*PI/n),px=*x+cosf(a)*r,pz=*z+sinf(a)*r;
-        if(block_at(px,pz)||cm_on_diag(px,pz))continue;
+        if(block_at(px,pz)||cm_diag_dist(px,pz)<CM_DIAG_HALF+c+.5f)continue; /* v2.37: sin sobresalir a la diagonal */
         int busy=0;for(int q=0;q<nTaken;q++)if(hypotf(px-takenX[q],pz-takenZ[q])<c+spotPad+takenR[q]+1.f)busy=1; /* sin objetos encimados */
         if(busy)continue;
         int clear=1,near=0;
@@ -776,14 +776,14 @@ static int cache_compact(void){
     chunkUsed=cw;
     return cacheUsed+262144<=CITY_CACHE_BYTES&&chunkUsed+2000<=CHUNK_MAX;
 }
-static int prefetchOnly; /* v2.36: construir la pieza en la cache sin dibujarla (anticipo) */
+static int prefetchOnly;static int r3WarmBudget; /* v2.37: >0 durante la pantalla de carga */ /* v2.36: construir la pieza en la cache sin dibujarla (anticipo) */
 static void cached_piece(int slot,int lod,PieceFn fn,int bx,int bz,int far,uint32_t white,int *budget){
     CellCache *cc=&cellCache[slot][lod];
     float age=fabsf(cc->day-dayT);if(age>.5f)age=1-age;
     /* v2.36: la luz solo se rehace si cambio de verdad (0,02 de dia = ~10 s) y como mucho una pieza
        cada 4 fotogramas: antes el 90% de las reconstrucciones eran por luz (tirones al correr). */
     if(cc->valid&&(age<.02f||*budget<=0||(r3Frame&3))){cc->used=r3Frame;cache_replay(cc);return;}
-    if(*budget<=0){fn(bx,bz,far,white);return;}
+    if(*budget<=0){if(!prefetchOnly)fn(bx,bz,far,white);return;}
     (*budget)--;if(cc->valid)r3CacheLight++;else r3CacheNew++;
     if(cacheUsed+262144>CITY_CACHE_BYTES||chunkUsed+2000>CHUNK_MAX){if(!cache_compact()){memset(cellCache,0,sizeof cellCache);cacheUsed=0;chunkUsed=0;r3CacheReset++;}} /* lleno: compactar; solo si no basta se vacia */
     unsigned start=cacheUsed;float savedGround=fixedGround;int savedLit=litAlready;int oldValid=cc->valid;unsigned oldC0=cc->chunk0,oldN=cc->nchunks;
@@ -829,7 +829,7 @@ static void river_row(int bx,int bz,int far,uint32_t white){(void)bx;
     metro(bz,far);
 }
 static void city_v26(void){
-    const uint32_t white=0xffffffffu;int cacheBudget=1;
+    const uint32_t white=0xffffffffu;int cacheBudget=r3WarmBudget>0?r3WarmBudget:1;
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
         float x=bx*320,z=bz*320;
         if(!nearby(x+160,z+160,720))continue;
@@ -850,8 +850,8 @@ static void city_v26(void){
         int best=-1;float bd=1e9f;
         for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){float d=view_distance(bx*320+160,bz*320+160);
             if(d<300&&d<bd&&!cellCache[bz*8+bx][0].valid){bd=d;best=bz*8+bx;}}
-        if(best>=0){int bx=best%8,bz=best/8;prefetchOnly=1;cityMid=0;
-            cached_piece(best,0,cell_piece,bx,bz,0,white,&cacheBudget);prefetchOnly=0;cityMid=0;}
+        if(best>=0){int bx=best%8,bz=best/8;{int sp=prefetchOnly;prefetchOnly=1;cityMid=0;
+            cached_piece(best,0,cell_piece,bx,bz,0,white,&cacheBudget);prefetchOnly=sp;cityMid=0;}}
     }
     diagonal_avenue();
     /* Rio con puentes reales en cada calle transversal, paseo de la orilla este y Metro. */
