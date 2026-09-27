@@ -9,6 +9,7 @@ Rama visual `codex/cars-metro-lighting-trees`, PR #3, integrada junto con `claud
 - Metro: cámara a la altura real del punto de viaje; piel del tren adaptada al desnivel de la vía, cristales de cabina y ventanas laterales. El cristal de cada puerta viaja con su panel, con ventanillas fijas cortas a ambos lados que no tapan la abertura.
 - Luces: los dos haces del coche mantienen una dirección recta en el espacio proyectado al pasar por curvas; su superficie sigue el terreno. El punto luminoso y el charco de luz de la farola se sitúan bajo su brazo, en lugar de bajo el poste.
 - Árboles cercanos: copas redondeadas con varios grupos de hojas de radios y tonos distintos, conservando las ramas y los modelos lejanos ligeros.
+- Tráfico denso: los detalles de carrocería reservan espacio para las mallas de los coches restantes; un atasco de veinte coches cabe en los materiales sin descartar polígonos.
 
 ## Validación
 
