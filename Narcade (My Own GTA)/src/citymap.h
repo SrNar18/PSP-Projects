@@ -45,7 +45,10 @@ static inline int cm_park(int bx,int bz){return (cm_flags(bx,bz)&(CM_PARK|CM_PLA
 /* Intersections reserved for small, drivable roundabouts. The island is
    represented by the same footprint in the renderer and collision code. */
 static inline int cm_roundabout(int bx,int bz){
-    return (bx==1&&bz==2)||(bx==6&&bz==1)||(bx==6&&bz==5);
+    /* v2.37 (Claude): desactivadas. El cruce esta en la franja de transicion del valle y la isla
+       (circulo de radio 12) se veia aplastada: una acera torcida con arbustos en mitad de la calle,
+       y su colision redonda era una pared invisible fuera de lo dibujado. */
+    (void)bx;(void)bz;return 0;
 }
 static inline float cm_footbridge_z(int bz){return bz==2||bz==5?bz*320.f+190.f:-10000.f;}
 /* Avenida diagonal (Av. Oriental): de (1010,700) a (1330,1560), anchura 56. */
@@ -215,7 +218,7 @@ static inline int cm_obstacle(float x,float z){
             if(dz>=13.f&&dz<=16.f)return 1; /* parapet */
         }
     for(int k=0;k<3;k++){static const int bx[3]={1,6,6},bz[3]={2,1,5};
-        float dx=x-(bx[k]*320+42),dz=z-(bz[k]*320+42);
+        if(!cm_roundabout(bx[k],bz[k]))continue; /* v2.37: islas desactivadas */ float dx=x-(bx[k]*320+42),dz=z-(bz[k]*320+42);
         if(dx*dx+dz*dz<12.f*12.f)return 1;
     }
     if(fabsf(x-CM_METRO_X)<5.f){float lz=fmodf(z,320.f);if(lz<0)lz+=320;for(int k=0;k<4;k++)if(fabsf(lz-(100+k*64))<5.f)return 1;}   /* pilares (v2.34: fuera de la calle) */

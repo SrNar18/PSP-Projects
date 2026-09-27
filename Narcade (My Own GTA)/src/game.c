@@ -178,6 +178,23 @@ static void terminal_xy(int i,float *x,float *y){
  *x=tx[i];*y=ty[i];
 }
 /* Cerca del punto de mision o de su terminal (el terminal ya no esta en el centro del punto). */
+/* v2.37 (Claude): nivel de busqueda al estilo GTA. g.heat son estrellas (entero visible = floor).
+   Delitos leves suman fracciones y solo llegan a 1 estrella si se repiten; matar a un civil da 1
+   (si ya te buscan, sube 1 mas desde la tercera muerte); a un policia, al menos 2. Las patrullas
+   solo persiguen desde 1 estrella completa. */
+static int cop_near(float r){for(int i=60;i<64;i++)if(i!=g.car&&dist(g.x,g.y,g.cars[i].x,g.cars[i].y)<r)return 1;return 0;}
+static int wantedKills;
+static void wanted_crime(int kind){ /* 0 leve, 1 muerte de civil, 2 policia, 3 robo de carro, 4 robo de patrulla */
+ float h=g.heat;int seen=cop_near(300);g.escape=0;
+ if(kind==0)h+=seen?.34f:.12f;
+ else if(kind==1){wantedKills++;h=h<1?1:(wantedKills%3==0?floorf(h)+1:h+.2f);}
+ else if(kind==2)h=fmaxf(2,floorf(h)+1);
+ else if(kind==3){if(seen)h=fmaxf(h,1);else h+=.2f;}
+ else h=fmaxf(h,2);
+ if(h<1)wantedKills=0;
+ g.heat=clampf(h,0,5);
+}
+static int wanted_stars(void){return (int)(g.heat+.001f);}
 static int near_hub(int i,float radius){float tx,ty;terminal_xy(i,&tx,&ty);return dist(g.x,g.y,locations[i].x,locations[i].y)<radius||dist(g.x,g.y,tx,ty)<24;}
 static int foot_free(float x,float y){
  if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
@@ -318,7 +335,7 @@ static void separate_cars(void){
    float an=cosf(aa)*nx+sinf(aa)*ny,bn=cosf(ba)*nx+sinf(ba)*ny;
    float closing=a->speed*an-b->speed*bn,impact=fmaxf(0,closing);
    if(pass==0&&(i==g.car||j==g.car)&&impact>25&&g.hitCD<=0){
-    g.cars[g.car].hp-=impact*.025f;g.heat=fminf(5,g.heat+.25f);g.hitCD=.7f;
+    g.cars[g.car].hp-=impact*.025f;if(g.cars[i==g.car?j:i].police||cop_near(200))wanted_crime(0);g.hitCD=.7f;
    }
    /* Resolve the inward normal velocity only. Side rubbing and reversing
       away must retain their tangential/escaping motion. */
@@ -435,8 +452,13 @@ void game_set_lowmem2(const char *msg){notice(msg);} /* diagnostico */
    llamada monopoliza la CPU varios segundos (el hilo de audio y el sistema siguen atendidos) y, si algo falla, el
    registro de psp_main dice exactamente en que etapa. Devuelve 0 mientras queda trabajo, 1 cuando termina. */
 static const char *LOAD_STEPS[]={"Leyendo la partida","Trazando calles y manzanas","Repartiendo el trafico",
-    "Colocando peatones","Dibujando el mapa de la ciudad","Preparando la camara","Listo"};
+    "Colocando peatones","Dibujando el mapa de la ciudad","Preparando la camara","Construyendo la ciudad visible","Listo"};
+#ifdef NARCADE_3D
+static void build_scene(R3Scene *sp);
+#endif
+enum{LOAD_WARM_MAX=14}; /* v2.37: etapas 6..19 construyen la ciudad visible (6 piezas cada una) */
 int game_load_stage(uint32_t *pixels,int stride,int stage){
+ static int warmDone;if(stage==0)warmDone=0;else if(warmDone)return 1;
  switch(stage){
   case 0: break;                                   /* la partida ya esta aplicada */
   case 1: cm_build(); break;                       /* parcelas de las 56 celdas (cache) */
@@ -444,15 +466,20 @@ int game_load_stage(uint32_t *pixels,int stride,int stage){
   case 3: world_peds_init(); break;                /* peatones */
   case 4: map_grid_build(); break;                 /* rejilla del minimapa (640x560) */
   case 5: g.cameraDistance=0;g.cameraVelocity=0;g.moveActive=0;g.stickActive=0;g.noticeT=0;g.screenT=0;break;
-  default: return 1;
+  default:
+#ifdef NARCADE_3D
+   if(stage<6+LOAD_WARM_MAX&&!warmDone){static R3Scene sc;build_scene(&sc);if(r3_prewarm(&sc)==0){warmDone=1;stage=6+LOAD_WARM_MAX;}break;}
+#endif
+   return 1;
  }
  /* pintar el progreso */
  fb=pixels;pitch=stride;
  rect(0,0,W,H,INK);rect(0,0,W,3,LIME);
  text(W/2-8*6,60,"NARCADE",LIME,1);
  text(W/2-11*7,92,"CARGANDO MEDELLIN...",WHITE,1);
- int total=6,done=stage+1;if(done>total)done=total;
- text(W/2-((int)strlen(LOAD_STEPS[stage<6?stage:6])*7)/2,140,LOAD_STEPS[stage<6?stage:6],MUTED,1);
+ int total=6+LOAD_WARM_MAX,done=stage+1;if(done>total)done=total;
+ const char *step=LOAD_STEPS[stage<6?stage:stage<6+LOAD_WARM_MAX?6:7];
+ text(W/2-((int)strlen(step)*7)/2,140,step,MUTED,1);
  rect(W/2-100,170,200,8,PANEL);rect(W/2-100,170,200*done/total,8,LIME);
  char b[32];snprintf(b,sizeof(b),"%d%%",100*done/total);text(W/2-12,190,b,MUTED,1);
  return 0;
@@ -590,7 +617,7 @@ static void enter_exit(void){
  if(g.car>=0){Car *c=&g.cars[g.car];if(fabsf(c->speed)>45){notice("Frena antes de bajar del carro.");return;}float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}if(!free_at(xx,yy,5)){notice("No hay espacio para bajar. Mueve el carro.");return;}g.x=xx;g.y=yy;c->speed=0;c->parked=1;g.car=-1;return;}
  int best=-1;float d=43;for(int i=0;i<CAR_COUNT;i++){float dd=dist(g.x,g.y,g.cars[i].x,g.cars[i].y);if(dd<d&&g.cars[i].hp>0){best=i;d=dd;}}
  if(best>=0){g.car=best;g.steerSmooth=0;g.moveActive=0;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;
-  if(best!=1){g.heat=fmaxf(g.heat,g.cars[best].police?3:1.2f);notice("CARRO TOMADO. X acelera / [] frena / L-R radio.");}else notice("Luna: cuidalo. X acelera / [] frena / L-R radio.");
+  if(best!=1){wanted_crime(g.cars[best].police?4:3);notice("CARRO TOMADO. X acelera / [] frena / L-R radio.");}else notice("Luna: cuidalo. X acelera / [] frena / L-R radio.");
  }else notice("Acercate a un carro. TRIANGULO para tomarlo.");
 }
 static void foot_pace(int moving,float dt){
@@ -929,8 +956,8 @@ static void world_tick(float ax,float ay,float dt){
   /* v2.34 (Claude): sin persecucion, las patrullas circulan como el trafico normal (carriles y
      semaforos). Antes iban rectas y giraban al azar: acababan fuera del mapa o dando vueltas contra
      una pared para siempre. Al acabar una persecucion se alinean con el eje mas cercano. */
-  if(!c->police||g.heat<=0){if(c->police){c->a=roundf(c->a/(PI*.5f))*(PI*.5f);c->a=fmodf(c->a,2*PI);}civilian_traffic_tick(i,dt);continue;}
-  if(c->police&&g.heat>0){
+  if(!c->police||wanted_stars()<1||i-60>wanted_stars()){if(c->police){c->a=roundf(c->a/(PI*.5f))*(PI*.5f);c->a=fmodf(c->a,2*PI);}civilian_traffic_tick(i,dt);continue;}
+  if(c->police&&wanted_stars()>=1){
    float dd=dist(g.x,g.y,c->x,c->y);
    // Pursuers use the street grid, choosing the next junction toward the player.
    float jx=floorf(c->x/320)*320+42,jy=floorf(c->y/320)*320+42;
@@ -938,7 +965,7 @@ static void world_tick(float ax,float ay,float dt){
     if(fabsf(dx)>fabsf(dy))c->a=dx>0?0:PI;else c->a=dy>0?PI*.5f:-PI*.5f;
    }
    if(dd<130){float desired=atan2f(g.y-c->y,g.x-c->x);float xx=c->x+cosf(desired)*dt*105,yy=c->y+sinf(desired)*dt*105;if(free_at(xx,yy,9))c->a=desired;}
-   c->speed=95+g.heat*12;
+   c->speed=95+wanted_stars()*12;
    if(dd<25&&g.hitCD<=0){g.health-=g.car<0?12:4;if(g.car>=0)g.cars[g.car].hp-=5;g.hitCD=1;}
   }else{c->speed=c->police?45:48+i%4*9;
    float lx=fmodf(c->x,320),ly=fmodf(c->y,320);
@@ -965,7 +992,10 @@ static void world_tick(float ax,float ay,float dt){
  camera_heights(dt);
 #endif
  combat_peds_tick(dt);
- if(g.heat>0){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>4)g.heat=fmaxf(0,g.heat-dt*.18f);}else g.escape=0;}
+ /* v2.37: fuera de la vista de las patrullas las estrellas parpadean; si aguantas 6 s + 5 s por
+    estrella sin que te vean, se pierde la busqueda entera (GTA). Delitos leves se olvidan solos. */
+ if(wanted_stars()>=1){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>6+5*wanted_stars()){g.heat=0;wantedKills=0;g.escape=0;}}else g.escape=0;}
+ else if(g.heat>0){g.heat=fmaxf(0,g.heat-dt*.02f);if(g.heat<=0)wantedKills=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
  if(g.raceTime>0){g.raceTime-=dt;int l=g.route[g.checkpoint];if(g.car>=0&&dist(g.x,g.y,locations[l].x,locations[l].y)<66){g.checkpoint++;g.raceTime+=3;if(g.checkpoint==6){g.raceTime=0;advance();}else notice("PUNTO ALCANZADO +3 segundos. Sigue el siguiente aro.");}
   if(g.raceTime<=0&&g.checkpoint<6){g.raceTime=0;g.side=0;g.checkpoint=0;notice("Tiempo agotado. Vuelve al inicio para repetir el recorrido.");}
@@ -1141,7 +1171,7 @@ static void minimap(int cx,int cy,int r){
   uint32_t c=map_ground(gx+dx*scale,gz+dy*scale);
   px(cx+dx,cy+dy,c);px(cx+dx+1,cy+dy,c);px(cx+dx,cy+dy+1,c);px(cx+dx+1,cy+dy+1,c);
  }
- for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||g.heat<=0)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
+ for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||wanted_stars()<1)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
  if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float pxp,pyp;geo_project(locations[t].x,locations[t].y,&pxp,&pyp);float dx=(pxp-gx)/scale,dy=(pyp-gz)/scale;float d=sqrtf(dx*dx+dy*dy);
   if(d>r-4){dx=dx/d*(r-4);dy=dy/d*(r-4);}circle(cx+(int)dx,cy+(int)dy,3,INK);circle(cx+(int)dx,cy+(int)dy,2,LIME);}
  float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
@@ -1168,7 +1198,7 @@ static void hud(void){
  if(g.car>=0){rect(W-122,15,112,3,RGB(40,48,50));rect(W-122,15,(int)(g.cars[g.car].hp*1.12f),3,GOLD);}
  else if(!g.inMetro){rect(W-122,15,112,4,RGB(40,48,50));rect(W-122,15,(int)(g.stamina*1.12f),4,g.exhausted?CORAL:GOLD);}
  snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,21,b,WHITE,1);
- if(g.heat>0)for(int i=0;i<5;i++)rect(W-122+i*10,36,7,4,g.heat>i?CORAL:RGB(40,48,50));
+ if(wanted_stars()>=1){int blink=g.escape>0&&((int)(g.clock*4)&1);for(int i=0;i<5;i++)rect(W-122+i*10,36,7,4,wanted_stars()>i?(blink?RGB(120,70,60):CORAL):RGB(40,48,50));}
  /* Cronometros de ruta / huida. */
  if(g.raceTime>0){snprintf(b,sizeof(b),"RUTA %d/6   %ds",g.checkpoint+1,(int)g.raceTime);box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,GOLD,1);}
  else if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){snprintf(b,sizeof(b),"ALEJATE Y PIERDE LA BUSQUEDA / %ds",(int)fmaxf(0,step_now()->par-g.missionTimer));box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,CORAL,1);}
@@ -1178,7 +1208,7 @@ static void hud(void){
  else if(g.mission<36){const Step *st=step_now();
   if(g.inMetro){line=g.metroWait>0?"R+[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
   else if(metro_boardable()){line="R+[] SUBIR AL METRO";col=LIME;}
-  else if(dist(g.x,g.y,locations[st->loc].x,locations[st->loc].y)<58){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
+  else if(!g.side&&near_hub(st->loc,58)){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
  if(!line&&!combat.aiming&&combat_wall_at(g.x,g.y,14))line="[] ESCALAR MURO";
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
@@ -1366,25 +1396,33 @@ static void weapon_wheel_draw(void){
  label(153,8,"SELECCIONAR ARMA",WHITE);
  footer("MANTEN L + JOYSTICK elegir / SUELTA L equipar");
 }
+#ifdef NARCADE_3D
+static void build_scene(R3Scene *sp){
+ memset(sp,0,sizeof(*sp));sp->x=g.x;sp->z=g.y;sp->angle=g.a;sp->yaw=g.viewYaw;sp->time=g.clock;
+ sp->camBase=g.camBase;sp->camClear=g.camClear;
+ sp->driving=g.car>=0;sp->moving=g.walking&&g.screen==WORLD;sp->cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();sp->eyeHeight=cam_eye();
+ sp->wallCount=climbWallCount;for(int i=0;i<climbWallCount;i++){sp->walls[i][0]=climbWall[i][0];sp->walls[i][1]=climbWall[i][1];sp->walls[i][2]=logical_heading_from_projected(climbWall[i][0],climbWall[i][1],0);}
+ sp->shotX=combat.shotX;sp->shotZ=combat.shotY;sp->shotHeight=combat.shotHeight;sp->shotTime=combat.shotTime;
+ sp->weapon=g.weapon;sp->aiming=combat.aiming;sp->cameraPitch=combat.pitch;sp->aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);sp->aimPitch=atanf(slope);}sp->recoil=combat.recoil;sp->punch=combat.punch;sp->combo=combat.combo;sp->jump=combat.jump;sp->climb=combat.vault;
+ sp->motion=g.motion;sp->gaitPhase=g.gaitPhase;sp->lift=g.lift+combat.jump;sp->metroZ=g.metroZ;sp->metroDir=g.metroDir;sp->inMetro=g.inMetro;
+ sp->metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
+ /* Obstruction distance is maintained in projected space by camera_clearance. */
+ sp->carCount=CAR_COUNT;sp->personCount=42;sp->collected=g.caches;
+ for(int i=0;i<CAR_COUNT;i++)sp->cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police,(i*7+g.cars[i].type*3)%12};
+ for(int i=0;i<42;i++){CombatPed *p=&combat.ped[i];sp->people[i]=(R3Person){g.peds[i].x,g.peds[i].y,p->yaw,i,p->health,p->flee,p->fall,p->hit,p->phase};}
+ for(int i=0;i<30;i++){sp->hubs[i][0]=locations[i].x;sp->hubs[i][1]=locations[i].y;}
+ sp->target=g.raceTime>0?g.route[g.checkpoint]:g.mission<36?step_now()->loc:-1;
+ if(sp->target>=0){sp->targetX=locations[sp->target].x;sp->targetZ=locations[sp->target].y;}
+}
+#endif
 static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  if(g.screen==TITLE){title_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
- R3Scene scene;memset(&scene,0,sizeof(scene));scene.x=g.x;scene.z=g.y;scene.angle=g.a;scene.yaw=g.viewYaw;scene.time=g.clock;
- scene.camBase=g.camBase;scene.camClear=g.camClear;
- scene.driving=g.car>=0;scene.moving=g.walking&&g.screen==WORLD;scene.cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();scene.eyeHeight=cam_eye();
- scene.wallCount=climbWallCount;for(int i=0;i<climbWallCount;i++){scene.walls[i][0]=climbWall[i][0];scene.walls[i][1]=climbWall[i][1];scene.walls[i][2]=logical_heading_from_projected(climbWall[i][0],climbWall[i][1],0);}
- scene.shotX=combat.shotX;scene.shotZ=combat.shotY;scene.shotHeight=combat.shotHeight;scene.shotTime=combat.shotTime;
- scene.weapon=g.weapon;scene.aiming=combat.aiming;scene.cameraPitch=combat.pitch;scene.aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);scene.aimPitch=atanf(slope);}scene.recoil=combat.recoil;scene.punch=combat.punch;scene.combo=combat.combo;scene.jump=combat.jump;scene.climb=combat.vault;
- scene.motion=g.motion;scene.gaitPhase=g.gaitPhase;scene.lift=g.lift+combat.jump;scene.metroZ=g.metroZ;scene.metroDir=g.metroDir;scene.inMetro=g.inMetro;
- scene.metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
- /* Obstruction distance is maintained in projected space by camera_clearance. */
- scene.carCount=CAR_COUNT;scene.personCount=42;scene.collected=g.caches;
- for(int i=0;i<CAR_COUNT;i++)scene.cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police,(i*7+g.cars[i].type*3)%12};
- for(int i=0;i<42;i++){CombatPed *p=&combat.ped[i];scene.people[i]=(R3Person){g.peds[i].x,g.peds[i].y,p->yaw,i,p->health,p->flee,p->fall,p->hit,p->phase};}
- for(int i=0;i<30;i++){scene.hubs[i][0]=locations[i].x;scene.hubs[i][1]=locations[i].y;}
- scene.target=g.raceTime>0?g.route[g.checkpoint]:g.mission<36?step_now()->loc:-1;
- if(scene.target>=0){scene.targetX=locations[scene.target].x;scene.targetZ=locations[scene.target].y;}
+ static R3Scene scene;build_scene(&scene);
  r3_draw(renderTarget,&scene);
+#ifndef R3_HOST
+ memset(fb,0,512*272*sizeof(uint32_t)); /* v2.37: se limpia la capa del HUD mientras el GE pinta la escena */
+#endif
 #else
  world_draw();
 #endif
@@ -1398,7 +1436,8 @@ void game_draw(uint32_t *pixels,int stride){
  renderTarget=pixels;
 #ifndef R3_HOST
  static uint32_t __attribute__((aligned(16))) overlay[512*512];
- memset(overlay,0,512*272*sizeof(uint32_t));draw_frame(overlay,512);r3_overlay(pixels,overlay);
+ int world=!(g.screen==TITLE||g.screen==MINI||g.screen==MAP||g.screen==JOURNAL||g.screen==PAUSE);
+ if(!world)memset(overlay,0,512*272*sizeof(uint32_t));draw_frame(overlay,512);r3_overlay(pixels,overlay);
 #else
  draw_frame(pixels,stride);
 #endif
