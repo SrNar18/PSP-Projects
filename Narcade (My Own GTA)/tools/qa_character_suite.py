@@ -1,14 +1,14 @@
 """Compile and run the character regressions with the installed host GCC."""
 from pathlib import Path
 import argparse, subprocess, concurrent.futures
-p=argparse.ArgumentParser();p.add_argument('--cc',required=True);args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--cc',default='gcc');args=p.parse_args()
 root=Path(__file__).resolve().parents[1];out=root/'build/character-qa';out.mkdir(parents=True,exist_ok=True)
 flags=['-O2','-DNARCADE_3D','-DR3_HOST','-std=gnu99']
 objects=[]
 for source in ['render3d.c','assets.S','textures3d.S','icon0.S']:
  obj=out/(source.replace('.','_')+'.o');subprocess.run([args.cc,*flags,'-c',str(root/'src'/source),'-o',str(obj)],cwd=root,check=True);objects.append(str(obj))
 game=['qa_combat','qa_gait_v217','qa_thumb_v229','qa_controls_v218','qa_weapons','qa']
-renderer=['qa_character_combat','qa_weapon_mesh','qa_city28','qa_human_gait']
+renderer=['qa_character_combat','qa_weapon_mesh','qa_city28','qa_human_gait','qa_urban_visual']
 def test(name):
  exe=out/(name+'.exe');cmd=[args.cc,*flags,str(root/'tools'/(name+'.c'))]
  if name in game:cmd+=objects

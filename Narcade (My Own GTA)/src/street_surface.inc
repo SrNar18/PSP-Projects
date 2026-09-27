@@ -12,5 +12,5 @@ static uint32_t street_tint(uint32_t color,float x,float z){
     float b=street_hash(ix,iz+1)*(1-u)+street_hash(ix+1,iz+1)*u;
     float shade=.94f+.12f*(a*(1-v)+b*v);
     int r=(int)((color&255)*shade),g=(int)(((color>>8)&255)*shade),bl=(int)(((color>>16)&255)*shade);
-    return COLOR(r>255?255:r,g>255?255:g,bl>255?255:bl);
+    return (color&0xff000000u)|(uint32_t)(r>255?255:r)|((uint32_t)(g>255?255:g)<<8)|((uint32_t)(bl>255?255:bl)<<16);
 }

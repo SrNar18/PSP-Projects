@@ -469,6 +469,7 @@ static void metro_train(void){
     for(int c=0;c<2;c++){float zc=view->metroZ+(c-.5f)*(CM_TRAIN_CAR+6);
         if(!nearby(CM_METRO_X,zc,700))continue;
         float previousGround=fixedGround;fixedGround=geo_height(CM_METRO_X,zc);
+        metroBaseGround=fixedGround;metroFlexible=1;
         float fl=CM_PLAT_H-.6f;
         box(CM_METRO_X,zc,fl+.15f,24,CM_TRAIN_CAR,1.05f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso (v2.33: separado de los rieles) */
         box(CM_METRO_X,zc,fl-3,20,CM_TRAIN_CAR-8,2.85f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
@@ -483,8 +484,11 @@ static void metro_train(void){
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
         }
+        /* Only the two fixed central windows stay on the shell. The outer
+           spans are sliding doors, whose glass belongs to the moving panels
+           above. The former four uninterrupted panes covered an open door. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
-            for(int k=-2;k<2;k++)box(CM_METRO_X+side*11.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*11.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
         rail_canopy(CM_METRO_X,zc,25,CM_TRAIN_CAR+1,fl+20,2.8f);
         if(view_distance(CM_METRO_X,zc)<250){
             box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
@@ -493,12 +497,13 @@ static void metro_train(void){
         for(int e=-1;e<=1;e+=2){float ze=zc+e*CM_TRAIN_CAR*.5f;                                                   /* testeros abiertos: panel bajo, pilares y dintel */
             box(CM_METRO_X,ze,fl+1.2f,22.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,22.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
             box(CM_METRO_X-7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X+7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            box(CM_METRO_X,ze,fl+18.2f,22.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));}
+            box(CM_METRO_X,ze,fl+18.2f,22.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
+            if(!view->inMetro)box(CM_METRO_X,ze+e*.65f,fl+10.1f,13.6f,.35f,6.4f,0,GLASS,GLASS,COLOR(105,150,168));}
         if(view->inMetro||view_distance(CM_METRO_X,zc)<200){
             for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*8,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
             for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */
         }
-        fixedGround=previousGround;
+        metroFlexible=0;fixedGround=previousGround;
     }
 }
 static void metro(int bz,int far){
