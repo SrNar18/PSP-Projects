@@ -168,16 +168,33 @@ static void building_shadows(void){
 static void light_pool(float x,float z,float rx,float rz,float angle,uint32_t color){
     soft_ground(x,z,rx,rz,angle,color,0);
 }
+/* Projected road point: headlights keep a straight bearing through the
+   geographical bend while each control point still rests on the terrain. */
+static Point beam_ground(float px,float pz){float wx,wz;geo_unproject(px,pz,&wx,&wz);return point(px,geo_height(wx,wz)+.57f,pz);}
 /* Cono de faros delante de un coche (dos haces + el propio faro encendido). */
 static void headlights(float x,float z,float angle){
-    if(night<.2f)return;
-    float c=cosf(angle),s=sinf(angle);uint32_t beam=((uint32_t)(int)(110*night)<<24)|(COLOR(255,240,190)&0x00ffffff);
+    if(night<.2f||!nearby(x,z,190))return;
+    float c=cosf(angle),s=sinf(angle),heading=geo_heading(x,z,angle);
+    float fc=cosf(heading),fs=sinf(heading);
+    uint32_t rgb=COLOR(255,239,188)&0x00ffffff;
+    uint32_t bright=((uint32_t)(int)(108*night)<<24)|rgb;
+    uint32_t soft=((uint32_t)(int)(57*night)<<24)|rgb;
+    uint32_t clear=rgb;
     for(int side=-1;side<=1;side+=2){
-        float ox=x+c*18-s*side*6,oz=z+s*18+c*side*6;             /* posicion del faro */
-        float reach=64;for(float d=8;d<64;d+=8)if(cm_solid(ox+c*d,oz+s*d)){reach=d;break;}
-        light_pool(ox+c*reach*.4f,oz+s*reach*.4f,reach*.6f,10,angle,beam);
-        Point f=geo_point(ox,9,oz);
-        glow_quad(point(f.x-s*1.6f,f.y-1.4f,f.z+c*1.6f),point(f.x+s*1.6f,f.y-1.4f,f.z-c*1.6f),point(f.x+s*1.6f,f.y+1.4f,f.z-c*1.6f),point(f.x-s*1.6f,f.y+1.4f,f.z+c*1.6f),((uint32_t)(int)(230*night)<<24)|COLOR(255,250,220)&0x00ffffff);
+        float hx=x+c*18-s*side*6,hz=z+s*18+c*side*6;
+        float px,pz;geo_project(hx,hz,&px,&pz);
+        float reach=64;for(float d=8;d<64;d+=8)if(cm_solid(hx+c*d,hz+s*d)){reach=d;break;}
+        Point root=beam_ground(px+fc*2,pz+fs*2);
+        Point mid=beam_ground(px+fc*reach*.48f,pz+fs*reach*.48f);
+        Point left=beam_ground(mid.x-fs*8,mid.z+fc*8);
+        Point right=beam_ground(mid.x+fs*8,mid.z-fc*8);
+        Point tip=beam_ground(px+fc*reach,pz+fs*reach);
+        fx_triangle(fx_vertex(root,bright),fx_vertex(left,clear),fx_vertex(mid,soft),0);
+        fx_triangle(fx_vertex(root,bright),fx_vertex(mid,soft),fx_vertex(right,clear),0);
+        fx_triangle(fx_vertex(mid,soft),fx_vertex(left,clear),fx_vertex(tip,clear),0);
+        fx_triangle(fx_vertex(mid,soft),fx_vertex(tip,clear),fx_vertex(right,clear),0);
+        Point f=point(px,geo_height(hx,hz)+9,pz);
+        glow_quad(point(f.x-fs*1.6f,f.y-1.4f,f.z+fc*1.6f),point(f.x+fs*1.6f,f.y-1.4f,f.z-fc*1.6f),point(f.x+fs*1.6f,f.y+1.4f,f.z-fc*1.6f),point(f.x-fs*1.6f,f.y+1.4f,f.z+fc*1.6f),((uint32_t)(int)(230*night)<<24)|COLOR(255,250,220)&0x00ffffff);
     }
 }
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
@@ -215,8 +232,11 @@ static void street_lamps_glow(void){
         int ci=bz*8+bx;if(!furnMemoDone[ci]||!furnMemo[ci].ok[2])continue;
         float x=furnMemo[ci].x[2],z=furnMemo[ci].z[2];
         if(!nearby(x,z,420)||!sphere_visible(x,z,40))continue;
-        light_pool(x,z,26,20,0,warm);
-        Point l=geo_point(x,34,z);
+        /* The actual fixture hangs 7.5 units west of its pole (lamp_post PI).
+           Illuminate the road below the fixture, not the pole's base. */
+        float headX=x-7.5f;
+        light_pool(headX,z,26,20,0,warm);
+        Point l=geo_point(headX,28.3f,z);
         glow_quad(point(l.x-4,l.y-1.5f,l.z-3),point(l.x+4,l.y-1.5f,l.z-3),point(l.x+4,l.y+1.5f,l.z+3),point(l.x-4,l.y+1.5f,l.z+3),((uint32_t)(int)(240*night)<<24)|COLOR(255,240,190)&0x00ffffff);
     }
 }

@@ -91,8 +91,8 @@ static void camera(const R3Scene *s){
     float lx,lz;geo_unproject(eye.x,eye.z,&lx,&lz);eye.y=fmaxf(eye.y,s->camClear!=0?s->camClear:geo_height(lx,lz)+12);
     target=point(px+cosf(yaw)*25,h+(s->driving?10:11),pz+sinf(yaw)*25);
     if(s->inMetro){ /* v2.6: camara dentro del coche del Metro, mirando en el sentido de la marcha */
-        float dir=s->metroDir>0?1:-1;float mx,mz;geo_project(CM_METRO_X,s->metroZ+dir*(CM_TRAIN_CAR*.5f+3-26),&mx,&mz);float base=geo_height(CM_METRO_X,s->metroZ)+CM_PLAT_H;
-        eye=point(mx-3,base+13,mz);float tx,tz;geo_project(CM_METRO_X,s->metroZ+dir*160,&tx,&tz);target=point(tx,base+9,tz); /* coche delantero, mirando por el testero */
+        float dir=s->metroDir>0?1:-1,rideZ=s->metroZ+dir*(CM_TRAIN_CAR*.5f+3-26);float mx,mz;geo_project(CM_METRO_X,rideZ,&mx,&mz);float base=geo_height(CM_METRO_X,rideZ)+CM_PLAT_H;
+        eye=point(mx-3,base+13,mz);float tx,tz;geo_project(CM_METRO_X,s->metroZ+dir*160,&tx,&tz);target=point(tx,geo_height(CM_METRO_X,s->metroZ+dir*160)+CM_PLAT_H+9,tz); /* altura de la via bajo la camara y a lo lejos */
     }else if(s->lift-s->jump>15){ /* en el anden: camara baja y cercana para no ver la marquesina desde arriba */
         float d=s->cameraDistance<48?s->cameraDistance:48;
         eye=point(px-cosf(yaw)*d,h+16,pz-sinf(yaw)*d);target=point(px+cosf(yaw)*25,h+9,pz+sinf(yaw)*25);
@@ -154,6 +154,7 @@ static Point unit(Point p){float n=sqrtf(p.x*p.x+p.y*p.y+p.z*p.z);return point(p
 static Point cross3(Point a,Point b){return point(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);}
 static float projected_height(float x,float z){float lx,lz;geo_unproject(x,z,&lx,&lz);return geo_height(lx,lz);}
 static float playerLift=0; /* v2.6: altura extra del jugador (anden del Metro) */
+static int metroFlexible;static float metroBaseGround; /* train only; never city cache */
 static void rigid_cache(void){
     if(objectX==rigX&&objectZ==rigZ&&objectYaw==rigYaw&&rigid==rigMode)return;
     rigMode=rigid;
@@ -190,7 +191,12 @@ static void polygon(int mat,Vertex *input,int count){
                 v->z=rigGZ+rigBX.z*dx+rigBY.z*h+rigBZ.z*dz;
                 v->y=rigH+rigBX.y*dx+rigBY.y*h+rigBZ.y*dz;
             }else{v->x=rigGX+rigCos*dx-rigSin*dz;v->z=rigGZ+rigSin*dx+rigCos*dz;v->y+=rigH;}
-        }else{geo_project(v->x,v->z,&gx,&gz);v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
+        }else{geo_project(v->x,v->z,&gx,&gz);
+            /* The moving train spans more than one terrain terrace. Project
+               each skin vertex at the rail centreline below it, rather than
+               lifting both long cars abruptly when their centres cross a ramp. */
+            if(metroFlexible)v->y+=geo_height(CM_METRO_X,v->z)-metroBaseGround;
+            v->y+=fixedGround>-999999?fixedGround:geo_height(v->x,v->z);v->x=gx;v->z=gz;}
     }
     if(cacheRec){RecHdr h={0,(unsigned char)mat,(unsigned char)count,(unsigned char)litAlready};cache_put(&h,4);cache_put(buffers[0],count*sizeof(Vertex));return;}
     polygon_emit(mat,buffers[0],count,litAlready);
@@ -370,6 +376,7 @@ static void fx_triangle(Vertex a,Vertex b,Vertex c,int shadow);static float dayT
 #include "shapes.inc"
 #include "daylight.inc"
 static void city(void){city_v26();}
+#include "car_detail.inc"
 static void car(const R3Car *c){
     if(!nearby(c->x,c->z,500))return;
     if(!sphere_visible(c->x,c->z,30))return;
@@ -419,6 +426,12 @@ static void car(const R3Car *c){
     float spin=view->time*c->speed*.08f;
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
     if(used[METAL]>4200)return; /* reserve room for doors and lights in dense jams */
+    car_windscreen_trim(c->x,c->z,c->angle,prof,n,mats,paint);
+    for(int side=-1;side<=1;side+=2){
+        car_arch(c->x,c->z,c->angle,prof,n,floor,-11.f,wr,side,paint);
+        car_arch(c->x,c->z,c->angle,prof,n,floor,11.f,wr,side,paint);
+        car_lens_detail(c->x,c->z,c->angle,prof,n,floor,side);
+    }
     for(int s=-1;s<=1;s+=2){
         Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
         box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,244,192));

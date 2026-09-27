@@ -140,6 +140,25 @@ static void car_seam(float cx,float cz,float angle,const HullSec *s,int n,float 
     quad(METAL,a,b,c,d,day_scale(COLOR(47,53,56)),1,1);
 }
 /* Arboles: tipo por hash de posicion (0 frondoso, 1 palma, 2 cipres). */
+static void foliage_lobe(float x,float z,float bottom,float radius,float height,unsigned seed,uint32_t tint){
+    /* Six-sided, three-level round crown. Irregular radii break the cone look
+       without raising the old near-tree polygon budget. */
+    Point ring[3][6];float rot=(seed&255)*(2*PI/255);
+    for(int level=0;level<3;level++)for(int k=0;k<6;k++){
+        unsigned h=seed^(unsigned)k*2654435761u^(unsigned)level*2246822519u;
+        float a=rot+k*2*PI/6,variation=.90f+(h>>12&31)/155.f;
+        float r=radius*variation*(level==0?.58f:level==1?1.f:.36f);
+        float y=bottom+height*(level==0?.08f:level==1?.46f:.92f);
+        ring[level][k]=point(x+cosf(a)*r,y,z+sinf(a)*r);
+    }
+    int saved=litAlready;litAlready=1;
+    for(int level=0;level<2;level++)for(int k=0;k<6;k++){
+        int j=(k+1)%6;float a=rot+(k+.5f)*2*PI/6;
+        uint32_t c=lit_color(shade(tint,.83f+((seed>>(k+4))&3)*.08f),cosf(a)*.7f,level?.75f:.35f,sinf(a)*.7f);
+        quad(LEAVES,ring[level][k],ring[level][j],ring[level+1][j],ring[level+1][k],c,1,1);
+    }
+    litAlready=saved;
+}
 static void tree_shape(float x,float z,int kind,int simple){
     unsigned h=(unsigned)(x*7.3f)*2654435761u^(unsigned)(z*3.1f)*40503u;float rot=(h&255)/255.f*6.28f;float s=.85f+((h>>8)&127)/127.f*.4f;
     if(kind==1){ /* palma: tronco en dos tramos ligeramente inclinado, frondas colgantes */
@@ -178,9 +197,8 @@ static void tree_shape(float x,float z,int kind,int simple){
         quad(BARK,point(base.x,base.y-s,base.z),point(base.x,base.y+s,base.z),
              point(tip.x,tip.y+.35f*s,tip.z),point(tip.x,tip.y-.35f*s,tip.z),bark,1,1);
         uint32_t leaf=k&1?COLOR(87,150,77):COLOR(114,174,91);
-        frustum(tip.x,tip.z,tip.y-4*s,4.1f*s,5.5f*s,4.5f*s,6,a,LEAVES,leaf);
-        frustum(tip.x,tip.z,tip.y+.5f*s,5.5f*s,2.0f*s,5*s,6,a+.3f,LEAVES,leaf);
+        foliage_lobe(tip.x,tip.z,tip.y-4*s,5.6f*s,10*s,h+(unsigned)k*17u,leaf);
     }
-    frustum(x,z,16*s,6.2f*s,7.2f*s,5*s,7,rot,LEAVES,COLOR(91,155,75));
-    frustum(x,z,21*s,7.2f*s,2.4f*s,7*s,7,rot+.2f,LEAVES,COLOR(119,177,92));
+    foliage_lobe(x,z,13.5f*s,7.4f*s,12*s,h^0x537u,COLOR(91,155,75));
+    foliage_lobe(x+1.1f*s,z-.8f*s,20*s,5.5f*s,8*s,h^0x822u,COLOR(119,177,92));
 }
