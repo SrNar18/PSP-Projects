@@ -171,6 +171,14 @@ static int lift_ok(float x,float y){
  if(fabsf(nl-g.lift)>6)return 0;       /* no se entra a la escalera por el lateral */
  return 1;
 }
+/* v2.36 (Claude): posicion del terminal de cada punto de mision (en la acera, cm_terminal_pos). */
+static void terminal_xy(int i,float *x,float *y){
+ static float tx[30],ty[30];static int done;
+ if(!done){done=1;for(int k=0;k<30;k++)cm_terminal_pos(locations[k].x,locations[k].y,&tx[k],&ty[k]);}
+ *x=tx[i];*y=ty[i];
+}
+/* Cerca del punto de mision o de su terminal (el terminal ya no esta en el centro del punto). */
+static int near_hub(int i,float radius){float tx,ty;terminal_xy(i,&tx,&ty);return dist(g.x,g.y,locations[i].x,locations[i].y)<radius||dist(g.x,g.y,tx,ty)<24;}
 static int foot_free(float x,float y){
  if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
  for(int i=0;i<CAR_COUNT;i++){
@@ -178,7 +186,8 @@ static int foot_free(float x,float y){
   float angle=physics_heading(c),ca=cosf(angle),sa=sinf(angle);if(fabsf(dx*ca+dy*sa)<22&&fabsf(-dx*sa+dy*ca)<13)return 0;
  }
  /* v2.25: el terminal visible es un cilindro de radio 5.5; la caja de 20x18 era una pared invisible. */
- for(int i=0;i<30;i++){float tx=x-(locations[i].x+18),ty=y-locations[i].y;if(tx*tx+ty*ty<9.5f*9.5f)return 0;}
+ /* v2.36: terminal en la acera (cm_terminal_pos), calculado una vez */
+ for(int i=0;i<30;i++){float tx,ty;terminal_xy(i,&tx,&ty);tx=x-tx;ty=y-ty;if(tx*tx+ty*ty<7.5f*7.5f)return 0;} /* pedestal 3,6 + cuerpo */
  return 1;
 }
 static float angle_delta(float a,float b){float d=a-b;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return d;}
@@ -560,7 +569,7 @@ static void interact(void){
  if(g.inMetro){if(g.metroWait>0){int bz=cm_station_near(g.metroZ,2);if(bz>=0){g.inMetro=0;g.x=CM_METRO_X-14;g.y=cm_station_z(bz);g.lift=CM_PLAT_H;g.a=PI;notice("Bajaste del Metro. Escalera al sur del anden.");}}return;}
  if(metro_boardable()){g.inMetro=1;notice("METRO: viaje en marcha. R+[] para bajar en la siguiente estacion.");return;}
  if(g.lift>15){if(g.metroWait<=0||cm_station_near(g.metroZ,2)!=(int)floorf(g.y/320))notice("Espera el Metro en el anden: para 6 segundos en cada estacion.");return;} /* en el anden no se toman carros de la calle */
- if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(dist(g.x,g.y,l->x,l->y)<58){
+ if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(near_hub(s->loc,58)){
   if(s->kind==K_DRIVE){if(g.car<0){notice("Este objetivo requiere llegar en un carro.");return;}advance();return;}
   if(s->kind==K_RACE){if(g.car<0){notice("Consigue un carro antes de iniciar el recorrido.");return;}if(g.raceTime<=0)race_start(0);return;}
   if(s->kind==K_CHASE){if(g.missionTimer<=0){g.heat=3;g.missionTimer=.01f;for(int i=60;i<64;i++){Car *c=&g.cars[i];c->x=clampf(g.x+(i%2?340:-340),42,WORLD_W-278);c->y=floorf(g.y/320)*320+42;c->a=i%2?PI:0;c->parked=0;}notice("Sobrevive y alejate de las patrullas hasta perderlas.");}return;}
@@ -571,9 +580,9 @@ static void interact(void){
  }}
  // Optional collections and services stay available throughout the story.
  for(int i=0;i<24;i++){float x=locations[i].x+15,y=locations[i].y+38;if(!(g.caches&(1u<<i))&&dist(g.x,g.y,x,y)<25){g.caches|=1u<<i;g.cash+=60;g.reputation++;notice("VINILO ENCONTRADO +$60. Coleccion registrada.");game_save();return;}}
- if(dist(g.x,g.y,locations[1].x,locations[1].y)<65){int cost=g.car>=0?100:30;if(g.cash>=cost){g.cash-=cost;g.health=100;if(g.car>=0)g.cars[g.car].hp=100;g.heat=0;notice("Luna: listo. Motor reparado y carro repintado.");game_save();}else notice("Necesitas $100 para reparar el carro, o $30 a pie.");return;}
- if(dist(g.x,g.y,locations[0].x,locations[0].y)<65){g.health=100;g.heat=0;notice(game_save()?"REFUGIO: salud recuperada y partida guardada.":"No se pudo guardar. Revisa el espacio de la Memory Stick.");return;}
- if(dist(g.x,g.y,locations[12].x,locations[12].y)<65){if(g.car>=0&&!g.side&&!g.raceTime){race_start(1);return;}notice("ENCARGOS: llega en carro para hacer seis entregas ($180).");return;}
+ if(near_hub(1,65)){int cost=g.car>=0?100:30;if(g.cash>=cost){g.cash-=cost;g.health=100;if(g.car>=0)g.cars[g.car].hp=100;g.heat=0;notice("Luna: listo. Motor reparado y carro repintado.");game_save();}else notice("Necesitas $100 para reparar el carro, o $30 a pie.");return;}
+ if(near_hub(0,65)){g.health=100;g.heat=0;notice(game_save()?"REFUGIO: salud recuperada y partida guardada.":"No se pudo guardar. Revisa el espacio de la Memory Stick.");return;}
+ if(near_hub(12,65)){if(g.car>=0&&!g.side&&!g.raceTime){race_start(1);return;}notice("ENCARGOS: llega en carro para hacer seis entregas ($180).");return;}
  notice("Acercate al objetivo amarillo, un vinilo o un servicio.");
 }
 

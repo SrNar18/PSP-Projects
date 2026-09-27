@@ -235,4 +235,26 @@ static inline int cm_obstacle(float x,float z){
 }
 /* Colision de edificios: dentro de alguna parcela edificable (parques y plazas no son solidos). */
 static inline int cm_solid(float x,float z){return cm_parcel_at(x,z)==0;}
+/* v2.36 (Claude): terminal de cada punto de mision en la acera real. Antes estaba en
+   (x+18, y) = z local 62, en medio de la calzada (las "casetas" en la carretera). Busca el punto
+   mas cercano fuera de toda parcela en radio 3 y con una parcela a menos de 5, evitando el coche
+   aparcado del punto (x+54, y+18). Lo usan el dibujo (render3d.c) y la colision (game.c). */
+static inline int cm_block(float x,float z){return cm_parcel_at(x,z)>=0;}
+static inline void cm_terminal_pos(float lx,float ly,float *tx,float *tz){
+    float ox=lx+18,oz=ly;
+    for(float r=0;r<=40;r+=.5f)for(int k=0,n=r==0?1:(int)(r*2.f)+12;k<n;k++){ /* fina: solo se calcula una vez por terminal */
+        float a=k*(6.2831853f/n),px=ox+cosf(a)*r,pz=oz+sinf(a)*r;
+        if(cm_block(px,pz)||cm_on_diag(px,pz))continue;
+        if(fabsf(px-(lx+54))<25&&fabsf(pz-(ly+18))<16)continue; /* el coche aparcado del punto (36x18) */
+        int clear=1,near=0;
+        for(int q=0;q<16&&clear;q++){float b=q*0.3926991f;
+            if(cm_block(px+cosf(b)*3.8f,pz+sinf(b)*3.8f))clear=0;
+            if(cm_block(px+cosf(b)*6,pz+sinf(b)*6))near=1;}
+        if(clear&&near){*tx=px;*tz=pz;return;}
+    }
+    /* columna junto al rio (x 1300-1400): no hay manzana cerca; va en el paseo de la orilla oeste,
+       pegado al muro del rio y lejos de sus arboles (z local 120/180/240) */
+    if(ox>1300&&ox<1400){*tx=1386;*tz=ly+44;return;}
+    *tx=ox;*tz=oz;
+}
 #endif
