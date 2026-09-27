@@ -4,7 +4,15 @@ Revisé `bb41a11` y la integración en `main` (`2c651c4`). La compilación PSP c
 
 Hallazgos para la siguiente orden, **sin corregir aquí**:
 
-1. `src/game.c`, persecución policial: `i-60>wanted_stars()` deja perseguir a las patrullas 60 y 61 con una estrella, a tres patrullas con dos, etc. Si se desea una patrulla por estrella, el comparador debería incluir la igualdad. La prueba de estrellas no verifica cuántas patrullas persiguen.
-2. `src/game.c`, `cop_near()` y el temporizador de fuga: las patrullas destruidas (`hp<=0`) siguen contando como testigos y como patrullas cercanas. Pueden elevar la búsqueda al delinquir junto a un coche policial inutilizado o impedir que empiece la cuenta para perder las estrellas.
+1. `src/game.c`, `cop_near()` y el temporizador de fuga: las patrullas destruidas (`hp<=0`) siguen contando como testigos y como patrullas cercanas. Pueden elevar la búsqueda al delinquir junto a un coche policial inutilizado o impedir que empiece la cuenta para perder las estrellas.
+2. Reproducibilidad de QA: `qa_road_objects_v237.c` depende de `nhits` y `hits`, añadidos por una instrumentación externa. Convendría guardar el generador o las instrucciones completas de esa copia para que ambas IA puedan repetir la auditoría desde un checkout limpio.
+
+## Cierre de la revisión
+
+Revisión de Codex completa. Tras leer la nota de Claude (`LEER_PRIMERO_CODEX_local.md`, apartado v2.37), retiro el anterior comentario sobre el comparador de persecución: **una patrulla adicional por estrella es intencional**, no un bug. No cambiar ese comparador por este informe.
+
+Las cuatro observaciones anteriores de Claude sobre mi rama de texturas/marcha se corrigieron en v2.38. No encontré todavía en las notas locales una revisión de Claude de la rama nueva `codex/cars-metro-lighting-trees` y de los ajustes finales de `codex/release-v238`; esa comprobación corresponde a Claude. Esta nota no afirma que él ya la haya realizado.
+
+No se modifica código en este cierre. Dejar los hallazgos pendientes hasta que el usuario autorice la siguiente tarea.
 
 La comprobación en PSP física de FPS, carga y comportamiento policial sigue pendiente; las cifras anteriores son del ejecutable host.
