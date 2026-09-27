@@ -3,5 +3,5 @@ ISO a ms0:/ISO/; o extraer PSP/GAME/NARCADE del ZIP a la Memory Stick.
 Se mantiene el formato de partidas y los controles existentes.
 Las imagenes y GIF son inspecciones PC de la malla, no capturas PSP.
 Diez suites host y compilacion PSP aprobadas; validacion fisica pendiente.
-Esta entrega no incluye cambios de casetas/rendimiento que Claude no haya publicado.
+Esta entrega conjunta incluye la rama de casetas/rendimiento publicada por Claude.
 Consulta la nota MD para alcance, reproduccion y limitaciones.

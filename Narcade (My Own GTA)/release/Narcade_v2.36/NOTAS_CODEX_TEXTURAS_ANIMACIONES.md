@@ -54,3 +54,12 @@ Especificamente: casetas/terminales deben respetar el mismo trazado en dibujo y
 colision; las optimizaciones no deben ocultar suelo/metro ni romper los presupuestos,
 los efectos de combate ni las transiciones de luz. Registrar hallazgos con linea,
 reproduccion y evidencia, y no corregirlos fuera del alcance de esta rama.
+
+
+## Cierre conjunto
+Claude publico dde4c0e y lo fusiono como 349ef34. Se integro sin conflictos.
+Las diez suites se repitieron y aprobaron tras esa integracion. La ISO v2.36
+entregada contiene tanto las texturas/poses como las casetas/cache de Claude.
+Revision con dos pendientes para su proxima orden en
+REVISION_CODEX_RAMA_CLAUDE_2026-09-27.md. No se altero su codigo en esta revision.
+SHA256 ISO conjunta: 2c3501fb76cf3dce600308a2efa0cca111d78455727b4e5994ab153f97541c10.
