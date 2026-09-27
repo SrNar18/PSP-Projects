@@ -27,6 +27,9 @@ int main(void){
         }
         geographic=0;
     }
-    puts("PASS: six car profiles, three tree types and sliding metro geometry remain finite in day/night views.");
+    memset(used,0,sizeof used);overflow=0;geographic=0;s.x=0;s.z=0;
+    for(int i=0;i<20;i++){R3Car c={0};c.x=(i%5)*35-70;c.z=(i/5)*35-50;c.type=i%6;car(&c);}
+    if(!valid_mesh()||overflow){puts("dense traffic exceeds the material budget");return 4;}
+    puts("PASS: six car profiles, three tree types, metro doors and a 20-car jam fit the material budget.");
     return 0;
 }

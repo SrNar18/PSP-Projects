@@ -385,7 +385,7 @@ static void car(const R3Car *c){
         COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
-    if(dist>170){ /* LOD lejano: dos cajas. v2.31: desde 170 (antes 380); de lejos ocupan pocos pixeles y los coches eran ~37% del dibujo */
+    if(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200){ /* preserve material capacity in dense traffic */
         box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);return;
     }
     /* v2.7 (Claude): carrocerias por secciones (perfil lateral real: capo, parabrisas inclinado, techo, luneta,
@@ -425,7 +425,7 @@ static void car(const R3Car *c){
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
     float spin=view->time*c->speed*.08f;
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
-    if(used[METAL]>4200)return; /* reserve room for doors and lights in dense jams */
+    if(used[METAL]>3000)return; /* reserve room for the remaining car shells in dense jams */
     car_windscreen_trim(c->x,c->z,c->angle,prof,n,mats,paint);
     for(int side=-1;side<=1;side+=2){
         car_arch(c->x,c->z,c->angle,prof,n,floor,-11.f,wr,side,paint);

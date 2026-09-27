@@ -180,9 +180,12 @@ static void headlights(float x,float z,float angle){
     uint32_t bright=((uint32_t)(int)(108*night)<<24)|rgb;
     uint32_t soft=((uint32_t)(int)(57*night)<<24)|rgb;
     uint32_t clear=rgb;
+    float centreX,centreZ;geo_project(x,z,&centreX,&centreZ);
     for(int side=-1;side<=1;side+=2){
         float hx=x+c*18-s*side*6,hz=z+s*18+c*side*6;
-        float px,pz;geo_project(hx,hz,&px,&pz);
+        /* The body is rigid in projected space. Projecting the lamp offset
+           independently bent its attachment away from that body on curves. */
+        float px=centreX+fc*18-fs*side*6,pz=centreZ+fs*18+fc*side*6;
         float reach=64;for(float d=8;d<64;d+=8)if(cm_solid(hx+c*d,hz+s*d)){reach=d;break;}
         Point root=beam_ground(px+fc*2,pz+fs*2);
         Point mid=beam_ground(px+fc*reach*.48f,pz+fs*reach*.48f);

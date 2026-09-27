@@ -489,6 +489,11 @@ static void metro_train(void){
            above. The former four uninterrupted panes covered an open door. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
             for(int k=-1;k<=0;k++)box(CM_METRO_X+side*11.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+        /* Short fixed panes flank each 9.4-unit doorway. They fill the rest
+           of its 20-unit bay without drawing glass across the actual opening. */
+        if(!view->inMetro)for(int side=-1;side<=1;side+=2)
+            for(int door=-1;door<=1;door+=2)for(int flank=-1;flank<=1;flank+=2)
+                box(CM_METRO_X+side*11.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
         rail_canopy(CM_METRO_X,zc,25,CM_TRAIN_CAR+1,fl+20,2.8f);
         if(view_distance(CM_METRO_X,zc)<250){
             box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
