@@ -27,13 +27,13 @@ typedef struct{float x[4],z[4];signed char ok[4];}FurnMemo; /* 0 semaforo, 1 par
 static FurnMemo furnMemo[56];static unsigned char furnMemoDone[56];
 static float takenX[16],takenZ[16],takenR[16],spotPad;static int nTaken; /* objetos ya colocados en la manzana; spotPad: brazo de la farola */
 static int sidewalk_spot(float *x,float *z,float c){
-    for(float r=0;r<=36;r+=1.f)for(int k=0,n=r==0?1:(int)(r*1.5f)+8;k<n;k++){
+    for(float r=0;r<=36;r+=1.5f)for(int k=0,n=r==0?1:(int)r+6;k<n;k++){ /* v2.36: busqueda mas ligera */
         float a=k*(2*PI/n),px=*x+cosf(a)*r,pz=*z+sinf(a)*r;
         if(block_at(px,pz)||cm_on_diag(px,pz))continue;
         int busy=0;for(int q=0;q<nTaken;q++)if(hypotf(px-takenX[q],pz-takenZ[q])<c+spotPad+takenR[q]+1.f)busy=1; /* sin objetos encimados */
         if(busy)continue;
         int clear=1,near=0;
-        for(int q=0;q<16&&clear;q++){float b=q*(PI/8);
+        for(int q=0;q<12&&clear;q++){float b=q*(PI/6);
             if(block_at(px+cosf(b)*c,pz+sinf(b)*c))clear=0;
             if(block_at(px+cosf(b)*(8-c),pz+sinf(b)*(8-c)))near=1;}
         if(clear&&near){*x=px;*z=pz;if(nTaken<16){takenX[nTaken]=px;takenZ[nTaken]=pz;takenR[nTaken]=c+spotPad;nTaken++;}return 1;}
@@ -668,7 +668,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
             for(int hb=0;hb<30&&nTaken<6;hb++){float hx=view->hubs[hb][0],hz=view->hubs[hb][1];
                 if(hx==0&&hz==0)continue;if(hx<x-60||hx>x+380||hz<z-60||hz>z+380)continue;
                 takenX[nTaken]=hx+54;takenZ[nTaken]=hz+18;takenR[nTaken]=12;nTaken++;
-                takenX[nTaken]=hx+18;takenZ[nTaken]=hz;takenR[nTaken]=6;nTaken++;}
+                {float tx,tz;cm_terminal_pos(hx,hz,&tx,&tz);takenX[nTaken]=tx;takenZ[nTaken]=tz;takenR[nTaken]=6;nTaken++;}}
             float tx=x+82,tz=z+82;memo[ci].ok[0]=(bx==0||bx==3||bx==5)&&(bz==0||bz==3)&&sidewalk_spot(&tx,&tz,1.5f);memo[ci].x[0]=tx;memo[ci].z[0]=tz;
             float sx=x+116,sz=z+80;spotPad=6;memo[ci].ok[1]=(h>>9)%3==0&&!westMerged&&sidewalk_spot(&sx,&sz,3.6f);spotPad=0;memo[ci].x[1]=sx;memo[ci].z[1]=sz; /* v2.35: la marquesina mide 18: reserva su largo */
             if(memo[ci].ok[1])for(float dx=-9;dx<=9&&memo[ci].ok[1];dx+=1.5f)for(float dz=-3.5f;dz<=3.5f;dz+=1.75f)if(block_at(sx+dx,sz+dz)){memo[ci].ok[1]=0;break;} /* v2.35: el rectangulo entero en la acera */
@@ -760,24 +760,45 @@ static int cache_chunks(CellCache *cc){
     return 1;
 }
 typedef void (*PieceFn)(int,int,int,uint32_t);
+/* v2.36 (Claude): cache llena -> se quitan solo las piezas que no se han dibujado en los ultimos 2 s
+   y se compacta lo demas (antes se vaciaba entera y durante unos fotogramas se construia todo en
+   vivo: los peores tirones al correr). Devuelve 1 si quedo sitio. */
+static int cache_compact(void){
+    enum{NS=64*3};int idx[NS],n=0;
+    for(int i=0;i<NS;i++){CellCache *c=&cellCache[i/3][i%3];if(!c->valid)continue;
+        if(r3Frame-c->used>120){c->valid=0;continue;}idx[n++]=i;}
+    /* por desplazamiento en el pool (insercion: n es pequeno) */
+    for(int a=1;a<n;a++){int v=idx[a],b=a-1;while(b>=0&&cellCache[idx[b]/3][idx[b]%3].off>cellCache[v/3][v%3].off){idx[b+1]=idx[b];b--;}idx[b+1]=v;}
+    unsigned w=0;for(int a=0;a<n;a++){CellCache *c=&cellCache[idx[a]/3][idx[a]%3];if(c->off!=w)memmove(cachePool+w,cachePool+c->off,c->len);c->off=w;w+=c->len;}
+    cacheUsed=w;
+    for(int a=1;a<n;a++){int v=idx[a],b=a-1;while(b>=0&&cellCache[idx[b]/3][idx[b]%3].chunk0>cellCache[v/3][v%3].chunk0){idx[b+1]=idx[b];b--;}idx[b+1]=v;}
+    unsigned cw=0;for(int a=0;a<n;a++){CellCache *c=&cellCache[idx[a]/3][idx[a]%3];if(c->chunk0!=cw)memmove(chunkPool+cw,chunkPool+c->chunk0,c->nchunks*sizeof(CacheChunk));c->chunk0=cw;cw+=c->nchunks;}
+    chunkUsed=cw;
+    return cacheUsed+262144<=CITY_CACHE_BYTES&&chunkUsed+2000<=CHUNK_MAX;
+}
+static int prefetchOnly; /* v2.36: construir la pieza en la cache sin dibujarla (anticipo) */
 static void cached_piece(int slot,int lod,PieceFn fn,int bx,int bz,int far,uint32_t white,int *budget){
     CellCache *cc=&cellCache[slot][lod];
     float age=fabsf(cc->day-dayT);if(age>.5f)age=1-age;
-    if(cc->valid&&(age<.006f||*budget<=0)){cache_replay(cc);return;}
+    /* v2.36: la luz solo se rehace si cambio de verdad (0,02 de dia = ~10 s) y como mucho una pieza
+       cada 4 fotogramas: antes el 90% de las reconstrucciones eran por luz (tirones al correr). */
+    if(cc->valid&&(age<.02f||*budget<=0||(r3Frame&3))){cc->used=r3Frame;cache_replay(cc);return;}
     if(*budget<=0){fn(bx,bz,far,white);return;}
-    (*budget)--;
-    if(cacheUsed+262144>CITY_CACHE_BYTES||chunkUsed+2000>CHUNK_MAX){memset(cellCache,0,sizeof cellCache);cacheUsed=0;chunkUsed=0;} /* lleno: se vacia y se rehace poco a poco */
-    unsigned start=cacheUsed;float savedGround=fixedGround;int savedLit=litAlready;
+    (*budget)--;if(cc->valid)r3CacheLight++;else r3CacheNew++;
+    if(cacheUsed+262144>CITY_CACHE_BYTES||chunkUsed+2000>CHUNK_MAX){if(!cache_compact()){memset(cellCache,0,sizeof cellCache);cacheUsed=0;chunkUsed=0;r3CacheReset++;}} /* lleno: compactar; solo si no basta se vacia */
+    unsigned start=cacheUsed;float savedGround=fixedGround;int savedLit=litAlready;int oldValid=cc->valid;unsigned oldC0=cc->chunk0,oldN=cc->nchunks;
     cacheRec=1;recFail=0;recDist=lod==0?100.f:lod==1?300.f:500.f;recRange=lod==0?0.f:lod==1?250.f:420.f;
     fn(bx,bz,far,white);
     cacheRec=0;fixedGround=savedGround;litAlready=savedLit;
-    if(recFail){cacheUsed=start;cc->valid=0;fn(bx,bz,far,white);return;}
+    if(recFail){cacheUsed=start;cc->valid=0;if(!prefetchOnly)fn(bx,bz,far,white);return;}
     unsigned len=cacheUsed-start;
     if(cc->valid&&len<=cc->len&&cc->off+cc->len<=start){memmove(cachePool+cc->off,cachePool+start,len);cc->len=len;cacheUsed=start;} /* reutiliza su hueco */
     else{cc->off=start;cc->len=len;}
     cc->day=dayT;cc->valid=1;
-    if(!cache_chunks(cc)){cc->valid=0;fn(bx,bz,far,white);return;}
-    cache_replay(cc);
+    if(!cache_chunks(cc)){cc->valid=0;if(!prefetchOnly)fn(bx,bz,far,white);return;}
+    /* v2.36: reutilizar sus trozos antiguos si caben (antes cada reconstruccion llenaba la tabla) */
+    if(oldValid&&cc->nchunks<=oldN&&oldC0+oldN<=cc->chunk0){memcpy(chunkPool+oldC0,chunkPool+cc->chunk0,cc->nchunks*sizeof(CacheChunk));chunkUsed=cc->chunk0;cc->chunk0=oldC0;}
+    cc->used=r3Frame;if(!prefetchOnly)cache_replay(cc);
 }
 static void cell_piece(int bx,int bz,int far,uint32_t white){city_cell_v26(bx,bz,far,white);}
 static float river_centre(float z){return 1428+6*sinf(z/145.f)+2*sinf(z/53.f);}
@@ -814,8 +835,23 @@ static void city_v26(void){
         if(!nearby(x+160,z+160,720))continue;
         if(!nearby(x+160,z+160,400)&&!sphere_visible(x+160,z+160,460))continue;
         float dist=view_distance(x+160,z+160);int far=dist>380;cityMid=dist>230;
+        /* v2.36: margen de 25 en los cambios de detalle: si ya hay en cache el nivel vecino se sigue
+           usando (antes una manzana en el limite se reconstruia una y otra vez al moverse) */
+        {int lod=far?2:cityMid?1:0,alt=-1;
+         if(fabsf(dist-230)<25)alt=lod==0?1:0;else if(fabsf(dist-380)<25)alt=lod==1?2:1;
+         if(alt>lod&&!cellCache[bz*8+bx][lod].valid&&cellCache[bz*8+bx][alt].valid){lod=alt;far=lod==2;cityMid=lod>=1;}}
         {static char cellTag[20];cellTag[0]='c';cellTag[1]='0'+bx;cellTag[2]=',';cellTag[3]='0'+bz;cellTag[4]=far?'L':(cityMid?'M':'c');cellTag[5]=0;r3_phase(cellTag);r3_trace_cell(cellTag);}
         cached_piece(bz*8+bx,far?2:cityMid?1:0,cell_piece,bx,bz,far,white,&cacheBudget);cityMid=0;
+    }
+    /* v2.36 (Claude): anticipo. Si este fotograma no construyo nada, se prepara en la cache la
+       manzana cercana (<300) que va a necesitar el detalle maximo y aun no lo tiene. Asi al cruzar
+       de manzana corriendo ya esta lista y no hay un fotograma largo (el tiron al correr). */
+    if(cacheBudget>0&&!(r3Frame&1)){
+        int best=-1;float bd=1e9f;
+        for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){float d=view_distance(bx*320+160,bz*320+160);
+            if(d<300&&d<bd&&!cellCache[bz*8+bx][0].valid){bd=d;best=bz*8+bx;}}
+        if(best>=0){int bx=best%8,bz=best/8;prefetchOnly=1;cityMid=0;
+            cached_piece(best,0,cell_piece,bx,bz,0,white,&cacheBudget);prefetchOnly=0;cityMid=0;}
     }
     diagonal_avenue();
     /* Rio con puentes reales en cada calle transversal, paseo de la orilla este y Metro. */

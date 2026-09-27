@@ -43,13 +43,15 @@ static int used[MAT_COUNT];
 #define CITY_CACHE_BYTES (5u*512u*1024u) /* 2,5 MB (v2.34: el suelo troceado en las transiciones ocupa mas); limite de RAM ~20 MB */
 #endif
 typedef struct{unsigned char kind,mat,count,lit;}RecHdr; /* kind: 0 poligono, 1 luz, 2 sombra, 3 semaforo */
-typedef struct{unsigned off,len;float day;int valid;unsigned chunk0,nchunks;}CellCache;
+typedef struct{unsigned off,len;float day;int valid;unsigned chunk0,nchunks,used;}CellCache; /* v2.36: used = ultimo fotograma en que se dibujo */
+static unsigned r3Frame;
 typedef struct{unsigned off,len;float x,y,z,r;}CacheChunk; /* trozo de ~100 vertices con esfera envolvente (off relativo a la manzana) */
 #define CHUNK_MAX 7000
 static CacheChunk chunkPool[CHUNK_MAX];static unsigned chunkUsed;
 static int noClip; /* v2.31: el trozo entero cae dentro de la vista: sin pruebas de recorte */
 static unsigned char __attribute__((aligned(16))) cachePool[CITY_CACHE_BYTES];
 static unsigned cacheUsed;static int cacheRec,recFail;static float recDist,recRange;
+unsigned long r3CacheNew,r3CacheLight,r3CacheReset; /* diagnostico: reconstrucciones por manzana nueva/LOD, por luz y vaciados */
 static CellCache cellCache[64][3]; /* 56 manzanas + 7 tramos de rio/Metro */
 static void cache_put(const void *p,unsigned n){
     if(recFail)return;if(cacheUsed+n>CITY_CACHE_BYTES){recFail=1;return;}
@@ -728,13 +730,17 @@ static void person(float x,float z,float angle,int style,int walking){
 }
 static void landmarks(void){
     for(int i=0;i<30;i++){
-        float x=view->hubs[i][0]+18,z=view->hubs[i][1];if(!nearby(x,z,400))continue;
+        static float termX[30],termZ[30],termSrcX[30],termSrcZ[30]; /* v2.36: terminal en la acera (cm_terminal_pos) */
+        if(termSrcX[i]!=view->hubs[i][0]||termSrcZ[i]!=view->hubs[i][1]){termSrcX[i]=view->hubs[i][0];termSrcZ[i]=view->hubs[i][1];cm_terminal_pos(termSrcX[i],termSrcZ[i],&termX[i],&termZ[i]);}
+        float x=termX[i],z=termZ[i];if(!nearby(x,z,400))continue;
         /* An actual textured computer terminal at each interaction point. */
         /* v2.7: terminal de barrio: pedestal hexagonal, pantalla inclinada y visera */
-        cylinder(x,z,0,5.5f,9,6,0,CONCRETE,METAL,0xffffffffu);
-        box(x,z,9,2.4f,9,7,0,GLASS,METAL,COLOR(111,249,210));
-        frustum(x,z,16,6,2,3,6,0,METAL,COLOR(80,84,90));
-        if(i<24&&!(view->collected&(1u<<i)))box(x+15,z+38,5+sinf(view->time*2),1,7,7,view->time,WHEEL,WHEEL,0xffffffffu);
+        /* v2.36: un poco mas estrecho (pedestal 3,6) para caber en la acera de 8 sin meterse en el edificio */
+        cylinder(x,z,0,3.6f,9,6,0,CONCRETE,METAL,0xffffffffu);
+        box(x,z,9,2.4f,6.4f,7,0,GLASS,METAL,COLOR(111,249,210));
+        frustum(x,z,16,4.2f,1.6f,3,6,0,METAL,COLOR(80,84,90));
+        /* v2.36 (Claude): el vinilo se dibuja donde el juego lo recoge (punto+15,+38); antes salia 18 mas a la derecha */
+        if(i<24&&!(view->collected&(1u<<i)))box(view->hubs[i][0]+15,view->hubs[i][1]+38,5+sinf(view->time*2),1,7,7,view->time,WHEEL,WHEEL,0xffffffffu);
     }
     if(view->target>=0){
         float x=view->targetX,z=view->targetZ;
@@ -843,7 +849,7 @@ unsigned r3ProfT[4];
 void r3_draw(uint32_t *fb,const R3Scene *s){
     R3PROF(0);
     TRACE("r3:inicio");
-    view=s;overflow=0;memset(used,0,sizeof(used));day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
+    view=s;overflow=0;memset(used,0,sizeof(used));r3Frame++;day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
     TRACE("r3:camara");camera(s);
 #ifndef AB_NOCITY
     TRACE("r3:ciudad");city();TRACE("r3:ciudad-ok");R3PROF(1);
