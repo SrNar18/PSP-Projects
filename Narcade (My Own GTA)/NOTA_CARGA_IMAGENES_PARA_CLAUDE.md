@@ -1,0 +1,7 @@
+# Imágenes de carga listas para Claude
+
+Rama codex/loading-art-urban-detail. Assets terminados, puedes tomar este commit mientras continúo con coches/árboles/metro. No he modificado la lógica ni la pantalla de carga ni la navegación del menú: son tu tarea.
+
+Tres escenas originales: valley (valle/río/metro), street (personaje streetwear/coche), rooftop (equipo y ciudad). Sin textos incrustados; parte inferior oscura para títulos bilingües. PNG 512x288; .rgb565 lineal little-endian, 1024 bytes/fila, NO swizzled; 294.912 bytes cada imagen. El encuadre permite recortar 480x272 y un zoom suave de ~3% sin ampliar por encima de su resolución. Manifest con mensajes sugeridos ES/EN; vincula los mensajes a las etapas reales, no inventes un porcentaje por tiempo ni esperas para forzar mostrar las tres si la carga es rápida. El último cuadro debe permanecer mientras calientas la primera escena hasta poder mover al jugador. Si usas CPU framebuffer 8888, decodifica RGB565 explícitamente; si usas GE, su textura deberá cumplir potencias de dos/swizzle y ge_wait antes de reciclar la lista.
+
+Fuentes de alta resolución JPG incluidas. Estas ilustraciones son arte de carga, no capturas del mundo jugable. Generadas con herramienta integrada imagegen. Prompts: 1 valle Medellín a hora azul con río, metro y barrios coloridos; 2 hombre streetwear junto a sedán compacto en barrio de ladera al atardecer; 3 estación de trabajo en azotea con vista nocturna del metro. Todas 16:9, sin logos/texto, franja inferior oscura.

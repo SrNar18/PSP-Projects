@@ -109,9 +109,11 @@ static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x
 static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){px(x,y,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
 static void circle(int x,int y,int r,uint32_t c){for(int yy=-r;yy<=r;yy++){int xx=(int)sqrtf((float)(r*r-yy*yy));rect(x-xx,y+yy,xx*2+1,1,c);}}
 static void outline(int x,int y,int w,int h,uint32_t c){rect(x,y,w,1,c);rect(x,y+h-1,w,1,c);rect(x,y,1,h,c);rect(x+w-1,y,1,h,c);}
-static void text(int x,int y,const char *s,uint32_t c,int scale){s=locale_text(s);int start=x;for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';for(int yy=0;yy<12;yy++){unsigned row=font_bits[(ch-32)*12+yy];for(int xx=0;xx<7;xx++)if(row&(1<<xx)){if(scale==1)px(x+xx,y+yy,c);else rect(x+xx*scale,y+yy*scale,scale,scale,c);}}x+=7*scale;}}
-static int textwrap(int x,int y,int width,const char *s,uint32_t c){s=locale_text(s);int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
-static void label(int x,int y,const char *s,uint32_t c){s=locale_text(s);rect(x-4,y-2,(int)strlen(s)*7+8,15,INK);text(x,y,s,c,1);}
+static void text_raw(int x,int y,const char *s,uint32_t c,int scale){int start=x;for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';for(int yy=0;yy<12;yy++){unsigned row=font_bits[(ch-32)*12+yy];for(int xx=0;xx<7;xx++)if(row&(1<<xx)){if(scale==1)px(x+xx,y+yy,c);else rect(x+xx*scale,y+yy*scale,scale,scale,c);}}x+=7*scale;}}
+static void text(int x,int y,const char *s,uint32_t c,int scale){text_raw(x,y,locale_text(s),c,scale);}
+static int textwrap_raw(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text_raw(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
+static int textwrap(int x,int y,int width,const char *s,uint32_t c){return textwrap_raw(x,y,width,locale_text(s),c);}
+static void label(int x,int y,const char *s,uint32_t c){s=locale_text(s);rect(x-4,y-2,(int)strlen(s)*7+8,15,INK);text_raw(x,y,s,c,1);}
 static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,20,LIME);text(28,12,a,WHITE,1);text(28,29,b,MUTED,1);}
 static void footer(const char *s){rect(0,252,W,20,INK);text(12,257,s,MUTED,1);}
 static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].steps[g.step];}
@@ -444,11 +446,11 @@ static void world_peds_init(void){
 int cachecount_public(void);
 static void fill_save(Save *s);
 static uint32_t savecheck(const Save *s){uint32_t h=2166136261u;const unsigned char *p=(const unsigned char*)s;for(size_t i=0;i<offsetof(Save,check);i++){h^=p[i];h*=16777619u;}return h;}
-void game_set_save_path(const char *p){snprintf(g.savepath,sizeof(g.savepath),"%s",p);settings_load();}
+void game_set_save_path(const char *p){raw_snprintf(g.savepath,sizeof(g.savepath),"%s",p);settings_load();}
 int game_save(void){
  if(!g.active)return 1;
  Save s;fill_save(&s);
- char tmp[300],bak[300];snprintf(tmp,sizeof(tmp),"%s.tmp",g.savepath);snprintf(bak,sizeof(bak),"%s.bak",g.savepath);
+ char tmp[300],bak[300];raw_snprintf(tmp,sizeof(tmp),"%s.tmp",g.savepath);raw_snprintf(bak,sizeof(bak),"%s.bak",g.savepath);
  FILE *f=fopen(tmp,"wb");if(!f){g.saveOK=0;return 0;}int ok=fwrite(&s,1,sizeof(s),f)==sizeof(s);if(fclose(f))ok=0;
  if(!ok){remove(tmp);g.saveOK=0;return 0;}
  remove(bak);rename(g.savepath,bak);if(rename(tmp,g.savepath)){rename(bak,g.savepath);g.saveOK=0;return 0;}g.saveOK=1;return 1;
@@ -490,7 +492,7 @@ int game_load_stage(uint32_t *pixels,int stride,int stage){
  text(W/2-11*7,92,"CARGANDO MEDELLIN...",WHITE,1);
  int total=6+LOAD_WARM_MAX,done=stage+1;if(done>total)done=total;
  const char *step=locale_text(LOAD_STEPS[stage<6?stage:stage<6+LOAD_WARM_MAX?6:7]);
- text(W/2-((int)strlen(step)*7)/2,140,step,MUTED,1);
+ text_raw(W/2-((int)strlen(step)*7)/2,140,step,MUTED,1);
  rect(W/2-100,170,200,8,PANEL);rect(W/2-100,170,200*done/total,8,LIME);
  char b[32];snprintf(b,sizeof(b),"%d%%",100*done/total);text(W/2-12,190,b,MUTED,1);
  return 0;
@@ -530,7 +532,7 @@ static int loadfile_old(const char *p){Save s;FILE *f=fopen(p,"rb");if(!f)return
  g.mission=s.mission;g.step=s.step;g.cash=s.cash;g.reputation=s.reputation;g.ending=s.ending;g.x=clampf(s.x,10,WORLD_W-10);g.y=clampf(s.y,10,WORLD_H-10);g.health=clampf(s.health,1,100);g.playtime=s.playtime;g.caches=s.caches;g.jobs=s.jobs;g.station=s.station;g.car=-1;g.heat=0;g.side=0;g.raceTime=0;g.missionTimer=0;g.active=1;g.stamina=100;g.exhausted=0;g.sprintTime=0;g.runTaps=0;return 1;
 }
 #endif
-static int load_game(void){if(loadfile(g.savepath))return 1;char b[300];snprintf(b,sizeof(b),"%s.bak",g.savepath);return loadfile(b);}
+static int load_game(void){if(loadfile(g.savepath))return 1;char b[300];raw_snprintf(b,sizeof(b),"%s.bak",g.savepath);return loadfile(b);}
 static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT camara / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){strncpy(g.speaker,who,sizeof(g.speaker)-1);g.speaker[sizeof(g.speaker)-1]=0;strncpy(g.dialog,s,sizeof(g.dialog)-1);g.dialog[sizeof(g.dialog)-1]=0;g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
@@ -1156,7 +1158,7 @@ int cachecount_public(void){return cachecount();}
    - Abajo al centro: la frase del objetivo, solo al empezar cada objetivo (se relee en START > cuaderno/mapa),
      los avisos del juego y la accion contextual al llegar al objetivo.
    - Abajo a la izquierda: minimapa circular con calles, rio, objetivo y posicion. */
-static void text_center(int cx,int y,const char *s,uint32_t c,int scale){s=locale_text(s);text(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
+static void text_center(int cx,int y,const char *s,uint32_t c,int scale){s=locale_text(s);text_raw(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
 static void box_center(int cx,int y,int w,int h,uint32_t c){rect(cx-w/2,y,w,h,c);}
 /* v2.6: el minimapa se dibuja cada fotograma (3.200 muestras); el trazado se precalcula en una rejilla de 4 unidades
    (640x560 bytes = 358 KB) para no evaluar poligonos por pixel. Codigos: 0 fuera, 1 rio, 2 calle, 3 acera/plaza, 4 parque, 5 edificio. */
@@ -1234,7 +1236,7 @@ static void hud(void){
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
   line=locale_text(line);int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
   box_center(cx,H-14-lines*13,w,lines*13+8,INK);
-  if(lines==1)text_center(cx,H-10-13,line,col,1);else textwrap(cx-w/2+10,H-10-lines*13,w-20,line,col);}
+  if(lines==1)text_raw(cx-n*7/2,H-10-13,line,col,1);else textwrap_raw(cx-w/2+10,H-10-lines*13,w-20,line,col);}
  /* Minimapa. */
 #ifndef AB_NOMINIMAP
  minimap(46,H-46,32);

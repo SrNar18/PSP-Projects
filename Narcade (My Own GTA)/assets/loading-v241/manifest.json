@@ -1,0 +1,21 @@
+{
+  "width": 512,
+  "height": 288,
+  "format": "RGB565 little-endian, linear, 1024-byte row stride, not swizzled",
+  "frames": [
+    "valley",
+    "street",
+    "rooftop"
+  ],
+  "captions_es": [
+    "Recuperando tu historia",
+    "Preparando las calles de Medellin",
+    "Sincronizando el mundo"
+  ],
+  "captions_en": [
+    "Restoring your story",
+    "Preparing the streets of Medellin",
+    "Synchronizing the world"
+  ],
+  "art": "Original built-in imagegen artwork; no embedded text"
+}

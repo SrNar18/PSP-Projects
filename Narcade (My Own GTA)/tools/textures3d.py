@@ -68,12 +68,17 @@ def main():
     assert len(result)==753664
     # Eight established detail tiles plus four distinct street-facing facades.
     for i,name in enumerate(EXTRA_NAMES):
-        if i<8:
+        if name=="leaves":
+            tile=Image.open(ROOT/"assets/reference/foliage-cutout-v241.png").convert("RGBA").resize((64,64),Image.Resampling.LANCZOS)
+        elif i<8:
             w,h=detail.size;x,y=i%4,i//4
             tile=detail.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2)).resize((64,64),Image.Resampling.LANCZOS)
         else:tile=create_extra(i)
         tile.save(ROOT/'assets/textures3d'/f'{name}.png')
-        raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
+        if name=='leaves':
+            raw=b''.join(struct.pack('<H',(r>>4)|((g>>4)<<4)|((b>>4)<<8)|((a>>4)<<12)) for r,g,b,a in tile.getdata())
+        else:
+            raw=b''.join(struct.pack('<H',(r>>3)|((g>>2)<<5)|((b>>3)<<11)) for r,g,b in tile.getdata())
         result.extend(swizzle(raw,128,64))
     assert len(result)==753664+12*8192
     # One RAM mip level for the frequently viewed road and sidewalk. The main

@@ -12,7 +12,7 @@ static void car_arch(float x,float z,float angle,const HullSec *body,int n,
         Point q=car_skin(x,z,angle,body,n,floor,xb,yb,side,.53f);
         Point r=car_skin(x,z,angle,body,n,floor,xb,yb+.64f,side,.57f);
         Point s=car_skin(x,z,angle,body,n,floor,xa,ya+.64f,side,.57f);
-        quad(METAL,p,q,r,s,day_scale(COLOR(37,43,46)),1,1);
+        quad(FLAT,p,q,r,s,day_scale(COLOR(37,43,46)),1,1);
         Point t=car_skin(x,z,angle,body,n,floor,xb,yb+.78f,side,.61f);
         Point u=car_skin(x,z,angle,body,n,floor,xa,ya+.78f,side,.61f);
         quad(CAR_PAINT,s,r,t,u,shade(paint,.78f),1,1);

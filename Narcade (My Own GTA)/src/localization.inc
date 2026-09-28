@@ -11,11 +11,23 @@ static const char *locale_text(const char *s){
 }
 const char *game_localize(const char *s){return locale_text(s);}
 int game_language(void){return prefsLanguage;}
+/* File paths and identifiers must never enter the translation catalog. */
+static int raw_snprintf(char *out,size_t cap,const char *format,...){
+    va_list args;va_start(args,format);int n=vsnprintf(out,cap,format,args);va_end(args);return n;
+}
+/* Reject unsupported printf features before consuming ANY arguments. */
+static int locale_format_valid(const char *f){
+    while(*f){if(*f++!='%')continue;if(*f=='%'){f++;continue;}
+        while(*f&&strchr("-+ #0.123456789",*f))f++;
+        if(!*f||!strchr("sdiucxXofFgGeE",*f))return 0;f++;
+    }return 1;
+}
 /* Translate the format BEFORE substitution and every string argument, so
    dynamic mission names, clues, directions and counters use the same language.
    The game uses only these standard, non-positional printf conversions. */
 static int locale_snprintf(char *out,size_t cap,const char *format,...){
-    va_list args;va_start(args,format);const char *f=locale_text(format);size_t total=0;
+    const char *f=locale_text(format);if(!locale_format_valid(f)){if(cap)out[0]=0;return -1;}
+    va_list args;va_start(args,format);size_t total=0;
     while(*f){char part[1024];int n=0;
         if(*f!='%'){part[0]=*f++;part[1]=0;n=1;}
         else if(f[1]=='%'){part[0]='%';part[1]=0;f+=2;n=1;}

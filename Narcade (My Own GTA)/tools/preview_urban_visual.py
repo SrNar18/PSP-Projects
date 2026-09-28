@@ -9,7 +9,7 @@ from extra_textures import NAMES as EXTRA
 root=Path(__file__).resolve().parents[1]
 from weapon_textures import NAMES as WEAPONS
 names=NAMES+['flat']+NPC+EXTRA+WEAPONS
-textures=[np.array(Image.open(root/'assets/textures3d'/f'{n}.png').convert('RGB')) for n in names]
+textures=[np.array(Image.open(root/'assets/textures3d'/f'{n}.png').convert('RGBA')) for n in names]
 W,H=480,320
 sheet=Image.new('RGB',(W*3,(H+28)*3+80),(24,30,37))
 for scene in range(9):
@@ -41,7 +41,8 @@ for scene in range(9):
    uv=weights@vertices['uv'][i:i+3];tex=textures[mat];th,tw=tex.shape[:2]
    tx=(uv[...,0]*tw).astype(int)%tw;ty=(uv[...,1]*th).astype(int)%th
    colors=vertices['color'][i:i+3];rgb=np.stack((colors&255,(colors>>8)&255,(colors>>16)&255),axis=-1)/255
-   tint=weights@rgb;pixels=np.clip(tex[ty,tx]*tint,0,255).astype(np.uint8)
+   tint=weights@rgb;pixels=np.clip(tex[ty,tx,:3]*tint,0,255).astype(np.uint8)
+   if mat==30:mask &= tex[ty,tx,3]>=128
    output[ymin:ymax+1,xmin:xmax+1][mask]=pixels[mask];old[mask]=zz[mask]
  sheet.paste(Image.fromarray(output),((scene%3)*W,32+(scene//3)*(H+28)))
  ImageDraw.Draw(sheet).text((12+(scene%3)*W,12+(scene//3)*(H+28)),['SEDAN','HATCH','PICKUP','VAN','SPORT','SUV','METRO','ARBOL','PALMA'][scene],fill='white')

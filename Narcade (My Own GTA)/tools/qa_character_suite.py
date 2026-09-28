@@ -8,7 +8,7 @@ objects=[]
 for source in ['render3d.c','assets.S','textures3d.S','icon0.S']:
  obj=out/(source.replace('.','_')+'.o');subprocess.run([args.cc,*flags,'-c',str(root/'src'/source),'-o',str(obj)],cwd=root,check=True);objects.append(str(obj))
 game=['qa_combat','qa_gait_v217','qa_thumb_v229','qa_controls_v218','qa_weapons','qa','qa_settings']
-renderer=['qa_character_combat','qa_weapon_mesh','qa_city28','qa_human_gait','qa_urban_visual','qa_car_priority']
+renderer=['qa_character_combat','qa_weapon_mesh','qa_city28','qa_human_gait','qa_urban_visual','qa_car_priority','qa_metro_motion']
 def test(name):
  exe=out/(name+'.exe');cmd=[args.cc,*flags,str(root/'tools'/(name+'.c'))]
  if name in game:cmd+=objects
