@@ -95,7 +95,7 @@ static void dbg(const char *msg){
 }
 static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memset(&sd,0,sizeof(sd));sd.base.size=sizeof(sd);
- sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_LANGUAGE,&sd.base.language);
+ sd.base.language=game_language()?PSP_SYSTEMPARAM_LANGUAGE_ENGLISH:PSP_SYSTEMPARAM_LANGUAGE_SPANISH;
  sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_UNKNOWN,&sd.base.buttonSwap);
  sd.base.graphicsThread=0x11;sd.base.accessThread=0x13;sd.base.fontThread=0x12;sd.base.soundThread=0x10;
  /* LISTLOAD/LISTSAVE invokes Sony's official Memory Stick slot browser. */

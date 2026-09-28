@@ -48,7 +48,15 @@ labels = [
     ("credit", "Naresz", font_script, 27),
     ("made_by", "made by", font_regular, 10),
     ("story_kicker", "MUNDO ABIERTO  /  36 MISIONES", font_regular, 11),
+    ("settings", "AJUSTES", font_bold, 14),
 ]
+english = {
+    "cover_sub": "MEDELLIN  /  AN ORIGINAL STORY", "press": "PRESS X OR START",
+    "press_sub": "TO BEGIN", "story": "STORY", "continue": "CONTINUE GAME",
+    "new": "NEW GAME", "continue_sub": "RESUME YOUR ADVENTURE", "new_sub": "START IN MEDELLIN",
+    "footer": "X SELECT    O BACK", "story_kicker": "OPEN WORLD  /  36 MISSIONS", "settings": "SETTINGS",
+}
+labels += [("en_" + name, english.get(name, label), face, size) for name, label, face, size in labels]
 data = bytearray()
 records = []
 for ident, label, face, size in labels:

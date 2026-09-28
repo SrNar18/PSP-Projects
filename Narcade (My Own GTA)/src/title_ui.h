@@ -2,7 +2,7 @@
 #ifndef NARCADE_TITLE_UI_H
 #define NARCADE_TITLE_UI_H
 typedef struct { unsigned offset; unsigned short width,height; } TitleLabel;
-enum {TL_LOGO,TL_LOGO_SMALL,TL_COVER_SUB,TL_PRESS,TL_PRESS_SUB,TL_STORY,TL_CONTINUE,TL_NEW,TL_CONTINUE_SUB,TL_NEW_SUB,TL_FOOTER,TL_CREDIT,TL_MADE_BY,TL_STORY_KICKER, TL_COUNT };
+enum {TL_LOGO,TL_LOGO_SMALL,TL_COVER_SUB,TL_PRESS,TL_PRESS_SUB,TL_STORY,TL_CONTINUE,TL_NEW,TL_CONTINUE_SUB,TL_NEW_SUB,TL_FOOTER,TL_CREDIT,TL_MADE_BY,TL_STORY_KICKER,TL_SETTINGS,TL_EN_LOGO,TL_EN_LOGO_SMALL,TL_EN_COVER_SUB,TL_EN_PRESS,TL_EN_PRESS_SUB,TL_EN_STORY,TL_EN_CONTINUE,TL_EN_NEW,TL_EN_CONTINUE_SUB,TL_EN_NEW_SUB,TL_EN_FOOTER,TL_EN_CREDIT,TL_EN_MADE_BY,TL_EN_STORY_KICKER,TL_EN_SETTINGS, TL_COUNT };
 static const TitleLabel titleLabels[TL_COUNT] = {
     {0u,225,39}, /* logo */
     {8775u,116,22}, /* logo_small */
@@ -18,5 +18,21 @@ static const TitleLabel titleLabels[TL_COUNT] = {
     {32093u,84,24}, /* credit */
     {34109u,43,13}, /* made_by */
     {34668u,173,14}, /* story_kicker */
+    {37090u,61,14}, /* settings */
+    {37944u,225,39}, /* en_logo */
+    {46719u,116,22}, /* en_logo_small */
+    {49271u,187,14}, /* en_cover_sub */
+    {51889u,171,17}, /* en_press */
+    {54796u,52,12}, /* en_press_sub */
+    {55420u,87,22}, /* en_story */
+    {57334u,144,16}, /* en_continue */
+    {59638u,97,16}, /* en_new */
+    {61190u,145,14}, /* en_continue_sub */
+    {63220u,104,14}, /* en_new_sub */
+    {64676u,104,13}, /* en_footer */
+    {66028u,84,24}, /* en_credit */
+    {68044u,43,13}, /* en_made_by */
+    {68603u,154,14}, /* en_story_kicker */
+    {70759u,68,14}, /* en_settings */
 };
 #endif

@@ -162,5 +162,5 @@ static void combat_hud(void){
  int xx=(int)x,yy=(int)y;uint32_t color=combat.target>=0?CORAL:WHITE;
  line(xx-11,yy,xx-5,yy,color);line(xx+5,yy,xx+11,yy,color);line(xx,yy-11,xx,yy-5,color);line(xx,yy+5,xx,yy+11,color);circle(xx,yy,1,color);
  if(combat.target>=0){rect(xx-16,yy+17,32,3,INK);rect(xx-16,yy+17,(int)(combat.ped[combat.target].health*.32f),3,CORAL);}
- text(152,250,g.weapon==0||g.weapon==7?"O golpear   [] interactuar":"O disparar   [] interactuar",WHITE,1);
+ text(152,250,g.weapon==0||g.weapon==7?"O golpear   R+[] interactuar":"O disparar   R+[] interactuar",WHITE,1);
 }

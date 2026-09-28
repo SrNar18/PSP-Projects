@@ -178,7 +178,7 @@ static void light_pool(float x,float z,float rx,float rz,float angle,uint32_t co
 static Point beam_ground(float px,float pz){float wx,wz;geo_unproject(px,pz,&wx,&wz);return point(px,geo_height(wx,wz)+.57f,pz);}
 /* Cono de faros delante de un coche (dos haces + el propio faro encendido). */
 static void headlights(float x,float z,float angle){
-    if(night<.2f||!nearby(x,z,190))return;
+    if(night<.2f||!nearby(x,z,170))return; /* distant car LOD has no individual lamps */
     float c=cosf(angle),s=sinf(angle),heading=geo_heading(x,z,angle);
     float fc=cosf(heading),fs=sinf(heading);
     uint32_t rgb=COLOR(255,239,188)&0x00ffffff;

@@ -73,6 +73,8 @@ static float planes[6][4];
 static Point eye,target;
 static int overflow;
 static float r3FogNear=420.f; /* v2.39: inicio de la niebla de distancia */
+static int distanceFog;
+void r3_set_distance_fog(int enabled){distanceFog=enabled!=0;}
 /* Opaque horizon silhouettes, rendered behind the playable city. They hide
    the empty far plane without washing out world textures with distance fog. */
 static Vertex __attribute__((aligned(16))) horizonMesh[96*12];
@@ -387,7 +389,10 @@ static void car(const R3Car *c){
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
     if(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200){ /* preserve material capacity in dense traffic */
-        box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);return;
+        box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);
+        if(dist<=170)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
+            box(p.x,p.z,5.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,end>0?COLOR(255,244,192):COLOR(255,61,42));}
+        return;
     }
     /* v2.7 (Claude): carrocerias por secciones (perfil lateral real: capo, parabrisas inclinado, techo, luneta,
        maletero; laterales achaflanados) en 6 siluetas: sedan, hatchback, pickup, furgoneta, deportivo, SUV. */
@@ -426,18 +431,18 @@ static void car(const R3Car *c){
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
     float spin=view->time*c->speed*.08f;
     for(int s=-1;s<=1;s+=2)for(int e=-1;e<=1;e+=2)wheel(c->x,c->z,c->angle,e*11,wr,s*(prof[0].w+.4f),wr,2.6f,spin);
-    if(used[METAL]>3000)return; /* reserve room for the remaining car shells in dense jams */
+    for(int s=-1;s<=1;s+=2){
+        Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,COLOR(255,244,192));
+        p=local(prof[0].x-.3f,0,s*5.5f,c->x,c->z,c->angle);
+        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,COLOR(255,61,42));
+    }
+    if(used[METAL]>3000)return; /* lights remain visible when trim is omitted */
     car_windscreen_trim(c->x,c->z,c->angle,prof,n,mats,paint);
     for(int side=-1;side<=1;side+=2){
         car_arch(c->x,c->z,c->angle,prof,n,floor,-11.f,wr,side,paint);
         car_arch(c->x,c->z,c->angle,prof,n,floor,11.f,wr,side,paint);
         car_lens_detail(c->x,c->z,c->angle,prof,n,floor,side);
-    }
-    for(int s=-1;s<=1;s+=2){
-        Point p=local(prof[n-1].x+.3f,0,s*5.5f,c->x,c->z,c->angle);
-        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,244,192));
-        p=local(prof[0].x-.3f,0,s*5.5f,c->x,c->z,c->angle);
-        box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,METAL,METAL,COLOR(255,61,42));
     }
     /* Mirrors sit beside the forward window, following each cabin's width. */
     float mirrorX=type==3?9:type==2?6:type==4?9:type==5?10:8;
@@ -894,7 +899,11 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     }
     TRACE("r3:coches");rigid=2;
 #ifndef AB_NOCARS
-    for(int i=0;i<s->carCount;i++){objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
+    int order[64],count=s->carCount<64?s->carCount:64;float distance[64];
+    for(int i=0;i<count;i++){int j=i;float d=view_distance(s->cars[i].x,s->cars[i].z);
+        while(j>0&&distance[j-1]>d){distance[j]=distance[j-1];order[j]=order[j-1];j--;}
+        distance[j]=d;order[j]=i;}
+    for(int j=0;j<count;j++){int i=order[j];objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
 #endif
     TRACE("r3:jugador");rigid=1;
     objectX=s->x;objectZ=s->z;objectYaw=s->angle;playerLift=s->lift;rigX=-1e9f; /* invalidar cache */
@@ -964,7 +973,8 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     /* v2.39 (Claude): niebla de distancia hacia el color del horizonte. Sin ella lo lejano entraba y
        salia de golpe en el plano lejano (720) y en los cambios de detalle: ahora aparece poco a poco.
        La hace el GE por vertice: sin coste de CPU. */
-    sceGuFog(r3FogNear,700.f,horizonColor&0x00ffffffu);sceGuEnable(GU_FOG);
+    if(distanceFog){sceGuFog(r3FogNear,700.f,horizonColor&0x00ffffffu);sceGuEnable(GU_FOG);}
+    else sceGuDisable(GU_FOG);
 #endif
 #ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
@@ -994,6 +1004,8 @@ void r3_shutdown(void){
     sceGuTerm();
 #endif
 }
+static int displayBrightness;
+void r3_set_brightness(int level){displayBrightness=level<-5?-5:level>5?5:level;}
 void r3_overlay(uint32_t *fb,const uint32_t *rgba){
 #ifndef R3_HOST
     typedef struct {float u,v,x,y,z;} SpriteVertex;
@@ -1011,6 +1023,13 @@ void r3_overlay(uint32_t *fb,const uint32_t *rgba){
         SpriteVertex *v=sceGuGetMemory(2*sizeof(*v));
         v[0]=(SpriteVertex){x,0,x,0,0};v[1]=(SpriteVertex){end,272,end,272,0};
         sceGuDrawArray(GU_SPRITES,GU_TEXTURE_32BITF|GU_VERTEX_32BITF|GU_TRANSFORM_2D,2,0,v);
+    }
+    if(displayBrightness){
+        typedef struct {uint32_t color;float x,y,z;} ToneVertex;
+        ToneVertex *tone=sceGuGetMemory(2*sizeof(*tone));
+        uint32_t tint=((unsigned)(displayBrightness<0?-displayBrightness:displayBrightness)*12u<<24)|(displayBrightness>0?0xffffffu:0);
+        tone[0]=(ToneVertex){tint,0,0,0};tone[1]=(ToneVertex){tint,480,272,0};
+        sceGuDisable(GU_TEXTURE_2D);sceGuDrawArray(GU_SPRITES,GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_2D,2,0,tone);
     }
     sceGuFinish();sceGuSync(0,0);
 #else
