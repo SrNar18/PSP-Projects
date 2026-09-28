@@ -15,6 +15,7 @@ shutil.copy(root/'assets/PIC1.png',stage/'PSP_GAME/PIC1.PNG')
 shutil.copy(root/'assets/SND0.AT3',stage/'PSP_GAME/SND0.AT3')  # musica en la XMB (tools/make_snd0.py)
 (stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
 (stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 3D 2.40 Settings and Spanish/English - made by Naresz. Original homebrew. Assets embedded in executable.\n')
+for k,name in enumerate(['valley','street','rooftop']):shutil.copy(root/f'assets/loading-v241/{name}.rgb565',stage/'PSP_GAME/USRDIR'/f'LOAD{k}.BIN')  # v2.41: ilustraciones de carga (se leen en la carga, no ocupan RAM)
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:
  shutil.copy(root/source,stage/'PSP_GAME/USRDIR'/dest)
 iso=pycdlib.PyCdlib();iso.new(interchange_level=1,vol_ident='NARCADE',sys_ident='PSP GAME',pub_ident_str='NARESZ')
