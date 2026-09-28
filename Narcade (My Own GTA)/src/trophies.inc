@@ -12,7 +12,7 @@ static const TrophyDef trophyDefs[TR_COUNT]={
 #define TROPHY_BLOCK 320.f /* una manzana de la rejilla, en unidades del mundo */
 typedef struct{uint32_t magic,version;float walked,driven;int kills,ghost,vinyls;uint32_t unlocked,check;}TrophyDisk;
 static struct{float walked,driven;int kills,ghost,vinyls;uint32_t unlocked;int dirty;float lastX,lastY;int lastCar,tracking;
- int popup;float popupT,saveT;}tro={0,0,0,0,0,0,0,0,0,-1,0,-1,0,0};
+ int popup;float popupT,saveT;int lastMetro;}tro={0,0,0,0,0,0,0,0,0,-1,0,-1,0,0,0};
 static uint32_t trophy_check(const TrophyDisk *d){const unsigned char *p=(const unsigned char*)d;uint32_t h=2166136261u;
  for(size_t i=0;i<offsetof(TrophyDisk,check);i++){h^=p[i];h*=16777619u;}return h;}
 static void trophy_path(char *path,size_t cap){
@@ -52,9 +52,10 @@ static void trophy_escape(int stars){if(stars>=3){tro.ghost++;tro.dirty=1;trophy
 static void trophies_tick(float dt){
  if(tro.popupT>0){tro.popupT-=dt;if(tro.popupT<=0)tro.popup=-1;}
  int inCar=g.car>=0;float d=tro.tracking?dist(g.x,g.y,tro.lastX,tro.lastY):0;
- if(tro.tracking&&inCar==(tro.lastCar>=0)&&!g.inMetro&&d<dt*400.f+1.f){
+ /* v2.43: el fotograma anterior tambien debe ser fuera del metro (al bajar, el salto al anden no cuenta: revision de Codex) */
+ if(tro.tracking&&inCar==(tro.lastCar>=0)&&!g.inMetro&&!tro.lastMetro&&d<dt*400.f+1.f){
   if(inCar)tro.driven+=d;else tro.walked+=d;if(d>0)tro.dirty=1;}
- tro.lastX=g.x;tro.lastY=g.y;tro.lastCar=g.car;tro.tracking=1;
+ tro.lastX=g.x;tro.lastY=g.y;tro.lastCar=g.car;tro.lastMetro=g.inMetro;tro.tracking=1;
  int v=cachecount();if(v>tro.vinyls){tro.vinyls=v;tro.dirty=1;}
  trophy_try(TR_WALK);trophy_try(TR_DRIVE);trophy_try(TR_VINYL);
  tro.saveT+=dt;if(tro.dirty&&tro.saveT>60){tro.saveT=0;trophies_save();} /* el recorrido se guarda como mucho cada minuto */

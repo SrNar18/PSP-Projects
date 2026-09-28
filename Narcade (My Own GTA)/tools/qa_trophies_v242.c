@@ -11,6 +11,7 @@ int main(void){
  tro.tracking=0;g.car=-1;g.inMetro=0;trophies_tick(1.f/60);float w0=tro.walked;
  for(int i=0;i<600;i++){g.x+=1.f;trophies_tick(1.f/60);}assert(tro.walked-w0>590&&tro.walked-w0<610);
  g.x+=5000;trophies_tick(1.f/60);assert(tro.walked-w0<610);
+ {float w1=tro.walked;g.inMetro=1;trophies_tick(1.f/10);g.x-=14;g.inMetro=0;trophies_tick(1.f/10);assert(tro.walked==w1);} /* bajar del metro (revision de Codex) */
  tro.walked=50*TROPHY_BLOCK-1;g.x+=2;trophies_tick(1.f/60);assert(tro.unlocked&(1u<<TR_WALK));
  const char *n,*d;float p;assert(trophy_info(TR_DRIVE,&n,&d,&p)==0&&p>=0&&p<1);
  /* persistencia */
