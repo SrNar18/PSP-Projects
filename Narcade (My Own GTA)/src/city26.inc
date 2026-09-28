@@ -165,10 +165,12 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
        makes the names readable from the street, without mirrored box faces. */
     float u=(h&1)?.5f:0,v=(h&2)?.5f:0,eps=.007f;
     uint32_t tint=lit_color(0xffffffffu,0,0,-1);
-    Vertex sign[4]={{u+eps,v+eps,tint,cx-w*.5f+2,23.8f,z0+.85f},
-        {u+.5f-eps,v+eps,tint,cx+w*.5f-2,23.8f,z0+.85f},
-        {u+.5f-eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.85f},
-        {u+eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.85f}};
+    /* v2.39 (Claude): visto desde la calle (mirando hacia +z) la derecha es -x: la u crece hacia -x.
+       Antes crecia hacia +x y los nombres se leian en espejo ("MIGA" -> "AGIM"). */
+    Vertex sign[4]={{u+.5f-eps,v+eps,tint,cx-w*.5f+2,23.8f,z0+.85f},
+        {u+eps,v+eps,tint,cx+w*.5f-2,23.8f,z0+.85f},
+        {u+eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.85f},
+        {u+.5f-eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.85f}};
     litAlready=1;polygon(mat,sign,4);litAlready=0;
     box(cx,z0+4.3f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim); /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
     if(w>42){

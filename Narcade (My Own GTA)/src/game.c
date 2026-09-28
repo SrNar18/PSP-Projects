@@ -182,7 +182,7 @@ static void terminal_xy(int i,float *x,float *y){
    Delitos leves suman fracciones y solo llegan a 1 estrella si se repiten; matar a un civil da 1
    (si ya te buscan, sube 1 mas desde la tercera muerte); a un policia, al menos 2. Las patrullas
    solo persiguen desde 1 estrella completa. */
-static int cop_near(float r){for(int i=60;i<64;i++)if(i!=g.car&&dist(g.x,g.y,g.cars[i].x,g.cars[i].y)<r)return 1;return 0;}
+static int cop_near(float r){for(int i=60;i<64;i++)if(i!=g.car&&g.cars[i].hp>0&&dist(g.x,g.y,g.cars[i].x,g.cars[i].y)<r)return 1;return 0;}
 static int wantedKills;
 static void wanted_crime(int kind){ /* 0 leve, 1 muerte de civil, 2 policia, 3 robo de carro, 4 robo de patrulla */
  float h=g.heat;int seen=cop_near(300);g.escape=0;
@@ -301,6 +301,13 @@ static int car_free_at(const Car *c,float x,float y){
  return 1;
 }
 static void car_push(const Car *c,float x,float y,float *outX,float *outY){float gx,gy;physics_project(c->x,c->y,&gx,&gy);physics_unproject(gx+x,gy+y,outX,outY);}
+/* v2.39 (Claude): al separar coches, un civil en marcha no puede ser empujado fuera de la calzada
+   (antes un choque lo desplazaba 26 unidades de lado y seguia recto por un parque). */
+static int car_sep_ok(const Car *c,float x,float y){
+ if(!car_free_at(c,x,y))return 0;
+ if(c->parked||c->police||(g.car>=0&&c==&g.cars[g.car]))return 1;
+ return cm_on_road(x,y);
+}
 static int contact_slide(Car *a,const Car *b,float nx,float ny,float depth){
  /* If a wall blocks the shortest correction, try a small tangential escape.
     Only accept a free position that actually reduces penetration. */
@@ -308,7 +315,7 @@ static int contact_slide(Car *a,const Car *b,float nx,float ny,float depth){
  for(int k=0;k<4;k++){
   float length=sqrtf(directions[k][0]*directions[k][0]+directions[k][1]*directions[k][1]);
   Car candidate=*a;car_push(a,directions[k][0]/length*(depth+.3f),directions[k][1]/length*(depth+.3f),&candidate.x,&candidate.y);
-  if(!car_free_at(&candidate,candidate.x,candidate.y))continue;
+  if(!car_sep_ok(&candidate,candidate.x,candidate.y))continue;
   float dx,dy,d;
   if(!car_overlap(&candidate,b,&dx,&dy,&d)||d<depth-.05f){a->x=candidate.x;a->y=candidate.y;return 1;}
  }
@@ -324,12 +331,12 @@ static void separate_cars(void){
    float push=depth+.3f,ax,ay,bx,by,aax,aay,bbx,bby;
    car_push(a,-nx*push*.5f,-ny*push*.5f,&ax,&ay);car_push(b,nx*push*.5f,ny*push*.5f,&bx,&by);
    car_push(a,-nx*push,-ny*push,&aax,&aay);car_push(b,nx*push,ny*push,&bbx,&bby);
-   int moveA=car_free_at(a,ax,ay),moveB=car_free_at(b,bx,by);
-   if(a->parked&&!b->parked&&car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
-   else if(b->parked&&!a->parked&&car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
+   int moveA=car_sep_ok(a,ax,ay),moveB=car_sep_ok(b,bx,by);
+   if(a->parked&&!b->parked&&car_sep_ok(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
+   else if(b->parked&&!a->parked&&car_sep_ok(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
    else if(moveA&&moveB&&!a->parked&&!b->parked){a->x=ax;a->y=ay;b->x=bx;b->y=by;changed=1;}
-   else if(!a->parked&&car_free_at(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
-   else if(!b->parked&&car_free_at(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
+   else if(!a->parked&&car_sep_ok(a,aax,aay)){a->x=aax;a->y=aay;changed=1;}
+   else if(!b->parked&&car_sep_ok(b,bbx,bby)){b->x=bbx;b->y=bby;changed=1;}
    else if((!a->parked&&contact_slide(a,b,-nx,-ny,depth))||(!b->parked&&contact_slide(b,a,nx,ny,depth)))changed=1;
    float aa=physics_heading(a),ba=physics_heading(b);
    float an=cosf(aa)*nx+sinf(aa)*ny,bn=cosf(ba)*nx+sinf(ba)*ny;
@@ -727,6 +734,11 @@ static void civilian_traffic_tick(int i,float dt){
  float distance=c->speed*dt;
  if(red&&stopDist>=0&&distance>stopDist){distance=stopDist;c->speed=0;}
  float xx=c->x+cosf(c->a)*distance,yy=c->y+sinf(c->a)*distance;
+ /* v2.39 (Claude): un choque puede desplazarlo de lado; vuelve poco a poco al centro de su carril
+    (42+-14 en la rejilla). Antes seguia recto desplazado y acababa en un parque. */
+ if(c->speed>1){int horizontal=fabsf(cosf(c->a))>.7f;float cur=horizontal?yy:xx;
+  float lane=roundf((cur-42)/320.f)*320.f+42.f;float want=lane+(cur>=lane?14.f:-14.f);
+  float step=clampf(want-cur,-25*dt,25*dt);if(horizontal)yy+=step;else xx+=step;}
  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;g.wallTime[i]=0;}
  else{c->speed=0;if(target>0){g.wallTime[i]+=dt;if(g.wallTime[i]>3&&(dist(c->x,c->y,g.x,g.y)>250||!in_view(c->x,c->y)))respawn_civilian(i);}}
  /* Loop at the outside edge only when the entry lane is clear. */
@@ -994,7 +1006,7 @@ static void world_tick(float ax,float ay,float dt){
  combat_peds_tick(dt);
  /* v2.37: fuera de la vista de las patrullas las estrellas parpadean; si aguantas 6 s + 5 s por
     estrella sin que te vean, se pierde la busqueda entera (GTA). Delitos leves se olvidan solos. */
- if(wanted_stars()>=1){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>6+5*wanted_stars()){g.heat=0;wantedKills=0;g.escape=0;}}else g.escape=0;}
+ if(wanted_stars()>=1){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car&&g.cars[i].hp>0)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>6+5*wanted_stars()){g.heat=0;wantedKills=0;g.escape=0;}}else g.escape=0;}
  else if(g.heat>0){g.heat=fmaxf(0,g.heat-dt*.02f);if(g.heat<=0)wantedKills=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
  if(g.raceTime>0){g.raceTime-=dt;int l=g.route[g.checkpoint];if(g.car>=0&&dist(g.x,g.y,locations[l].x,locations[l].y)<66){g.checkpoint++;g.raceTime+=3;if(g.checkpoint==6){g.raceTime=0;advance();}else notice("PUNTO ALCANZADO +3 segundos. Sigue el siguiente aro.");}

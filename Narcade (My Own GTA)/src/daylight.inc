@@ -49,6 +49,11 @@ static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){
     float d=nx*sunX+ny*sunY+nz*sunZ;if(d<0)d=0;
     float direct=d*(1-night)*(.75f);                              /* difusa */
     float fr=ambR+direct*sunR,fg=ambG+direct*sunG,fb=ambB+direct*sunB;
+    /* v2.39 (Claude): luz de luna de noche (fria, tenue, desde el noroeste alto). Antes de noche solo habia
+       ambiente: todas las caras igual de oscuras y la ciudad se veia plana. */
+    if(night>0){float m=nx*-.42f+ny*.78f+nz*-.46f;if(m>0){m*=night*.30f;fr+=m*.60f;fg+=m*.70f;fb+=m*.95f;}}
+    /* y las caras que miran abajo (voladizos, bajos) reciben menos luz del cielo */
+    if(ny<0){float k=1+ny*.18f;fr*=k;fg*=k;fb*=k;}
     /* el cielo ilumina un poco las caras que miran arriba */
     float sky=(ny>0?ny:0)*.12f*(1-night);fr+=sky;fg+=sky;fb+=sky*1.2f;
     int R=(int)((c&255)*fr),G=(int)(((c>>8)&255)*fg),B=(int)(((c>>16)&255)*fb);
