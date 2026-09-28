@@ -1,6 +1,6 @@
 /* v2.42 (Claude): trofeos. Progreso global del jugador (no de una partida): se guarda en ms0:/NARCADE.TRO,
    fuera de las carpetas SAVEDATA de Sony, con .tmp/.bak como los ajustes. Cinco trofeos para esta fase.
-   API para los menus (Codex): trophy_count(), trophy_info(), trophy_unlocked_count(), trophies_draw(). */
+   API para los menus (Codex): trophy_count(), trophy_info(), trophy_unlocked_count(). Visual presentation is owned by game.c. */
 enum{TR_WALK,TR_DRIVE,TR_KILLS,TR_GHOST,TR_VINYL,TR_COUNT};
 typedef struct{const char *name,*desc;float goal;}TrophyDef;
 static const TrophyDef trophyDefs[TR_COUNT]={
@@ -75,16 +75,4 @@ static void trophy_popup_draw(void){
  rect(x,y,w,38,INK);rect(x,y,4,38,GOLD);outline(x,y,w,38,RGB(120,98,40));
  circle(x+22,y+19,11,GOLD);circle(x+22,y+19,7,INK);circle(x+22,y+19,4,GOLD);
  text(x+40,y+6,"TROFEO DESBLOQUEADO",GOLD,1);text(x+40,y+21,trophyDefs[tro.popup].name,WHITE,1);
-}
-/* lista de trofeos (pantalla propia; los menus de Codex pueden llamarla o usar trophy_info) */
-static void trophies_draw(void){
- rect(0,0,W,H,INK);char b[64];raw_snprintf(b,sizeof b,"%d/%d",trophy_unlocked_count(),TR_COUNT);
- header("TROFEOS","Retos de Narcade");text(W-16-(int)strlen(b)*7,20,b,GOLD,1);
- for(int i=0;i<TR_COUNT;i++){const char *name,*desc;float p;int got=trophy_info(i,&name,&desc,&p);int y=58+i*38;
-  rect(16,y,448,34,got?RGB(38,34,20):PANEL);rect(16,y,3,34,got?GOLD:RGB(68,83,87));
-  circle(36,y+17,10,got?GOLD:RGB(58,70,74));circle(36,y+17,6,got?INK:PANEL);
-  text_raw(54,y+4,name,got?GOLD:WHITE,1);text_raw(54,y+19,desc,MUTED,1);
-  if(!got){rect(360,y+14,92,5,RGB(58,70,74));rect(360,y+14,(int)(92*p),5,LIME);}
-  else text(370,y+11,"CONSEGUIDO",GOLD,1);}
- footer("O volver");
 }

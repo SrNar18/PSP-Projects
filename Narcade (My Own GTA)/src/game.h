@@ -2,6 +2,12 @@
 #define NARCADE_GAME_H
 #include <stdint.h>
 enum { B_SELECT=1, B_START=8, B_UP=16, B_RIGHT=32, B_DOWN=64, B_LEFT=128, B_L=256, B_R=512, B_TRI=4096, B_CIRCLE=8192, B_CROSS=16384, B_SQUARE=32768 };
+/* UI contract: Claude owns counters/unlocks/persistence. Return 1 for a valid trophy.
+   Titles/details are Spanish localization keys; current clamps to target in the UI. */
+#define GAME_TROPHY_COUNT 5
+typedef struct {const char *title,*detail; int current,target,unlocked;} GameTrophyInfo;
+typedef int (*GameTrophyProvider)(int index,GameTrophyInfo *out);
+void game_set_trophy_provider(GameTrophyProvider provider);
 void game_init(void);
 void game_latch_cross(unsigned pressed);
 void game_tick(unsigned buttons,float analogx,float analogy,float dt);

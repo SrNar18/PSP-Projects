@@ -81,10 +81,11 @@ static float car_arch_bottom(float x,float floor,float wheelRadius){
 }
 /* Immutable local body patches: 39KB, no heap allocation in the frame loop.
    Each of six types has close and medium detail; lights/wheels remain dynamic. */
-typedef struct{float u,v,x,y,z;}HullVertex;
+typedef struct{float u,v,x,y,z;unsigned char tone;}HullVertex;
 typedef struct{HullVertex v[4];}HullPatch;
 typedef struct{const HullSec *profile;int close,count;HullPatch patch[40];}HullCache;
 static HullCache hullCache[12];
+static int hullWarmOnly;
 static void hull_sides(float cx,float cz,float angle,const HullSec *s,int n,float floor,uint32_t paint,float wheelRadius){
     HullCache *cache=0;int close=wheelRadius>0;
     for(int k=0;k<12;k++)if(hullCache[k].profile==s&&hullCache[k].close==close){cache=&hullCache[k];break;}
@@ -114,16 +115,18 @@ static void hull_sides(float cx,float cz,float angle,const HullSec *s,int n,floa
                     point(xx[1],lo1,car_width_at(ww[1],topY[1],floor,lo1)),
                     point(xx[0],lo0,car_width_at(ww[0],topY[0],floor,lo0))};
                 if(cache->count<40){HullPatch *patch=&cache->patch[cache->count++];
-                    for(int j=0;j<4;j++)patch->v[j]=(HullVertex){(xx[j==1||j==2]+20)/40.f,(20-p[j].y)/20.f,p[j].x,p[j].y,p[j].z};}
+                    for(int j=0;j<4;j++)patch->v[j]=(HullVertex){(xx[j==1||j==2]+20)/40.f,(20-p[j].y)/20.f,p[j].x,p[j].y,p[j].z,(unsigned char)fminf(3,fmaxf(0,(p[j].y-floor)*.3f))};}
             }
         }
         }
     }
+    if(hullWarmOnly)return;
     float ca=cosf(angle),sa=sinf(angle);
-    uint32_t colors[2]={lit_color(paint,-sa,.3f,ca),lit_color(paint,sa,.3f,-ca)};
+    uint32_t colors[2][4],base[2]={lit_color(paint,-sa,.3f,ca),lit_color(paint,sa,.3f,-ca)};
+    for(int side=0;side<2;side++)for(int tone=0;tone<4;tone++)colors[side][tone]=shade(base[side],.82f+.06f*tone);
     for(int k=0;k<cache->count;k++)for(int side=-1;side<=1;side+=2){Vertex v[4];
         for(int j=0;j<4;j++){HullVertex *h=&cache->patch[k].v[j];Point p=local(h->x,h->y,side*h->z,cx,cz,angle);
-            v[j]=(Vertex){h->u,h->v,colors[side>0],p.x,p.y,p.z};}
+            v[j]=(Vertex){h->u,h->v,colors[side>0][h->tone],p.x,p.y,p.z};}
         polygon(CAR_SIDE,v,4);
     }
 }

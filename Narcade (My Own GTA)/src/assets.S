@@ -24,13 +24,25 @@ title_cover_v213:
 title_menu_v213:
 .incbin "assets/title-menu-v213.565"
 .balign 16
-.global title_card_new_v213
-title_card_new_v213:
-.incbin "assets/title-card-0-v213.565"
+.global menu_new_v242
+menu_new_v242:
+.incbin "assets/menu-new-v242.565"
 .balign 16
-.global title_card_continue_v213
-title_card_continue_v213:
-.incbin "assets/title-card-1-v213.565"
+.global menu_continue_v242
+menu_continue_v242:
+.incbin "assets/menu-continue-v242.565"
+.balign 16
+.global menu_settings_v242
+menu_settings_v242:
+.incbin "assets/menu-settings-v242.565"
+.balign 16
+.global menu_credits_v242
+menu_credits_v242:
+.incbin "assets/menu-credits-v242.565"
+.balign 16
+.global menu_trophies_v242
+menu_trophies_v242:
+.incbin "assets/menu-trophies-v242.565"
 .balign 16
 .global title_labels_v213
 title_labels_v213:
