@@ -24,7 +24,7 @@ for file in ('game.c','combat.inc','settings.inc'):
         if '%' in remainder:
             raise SystemExit(f'Unsupported translated printf format in {file}: {value}')
 missing = set()
-for file in ('game.c', 'story.h', 'combat.inc', 'settings.inc', 'assets.h'):
+for file in ("game.c", "story.h", "combat.inc", "settings.inc", "assets.h", "trophies.inc"):
     for match in tokens.finditer((ROOT / 'src' / file).read_text(encoding='utf-8')):
         token = match.group()
         if not token.startswith('"'):

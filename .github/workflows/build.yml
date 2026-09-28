@@ -24,8 +24,11 @@ jobs:
           python3 tools/package_iso.py
           mkdir -p out/PSP/GAME/NARCADE
           cp EBOOT.PBP out/PSP/GAME/NARCADE/
+          cp assets/loading-v241/valley.rgb565 out/PSP/GAME/NARCADE/LOAD0.BIN
+          cp assets/loading-v241/street.rgb565 out/PSP/GAME/NARCADE/LOAD1.BIN
+          cp assets/loading-v241/rooftop.rgb565 out/PSP/GAME/NARCADE/LOAD2.BIN
           cp Narcade.iso out/
-          sha256sum out/Narcade.iso out/PSP/GAME/NARCADE/EBOOT.PBP
+          sha256sum out/Narcade.iso out/PSP/GAME/NARCADE/EBOOT.PBP out/PSP/GAME/NARCADE/LOAD*.BIN
       - uses: actions/upload-artifact@v4
         with:
           name: narcade-psp
