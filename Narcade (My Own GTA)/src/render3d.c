@@ -386,14 +386,14 @@ static void fx_triangle(Vertex a,Vertex b,Vertex c,int shadow);static float dayT
 static void city(void){city_v26();}
 #include "car_detail.inc"
 static void car(const R3Car *c){
-    if(!nearby(c->x,c->z,500))return;
-    if(!sphere_visible(c->x,c->z,30))return;
+    if(!hullWarmOnly&&!nearby(c->x,c->z,500))return;
+    if(!hullWarmOnly&&!sphere_visible(c->x,c->z,30))return;
     float dist=view_distance(c->x,c->z);
     static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182),
         COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
-    if(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800){ /* preserve material capacity in dense traffic */
+    if(!hullWarmOnly&&(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800)){ /* preserve material capacity in dense traffic */
         box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);
         if(dist<=170)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
             box(p.x,p.z,5.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,end>0?COLOR(255,244,192):COLOR(255,61,42));}
@@ -430,6 +430,7 @@ static void car(const R3Car *c){
         case 5:prof=suv;mats=suvM;n=7;floor=4;wr=4.2f;break;
         default:prof=sedan;mats=sedanM;n=8;break;
     }
+    if(hullWarmOnly){hull_sides(0,0,0,prof,n,floor,paint,wr);hull_sides(0,0,0,prof,n,floor,paint,0);return;}
     hull(c->x,c->z,c->angle,prof,n,mats,floor,paint,dist<100?wr:0);
     /* bajos oscuros */
     box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,METAL,METAL,COLOR(40,40,42));
@@ -843,7 +844,9 @@ int r3_prewarm(const R3Scene *s){
     ge_wait();
 #endif
     view=s;overflow=0;memset(used,0,sizeof(used));r3Frame+=2;day_update(s->time);glowUsed=0;shadowUsed=0;geographic=1;rigid=0;
-    camera(s);r3WarmBudget=6;prefetchOnly=1;city();prefetchOnly=0;r3WarmBudget=0;
+    camera(s);
+    {static int carsWarm;if(!carsWarm){hullWarmOnly=1;for(int type=0;type<6;type++){R3Car c={0};c.type=type;car(&c);}hullWarmOnly=0;carsWarm=1;}}
+    r3WarmBudget=6;prefetchOnly=1;city();prefetchOnly=0;r3WarmBudget=0;
     memset(used,0,sizeof(used));overflow=0;geographic=0;
     return (int)(r3CacheNew+r3CacheLight-before);
 }

@@ -12,7 +12,7 @@ static void snapshot(const char *path){
 int main(void){
     remove("build/settings-qa.sav.cfg");remove("build/settings-qa.sav.cfg.bak");
     game_init();game_set_save_path("build/settings-qa.sav");g.titleStage=1;
-    snapshot("build/menu-es.ppm");tap(B_DOWN);tap(B_DOWN);assert(g.menu==2);tap(B_CROSS);assert(g.screen==SETTINGS);
+    snapshot("build/menu-es.ppm");tap(B_RIGHT);tap(B_RIGHT);assert(g.menu==2);tap(B_CROSS);assert(g.screen==SETTINGS);
     snapshot("build/settings-es.ppm");tap(B_CROSS);assert(game_language()==1);
     assert(!strcmp(game_localize("GUARDAR PARTIDA"),"SAVE GAME"));
     for(int i=0;i<36;i++){

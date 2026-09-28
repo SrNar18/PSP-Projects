@@ -169,8 +169,8 @@ static inline int cm_parcel_at(float x,float z){
 #define CM_TRAIN_CAR 110.f
 static inline int cm_metro_station(int bz){return bz==1||bz==3||bz==5;}
 static inline float cm_station_z(int bz){return bz*320+160.f;}
-static inline int cm_on_platform(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1467&&x<1505&&lz>=60&&lz<=260;}
-static inline int cm_on_stairs(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1464&&x<1477&&lz>=258&&lz<=318;}
+static inline int cm_on_platform(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1466&&x<1505&&fabsf(x-CM_METRO_X)>10.5f&&lz>=60&&lz<=260;}
+static inline int cm_on_stairs(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1466&&x<1475&&lz>=258&&lz<=318;}
 /* Elevacion peatonal en (x,z). up=1 si el jugador ya esta arriba (en el anden). */
 static inline float cm_lift(float x,float z,int up){
     int bz=(int)floorf(z/320);float lz=z-bz*320;

@@ -472,10 +472,10 @@ static void metro_train(void){
         if(!nearby(CM_METRO_X,zc,700))continue;
         float previousGround=fixedGround;fixedGround=geo_height(CM_METRO_X,zc);
         metroBaseGround=fixedGround;metroFlexible=1;
-        float fl=CM_PLAT_H-.6f;
-        box(CM_METRO_X,zc,fl+.15f,24,CM_TRAIN_CAR,1.05f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso (v2.33: separado de los rieles) */
-        box(CM_METRO_X,zc,fl-3,20,CM_TRAIN_CAR-8,2.85f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
-        for(int sd=-1;sd<=1;sd+=2){float x=CM_METRO_X+sd*11.6f;
+        float fl=CM_PLAT_H+.2f;
+        box(CM_METRO_X,zc,fl+.15f,20,CM_TRAIN_CAR,1.05f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso (v2.33: separado de los rieles) */
+        box(CM_METRO_X,zc,fl-.6f,16,CM_TRAIN_CAR-8,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
+        for(int sd=-1;sd<=1;sd+=2){float x=CM_METRO_X+sd*9.6f;
             box(x,zc,fl+1.2f,.8f,CM_TRAIN_CAR,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));                  /* panel bajo */
             box(x,zc,fl+5.4f,1.0f,CM_TRAIN_CAR-.4f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80));               /* franja verde (v2.33: sin testeros coplanares) */
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
@@ -492,50 +492,79 @@ static void metro_train(void){
            spans are sliding doors, whose glass belongs to the moving panels
            above. The former four uninterrupted panes covered an open door. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
-            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*11.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*9.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
         /* Short fixed panes flank each 9.4-unit doorway. They fill the rest
            of its 20-unit bay without drawing glass across the actual opening. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
             for(int door=-1;door<=1;door+=2)for(int flank=-1;flank<=1;flank+=2)
-                box(CM_METRO_X+side*11.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
-        rail_canopy(CM_METRO_X,zc,25,CM_TRAIN_CAR+1,fl+20,2.8f);
+                box(CM_METRO_X+side*9.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+        rail_canopy(CM_METRO_X,zc,21,CM_TRAIN_CAR+1,fl+20,2.8f);
         if(view_distance(CM_METRO_X,zc)<250){
             box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
-            for(int bogie=-1;bogie<=1;bogie+=2)box(CM_METRO_X,zc+bogie*34,fl-4,21,13,3,0,METAL,METAL,COLOR(58,63,67));
+            for(int bogie=-1;bogie<=1;bogie+=2)box(CM_METRO_X,zc+bogie*34,fl-.8f,17,13,1.2f,0,METAL,METAL,COLOR(58,63,67));
         }
         for(int e=-1;e<=1;e+=2){float ze=zc+e*CM_TRAIN_CAR*.5f;                                                   /* testeros abiertos: panel bajo, pilares y dintel */
-            box(CM_METRO_X,ze,fl+1.2f,22.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,22.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
+            box(CM_METRO_X,ze,fl+1.2f,18.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,18.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
             box(CM_METRO_X-7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X+7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            box(CM_METRO_X,ze,fl+18.2f,22.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
+            box(CM_METRO_X,ze,fl+18.2f,18.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
             if(!view->inMetro)box(CM_METRO_X,ze+e*.65f,fl+10.1f,13.6f,.35f,6.4f,0,GLASS,GLASS,COLOR(105,150,168));}
         if(view->inMetro||view_distance(CM_METRO_X,zc)<200){
-            for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*8,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
+            for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*6.5f,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
             for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */
         }
         metroFlexible=0;fixedGround=previousGround;
     }
 }
+/* Two-sided original station marker, built into the cached FLAT mesh.
+   Pixel cells are geometry, not untranslated UI: METRO is the network's name. */
+static void metro_marker(float x,float z,float bottom,int number){
+ static const unsigned char letters[5][7]={
+  {17,27,21,21,17,17,17},{31,16,16,30,16,16,31},{31,4,4,4,4,4,4},
+  {30,17,17,30,20,18,17},{14,17,17,17,17,17,14}};
+ box(x,z,bottom,20,.8f,5.8f,0,FLAT,FLAT,COLOR(10,48,54));
+ for(int face=-1;face<=1;face+=2)for(int k=0;k<5;k++)for(int row=0;row<7;row++)for(int col=0;col<5;col++)
+  if(letters[k][row]&(1<<(4-col))){float xx=x+face*(-8+(k*6+col)*.55f),zz=z+face*.43f,yy=bottom+4.9f-row*.55f;
+   quad(FLAT,point(xx,yy,zz),point(xx+face*.48f,yy,zz),point(xx+face*.48f,yy+.48f,zz),point(xx,yy+.48f,zz),COLOR(225,246,186),1,1);}
+ /* Color-coded station identifier, independent of the menu language. */
+ for(int k=0;k<number;k++)box(x+8,z,bottom+.8f+k*.95f,.8f,1.0f,.5f,0,FLAT,FLAT,COLOR(250,200,60));
+}
 static void metro(int bz,int far){
-    float z=bz*320;
-    /* v2.34 (Claude): pilares solo dentro de la manzana (z local 100..292). Antes habia uno cada 64
-       tambien en z local 32: en medio de la calle este-oeste, y los coches se quedaban atascados. */
-    for(int k=0;k<4;k++)cylinder(CM_METRO_X,z+100+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
-    box(CM_METRO_X,z+160,CM_METRO_DECK,14,320,3,0,SIDEWALK,ROAD,COLOR(190,186,180));
-    if(!far){box(CM_METRO_X-3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));box(CM_METRO_X+3,z+160,CM_METRO_DECK+3,.8f,320,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
-        if(!cm_metro_station(bz)){box(CM_METRO_X-6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));box(CM_METRO_X+6.5f,z+160,CM_METRO_DECK+3,1,320,3,0,SIDEWALK,SIDEWALK,COLOR(210,206,196));}}
-    if(cm_metro_station(bz)){
-        box(CM_METRO_X,z+160,CM_PLAT_H-1.2f,36,200,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                /* anden 60..260 */
-        for(int k=0;k<3;k++)for(int sd=-1;sd<=1;sd+=2)cylinder(CM_METRO_X+sd*14,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu); /* pilares del anden */
-        for(int k=0;k<4;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*16.6f,z+70+k*60,CM_PLAT_H,2,2,24,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96)); /* v2.33: dentro del borde del anden */
-        rail_canopy(CM_METRO_X,z+160,38,208,CM_PLAT_H+24,5); /* v2.33: 38 de ancho (con 44 se metia 2 unidades en los edificios de la orilla) */
-        if(!far)for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+25,38,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
-        for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*17.5f,z+160,CM_PLAT_H,.6f,200,.4f,0,CAR_PAINT,CAR_PAINT,COLOR(250,200,60)); /* linea amarilla de borde */
-        /* escalera: 10 peldanos de 6 x 3.02 subiendo hacia el norte (z 318 -> 258), x 1465..1476 */
-        for(int k=0;k<10;k++)box(1470.5f,z+315-k*6,0,11,6,(k+1)*(CM_PLAT_H/10),0,STUCCO,SIDEWALK,COLOR(226,222,214));
-        for(int sd=-1;sd<=1;sd+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+sd*5.8f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,1,1,10,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));}
-        box(1470.5f,z+257,CM_PLAT_H-1.2f,10.8f,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));                    /* rellano hacia el anden (v2.33: 10,8) */
-        if(!far){box(CM_METRO_X,z+58,CM_PLAT_H+2,22,1.2f,5,0,CAR_PAINT,CAR_PAINT,COLOR(60,130,90));box(1470.5f,z+322,0,10,1,12,0,CAR_PAINT,CAR_PAINT,COLOR(60,130,90));} /* carteles */
-    }
+ float z=bz*320;
+ for(int k=0;k<4;k++)cylinder(CM_METRO_X,z+100+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
+ box(CM_METRO_X,z+160,CM_METRO_DECK,14,320,3,0,CONCRETE,SIDEWALK,COLOR(133,140,139));
+ /* Rails remain visible in both LODs. A continuous silver cap replaces dark
+    car paint; the station never draws pavement over this central track bed. */
+ for(int side=-1;side<=1;side+=2)
+  box(CM_METRO_X+side*6,z+160,CM_METRO_DECK+3.06f,.65f,320,.55f,0,METAL,FLAT,COLOR(206,220,222));
+ if(!far){
+  for(int k=0;k<16;k++)box(CM_METRO_X,z+10+k*20,CM_METRO_DECK+3.01f,13,1.1f,.16f,0,FLAT,FLAT,COLOR(60,70,69));
+  if(!cm_metro_station(bz))for(int side=-1;side<=1;side+=2)
+   box(CM_METRO_X+side*6.85f,z+160,CM_METRO_DECK+3,.3f,320,2,0,CONCRETE,CONCRETE,COLOR(153,163,158));
+ }
+ if(cm_metro_station(bz)){
+  for(int side=-1;side<=1;side+=2){
+   /* Left side extends to the original stair landing; right ends before buildings at x1506. */
+   float width=side<0?9.5f:8.5f,cx=CM_METRO_X+side*(10.5f+width*.5f);
+   box(cx,z+160,CM_PLAT_H-1.2f,width,200,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
+   box(CM_METRO_X+side*10.9f,z+160,CM_PLAT_H+.02f,.55f,200,.12f,0,FLAT,FLAT,COLOR(250,200,60));
+   box(CM_METRO_X+side*18.2f,z+160,CM_PLAT_H,.55f,198,5.5f,0,METAL,METAL,COLOR(73,111,108));
+  }
+  for(int k=0;k<3;k++)for(int side=-1;side<=1;side+=2)cylinder(CM_METRO_X+side*15,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu);
+  for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,24,0,METAL,METAL,COLOR(113,143,144));
+  rail_canopy(CM_METRO_X,z+160,38,208,CM_PLAT_H+24,5);
+  if(!far){
+   for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+23.5f,37,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
+   for(int side=-1;side<=1;side+=2)for(int k=0;k<3;k++){
+    box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H+2.5f,3,10,.8f,0,FLAT,FLAT,COLOR(50,137,121));
+    box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H,1,7,2.5f,0,METAL,METAL,COLOR(68,86,87));
+   }
+  }
+  /* A narrower stair no longer intersects the body/doors of a stopped train. */
+  for(int k=0;k<20;k++)box(1470.5f,z+316.5f-k*3,0,8,3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214));
+  for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
+  box(1470.5f,z+257,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
+  if(!far){metro_marker(CM_METRO_X,z+58,CM_PLAT_H+19,(bz+1)/2);metro_marker(1470.5f,z+314,19,(bz+1)/2);}
+ }
 }
 /* Metrocable: pilonas, cable y cabinas entre (CM_CABLE_X0,Z0) y (CM_CABLE_X1,Z1). */
 static void metrocable(int far){
