@@ -91,5 +91,15 @@
   "weapon_icons.h",
   "world_geo.h",
   "x%d y%d lift%d metro%d z%d w%d sp%d ff%d lo%d s%d",
-  "ms0:/NARCADE.CFG"
+  "ms0:/NARCADE.CFG",
+  ".BIN",
+  "disc0:/PSP_GAME/USRDIR/",
+  "ms0:/PSP/GAME/NARCADE/",
+  "assets/loading-v241/valley.rgb565",
+  "assets/loading-v241/street.rgb565",
+  "assets/loading-v241/rooftop.rgb565",
+  "ms0:/NARCADE.TRO",
+  "%s.tro",
+  "%d/%d",
+  "trophies.inc"
 ]

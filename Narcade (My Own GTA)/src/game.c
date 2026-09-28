@@ -190,12 +190,13 @@ static void terminal_xy(int i,float *x,float *y){
    Delitos leves suman fracciones y solo llegan a 1 estrella si se repiten; matar a un civil da 1
    (si ya te buscan, sube 1 mas desde la tercera muerte); a un policia, al menos 2. Las patrullas
    solo persiguen desde 1 estrella completa. */
+static void trophy_kill(void);static void trophy_escape(int stars); /* trophies.inc */
 static int cop_near(float r){for(int i=60;i<64;i++)if(i!=g.car&&g.cars[i].hp>0&&dist(g.x,g.y,g.cars[i].x,g.cars[i].y)<r)return 1;return 0;}
 static int wantedKills;
 static void wanted_crime(int kind){ /* 0 leve, 1 muerte de civil, 2 policia, 3 robo de carro, 4 robo de patrulla */
  float h=g.heat;int seen=cop_near(300);g.escape=0;
  if(kind==0)h+=seen?.34f:.12f;
- else if(kind==1){wantedKills++;h=h<1?1:(wantedKills%3==0?floorf(h)+1:h+.2f);}
+ else if(kind==1){trophy_kill();wantedKills++;h=h<1?1:(wantedKills%3==0?floorf(h)+1:h+.2f);}
  else if(kind==2)h=fmaxf(2,floorf(h)+1);
  else if(kind==3){if(seen)h=fmaxf(h,1);else h+=.2f;}
  else h=fmaxf(h,2);
@@ -203,6 +204,8 @@ static void wanted_crime(int kind){ /* 0 leve, 1 muerte de civil, 2 policia, 3 r
  g.heat=clampf(h,0,5);
 }
 static int wanted_stars(void){return (int)(g.heat+.001f);}
+static int cachecount(void);
+#include "trophies.inc" /* v2.42 (Claude) */
 static int near_hub(int i,float radius){float tx,ty;terminal_xy(i,&tx,&ty);return dist(g.x,g.y,locations[i].x,locations[i].y)<radius||dist(g.x,g.y,tx,ty)<24;}
 static int foot_free(float x,float y){
  if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
@@ -448,8 +451,9 @@ static void world_peds_init(void){
 int cachecount_public(void);
 static void fill_save(Save *s);
 static uint32_t savecheck(const Save *s){uint32_t h=2166136261u;const unsigned char *p=(const unsigned char*)s;for(size_t i=0;i<offsetof(Save,check);i++){h^=p[i];h*=16777619u;}return h;}
-void game_set_save_path(const char *p){raw_snprintf(g.savepath,sizeof(g.savepath),"%s",p);settings_load();}
+void game_set_save_path(const char *p){raw_snprintf(g.savepath,sizeof(g.savepath),"%s",p);settings_load();trophies_load();}
 int game_save(void){
+ trophies_flush(); /* v2.42: los trofeos van en su propio archivo */
  if(!g.active)return 1;
  Save s;fill_save(&s);
  char tmp[300],bak[300];raw_snprintf(tmp,sizeof(tmp),"%s.tmp",g.savepath);raw_snprintf(bak,sizeof(bak),"%s.bak",g.savepath);
@@ -482,7 +486,8 @@ static unsigned char hudPrev[17]={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 #define LOAD_IMG_H 288
 static uint16_t *const loadSlot[2]={(uint16_t*)hudLayer,(uint16_t*)hudLayer+LOAD_IMG_W*LOAD_IMG_H};
 static int loadShown=-1,loadPrev=-1,loadOk[3],loadSlotOf[3]={-1,-1,-1},loadFade=256;
-static float loadZoom=1,loadBar;
+static float loadZoom=1,loadBar,loadClock;
+void game_load_clock(float seconds){loadClock=seconds;} /* segundos desde el inicio de la carga (psp_main) */
 static int load_image(int k){ /* lee LOADk.BIN en la ranura libre; 0 si no esta (fondo liso) */
  static const char *const dirs[]={"disc0:/PSP_GAME/USRDIR/","ms0:/PSP/GAME/NARCADE/"};
  static const char *const host[]={"assets/loading-v241/valley.rgb565","assets/loading-v241/street.rgb565","assets/loading-v241/rooftop.rgb565"};
@@ -507,17 +512,16 @@ static void load_blit(uint32_t *dst,int stride,const uint16_t *img,float zoom,in
 }
 static const char *const loadEs[]={"Recuperando tu historia","Trazando las calles y manzanas de Medellin","Arrancando los motores del trafico",
  "Llenando las aceras de vecinos","Dibujando el mapa del barrio","Cargando cartuchos y ajustando la mira","Encendiendo las luces de la ciudad","Listo. Buena suerte, Nico"};
-static const char *const loadEn[]={"Restoring your story","Laying out Medellin's streets and blocks","Starting the traffic engines",
- "Filling the sidewalks with neighbors","Drawing the neighborhood map","Loading magazines and zeroing the sights","Switching on the city lights","Ready. Good luck, Nico"};
 static void load_screen_draw(uint32_t *pixels,int stride,int stage,int anim){
  fb=pixels;pitch=stride;
  static int drawnStage;if(anim)stage=drawnStage;else drawnStage=stage; /* la animacion repite la etapa ya dibujada (incluido el final) */
  if(stage==0&&!anim){loadShown=loadPrev=-1;loadOk[0]=loadOk[1]=loadOk[2]=0;loadSlotOf[0]=loadSlotOf[1]=loadSlotOf[2]=-1;loadFade=256;loadZoom=1;loadBar=0;}
  int warmEnd=6+LOAD_WARM_MAX,finished=stage>=warmEnd;
  int caption=finished?7:stage+1<6?stage+1:6;            /* trabajo que se hace mientras se ve este cuadro */
- int want=caption<=1?0:caption<=5?1:2;
+ /* v2.42 (Claude): cada ilustracion dura al menos 5 s de reloj real; si la carga es rapida solo se ven una o dos */
+ int want=(int)(loadClock/5.f);if(want>2)want=2;
  if(!anim&&want!=loadShown){loadPrev=loadShown;loadOk[want]=load_image(want);loadShown=want;loadFade=0;loadZoom=1;}
- loadZoom=fminf(1.066f,loadZoom+.005f);if(loadFade<256)loadFade=loadFade+43>256?256:loadFade+43;
+ {static float shownAt;if(loadFade==0)shownAt=loadClock;loadZoom=1.f+.066f*fminf(1.f,(loadClock-shownAt)/5.f);} /* zoom lento durante los 5 s de cada imagen */if(loadFade<256)loadFade=loadFade+43>256?256:loadFade+43;
  float target=finished?1.f:(float)(stage+1)/(warmEnd+1);
  if(finished)loadBar=1;else if(loadBar<target)loadBar=fminf(target,loadBar+fmaxf(.015f,(target-loadBar)*.45f));
  if(loadShown>=0&&loadOk[loadShown]){
@@ -527,7 +531,7 @@ static void load_screen_draw(uint32_t *pixels,int stride,int stage,int anim){
  }else{rect(0,0,W,H,INK);text(W/2-7*3,90,"NARCADE",LIME,1);}
  rect(0,H-58,W,58,RGB(7,13,23));rect(0,H-58,W,2,LIME);
  text(16,H-50,"NARCADE",LIME,1);
- text(16,H-32,prefsLanguage?loadEn[caption]:loadEs[caption],WHITE,1);
+ text(16,H-32,loadEs[caption],WHITE,1); /* text() traduce con el catalogo (localization_en.json) */
  int bw=W-32;rect(16,H-12,bw,5,PANEL);rect(16,H-12,(int)(bw*loadBar),5,LIME);
  char b[16];int pct=(int)(loadBar*100+.5f);b[0]=0;if(pct>=100){b[0]='1';b[1]='0';b[2]='0';b[3]='%';b[4]=0;}else{b[0]=(char)(pct>=10?'0'+pct/10:' ');b[1]=(char)('0'+pct%10);b[2]='%';b[3]=0;}
  text(W-16-(int)strlen(b)*7,H-50,b,MUTED,1);
@@ -606,7 +610,7 @@ static void advance(void){
  if(g.step>=missions[g.mission].count){g.cash+=missions[g.mission].reward;g.reputation+=3;dialog("MISION COMPLETADA",missions[g.mission].outro,2);}else{notice("Objetivo completado. Consulta la nueva marca amarilla.");game_save();}
 }
 static void end_dialog(void){int a=g.dialogAction;g.screen=WORLD;if(a==1)advance();if(a==2){g.mission++;g.step=0;game_save();if(g.mission<36)start_mission();else{g.heat=0;dialog("NARCADE / FIN DE LA HISTORIA",g.ending==1?"Vera entrega el expediente a la justicia. Los vecinos conservan sus datos. Sara vuelve a casa. La historia termina, pero la ciudad sigue abierta: encuentra los 24 vinilos, realiza encargos y recorre Medellin. made by Naresz.":"Mara publica las pruebas sin exponer los datos privados. Los barrios guardan copias y vigilan su ciudad. Sara vuelve a casa. La historia termina, pero puedes seguir explorando, reunir los 24 vinilos y realizar encargos. made by Naresz.",0);}}}
-void game_init(void){memset(&g,0,sizeof(g));g.stamina=100;g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");settings_load();world_init();}
+void game_init(void){memset(&g,0,sizeof(g));g.stamina=100;g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");settings_load();trophies_load();world_init();}
 
 /* Mini-games: all are real state machines and require player input. */
 static const char *puzzleNames[]={"","","PC / CLAVE DE CUATRO DIGITOS","PC / CIRCUITO AISLADO","PC / MEMORIA DEL REGISTRO","RADIO / SINTONIA FINA","CONSOLA / SESION DE RITMO","ESTUCHE / CIERRE MECANICO","ACCESO / PATIO VIGILADO"};
@@ -1070,7 +1074,7 @@ static void world_tick(float ax,float ay,float dt){
  combat_peds_tick(dt);
  /* v2.37: fuera de la vista de las patrullas las estrellas parpadean; si aguantas 6 s + 5 s por
     estrella sin que te vean, se pierde la busqueda entera (GTA). Delitos leves se olvidan solos. */
- if(wanted_stars()>=1){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car&&g.cars[i].hp>0)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>6+5*wanted_stars()){g.heat=0;wantedKills=0;g.escape=0;}}else g.escape=0;}
+ if(wanted_stars()>=1){float nearest=100000;for(int i=60;i<64;i++)if(i!=g.car&&g.cars[i].hp>0)nearest=fminf(nearest,dist(g.x,g.y,g.cars[i].x,g.cars[i].y));if(nearest>210){g.escape+=dt;if(g.escape>6+5*wanted_stars()){trophy_escape(wanted_stars());g.heat=0;wantedKills=0;g.escape=0;}}else g.escape=0;}
  else if(g.heat>0){g.heat=fmaxf(0,g.heat-dt*.02f);if(g.heat<=0)wantedKills=0;}
  if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){g.missionTimer+=dt;if(g.missionTimer>step_now()->par&&g.heat<.01f)advance();}
  if(g.raceTime>0){g.raceTime-=dt;int l=g.route[g.checkpoint];if(g.car>=0&&dist(g.x,g.y,locations[l].x,locations[l].y)<66){g.checkpoint++;g.raceTime+=3;if(g.checkpoint==6){g.raceTime=0;advance();}else notice("PUNTO ALCANZADO +3 segundos. Sigue el siguiente aro.");}
@@ -1129,14 +1133,14 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  }
  else if(g.screen==SETTINGS){if(pressed(B_CIRCLE)||pressed(B_START)){settings_finish();g.screen=TITLE;g.menu=2;menu_click();}else settings_tick();}
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
- else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);}}
+ else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);trophies_tick(dt);}}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
  else if(g.screen==PAUSE){
   if(pressed(B_START)||pressed(B_CIRCLE)){settings_finish();g.screen=g.pauseBack;menu_click();return;}
-  if(pressed(B_L)||(g.pauseTab!=3&&pressed(B_LEFT))){settings_finish();g.pauseTab=wrapi(g.pauseTab-1,5);g.menu=0;}
-  if(pressed(B_R)||(g.pauseTab!=3&&pressed(B_RIGHT))){settings_finish();g.pauseTab=(g.pauseTab+1)%5;g.menu=0;}
+  if(pressed(B_L)||(g.pauseTab!=3&&pressed(B_LEFT))){settings_finish();g.pauseTab=wrapi(g.pauseTab-1,6);g.menu=0;}
+  if(pressed(B_R)||(g.pauseTab!=3&&pressed(B_RIGHT))){settings_finish();g.pauseTab=(g.pauseTab+1)%6;g.menu=0;}
   int delta=pressed(B_DOWN)-pressed(B_UP);
   if(g.pauseTab==0)g.mapSel=wrapi(g.mapSel+delta,30);
   else if(g.pauseTab==1)g.journalPage=wrapi(g.journalPage+delta,3);
@@ -1145,7 +1149,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   if(pressed(B_CROSS)){
    if(g.pauseTab==2&&g.menu==0){if(nativeSave&&g.active)saveRequest=1;else notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");}
    else if(g.pauseTab==2&&g.menu==1)g.screen=g.pauseBack;
-   else if(g.pauseTab==4){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
+   else if(g.pauseTab==5){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
   }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
  if((oldScreen==TITLE&&g.screen==TITLE&&(oldMenu!=g.menu||oldTitleStage!=g.titleStage))||
@@ -1328,13 +1332,15 @@ static void title_label(int id,int x,int y,uint32_t color){
 }
 static void title_card(int x,int selected,int isContinue){
  uint32_t accent=isContinue?RGB(95,223,232):RGB(249,185,108);
- if(selected){rect(x-5,77,218,139,RGB(29,70,83));outline(x-4,78,216,137,accent);}
- else{rect(x-3,79,214,135,RGB(11,22,35));outline(x-3,79,214,135,RGB(72,88,103));}
+ /* v2.42 (Claude): el marco abraza exactamente la tarjeta (imagen 82..177 + franja 177..216). Antes acababa en
+    la fila 214 y dejaba fuera el pie de la franja y el subrayado, con 4 px de hueco a los lados. */
+ if(selected){rect(x-3,79,214,140,RGB(29,70,83));outline(x-3,79,214,140,accent);outline(x-2,80,212,138,accent);}
+ else{rect(x-1,81,210,136,RGB(11,22,35));outline(x-1,81,210,136,RGB(72,88,103));}
  title_image(isContinue?title_card_continue_v213:title_card_new_v213,208,95,x,82);
  rect(x,177,208,39,RGB(10,18,29));rect(x,177,208,2,accent);
  title_label(isContinue?TL_CONTINUE:TL_NEW,x+11,182,WHITE);
  title_label(isContinue?TL_CONTINUE_SUB:TL_NEW_SUB,x+11,201,MUTED);
- if(selected){rect(x,216,208,3,accent);rect(x+197,82,11,3,accent);}
+ if(selected){rect(x,213,208,3,accent);rect(x+197,82,11,3,accent);}
 }
 static void title_draw(void){
  if(!g.titleStage){
@@ -1440,10 +1446,11 @@ static void journal_draw(void){
  footer("L/R paginas  O volver");
 }
 static void pause_draw(void){
- const char *tabs[]={"MAPA","MENSAJES","PARTIDA","AJUSTES","SALIR"};char b[100];
+ const char *tabs[]={"MAPA","MENSAJES","PARTIDA","AJUSTES","TROFEOS","SALIR"};char b[100];
  if(g.pauseTab==0)map_draw();
  else if(g.pauseTab==1)journal_draw();
  else if(g.pauseTab==3)settings_draw();
+ else if(g.pauseTab==4)trophies_draw(); /* v2.42 (Claude) */
  else{
   rect(0,0,W,H,INK);rect(18,70,444,161,PANEL);
   if(g.pauseTab==2){
@@ -1458,9 +1465,9 @@ static void pause_draw(void){
   }
  }
  rect(0,0,W,54,INK);text(15,8,"NARCADE",WHITE,2);text(300,15,"JUEGO EN PAUSA",MUTED,1);
- for(int i=0;i<5;i++){int x=10+i*94;rect(x,34,89,19,i==g.pauseTab?LIME:PANEL);text(x+9,38,tabs[i],i==g.pauseTab?INK:MUTED,1);}
- if(g.noticeT>0&&g.pauseTab>=2){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
- footer(g.pauseTab==3?"L/R seccion  ARRIBA/ABAJO elegir  < > cambiar  O volver":g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
+ for(int i=0;i<6;i++){int x=8+i*78;rect(x,34,74,19,i==g.pauseTab?LIME:PANEL);text(x+(74-(int)strlen(locale_text(tabs[i]))*7)/2,38,tabs[i],i==g.pauseTab?INK:MUTED,1);}
+ if(g.noticeT>0&&g.pauseTab>=2&&g.pauseTab!=4){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
+ footer(g.pauseTab==3?"L/R seccion  ARRIBA/ABAJO elegir  < > cambiar  O volver":g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":g.pauseTab==4?"L/R seccion  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
 }
 #include "settings.inc"
 #include "weapon_icons.h"
@@ -1523,7 +1530,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  world_draw();
 #endif
  if(g.weaponWheel){weapon_wheel_draw();return;}
- hud();combat_hud();
+ hud();combat_hud();trophy_popup_draw();
  if(g.screen==DIALOG){rect(16,70,448,144,INK);outline(16,70,448,144,RGB(67,92,93));rect(16,70,4,144,LIME);text(31,83,g.speaker,TEAL,1);textwrap(31,106,416,g.dialog,WHITE);text(31,196,g.dialogAction==3?"X empezar de nuevo  O cancelar":"X continuar",LIME,1);}
  if(g.screen==CHOICE){rect(16,62,448,173,INK);text(30,76,"TU DECISION / EL FUTURO DEL EXPEDIENTE",TEAL,1);textwrap(30,98,412,"Las dos opciones protegen los datos privados. Elige quien llevara las pruebas a la ciudad.",MUTED);const char *items[]={"VERA: entregar el expediente a la justicia","MARA: publicar tambien una memoria vecinal"};for(int i=0;i<2;i++){rect(25,146+i*35,429,28,i==g.menu?PANEL:INK);text(31,154+i*35,items[i],i==g.menu?LIME:WHITE,1);}text(31,219,"ARRIBA/ABAJO elegir  X confirmar",MUTED,1);}
 }

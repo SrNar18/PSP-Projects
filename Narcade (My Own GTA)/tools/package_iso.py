@@ -5,7 +5,7 @@ root=pathlib.Path(__file__).resolve().parents[1]
 stage=root/'build/umd';stage.mkdir(parents=True,exist_ok=True)
 (stage/'PSP_GAME/SYSDIR').mkdir(parents=True,exist_ok=True)
 (stage/'PSP_GAME/USRDIR').mkdir(exist_ok=True)
-subprocess.run(['mksfoex','-s','CATEGORY=UG','-s','DISC_ID=NARC00001','-s','DISC_VERSION=2.40','-s','PSP_SYSTEM_VER=6.00','-d','BOOTABLE=1','-d','PARENTAL_LEVEL=5','-d','REGION=32768','Narcade 3D',str(stage/'PSP_GAME/PARAM.SFO')],check=True)
+subprocess.run(['mksfoex','-s','CATEGORY=UG','-s','DISC_ID=NARC00001','-s','DISC_VERSION=2.42','-s','PSP_SYSTEM_VER=6.00','-d','BOOTABLE=1','-d','PARENTAL_LEVEL=5','-d','REGION=32768','Narcade 3D',str(stage/'PSP_GAME/PARAM.SFO')],check=True)
 # v1.2: el cargador de disco del CFW solo admite, ademas de ejecutables de UMD firmados, ELFs
 # ESTATICOS (asi funcionan los EBOOT.BIN "descifrados"). Se usa narcade_static.elf (make -f Makefile.iso).
 shutil.copy(root/'narcade_static.elf',stage/'PSP_GAME/SYSDIR/EBOOT.BIN')
@@ -14,7 +14,7 @@ shutil.copy(root/'assets/ICON0.png',stage/'PSP_GAME/ICON0.PNG')
 shutil.copy(root/'assets/PIC1.png',stage/'PSP_GAME/PIC1.PNG')
 shutil.copy(root/'assets/SND0.AT3',stage/'PSP_GAME/SND0.AT3')  # musica en la XMB (tools/make_snd0.py)
 (stage/'UMD_DATA.BIN').write_bytes(b'NARC-00001|E658BD244F5EED20|0001|G')
-(stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 3D 2.40 Settings and Spanish/English - made by Naresz. Original homebrew. Assets embedded in executable.\n')
+(stage/'PSP_GAME/USRDIR/README.TXT').write_text('Narcade 3D 2.42 Trophies, illustrated loading and Spanish/English - made by Naresz. Original homebrew. Assets embedded in executable.\n')
 for k,name in enumerate(['valley','street','rooftop']):shutil.copy(root/f'assets/loading-v241/{name}.rgb565',stage/'PSP_GAME/USRDIR'/f'LOAD{k}.BIN')  # v2.41: ilustraciones de carga (se leen en la carga, no ocupan RAM)
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT')]:
  shutil.copy(root/source,stage/'PSP_GAME/USRDIR'/dest)

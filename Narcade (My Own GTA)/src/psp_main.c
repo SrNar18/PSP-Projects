@@ -154,17 +154,18 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
    /* v2.41 (Claude): doble bufer (se dibuja en el que no se ve) y un fotograma de animacion entre etapas
       (zoom y fundido de la ilustracion). La ultima imagen se queda hasta que el primer fotograma de juego
       la sustituye: la pantalla de carga dura exactamente hasta que ya te puedes mover. */
-   int cur=*index^1;
+   int cur=*index^1;uint64_t loadStart=sceKernelGetSystemTimeWide();
+#define LOAD_CLOCK() game_load_clock((float)((sceKernelGetSystemTimeWide()-loadStart)/1000000.0))
    for(int stage=0;stage<24;stage++){ /* v2.37: + etapas de ciudad visible (terminan antes si ya esta) */
     char m[40];snprintf(m,sizeof(m),"etapa-%d-inicio",stage);dbg(m);
-    int done=game_load_stage(buffers[cur],512,stage);
+    LOAD_CLOCK();int done=game_load_stage(buffers[cur],512,stage);
     snprintf(m,sizeof(m),"etapa-%d-ok",stage);dbg(m);
     if(done)break;
     sceKernelDcacheWritebackAll();
     sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
     sceDisplayWaitVblankStart();cur^=1;
     for(int more=1,k=0;more&&k<8;k++){ /* completa el fundido antes de la siguiente etapa */
-     more=game_load_anim(buffers[cur],512,stage);sceKernelDcacheWritebackAll();
+     LOAD_CLOCK();more=game_load_anim(buffers[cur],512,stage);sceKernelDcacheWritebackAll();
      sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
      sceDisplayWaitVblankStart();cur^=1;
     }
