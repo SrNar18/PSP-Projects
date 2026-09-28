@@ -33,7 +33,8 @@ typedef struct {const char *title,*who,*intro,*outro;int count,reward;Step steps
 #include "story.h"
 #include "assets.h"
 #include "title_ui.h"
-enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE,SETTINGS};
+#include "ui_font.h"
+enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE,SETTINGS,CREDITS,TROPHIES};
 typedef struct {float x,y,a,speed,hp;int type,parked,police;} Car;
 typedef struct {float x,y,v,phase;int vertical;} Ped;
 typedef struct {
@@ -63,6 +64,9 @@ static struct {
 static int prefsBrightness=5,prefsFog,prefsDirty;
 static volatile int prefsMusic=10,prefsEffects=10;
 static void settings_load(void),settings_finish(void),settings_tick(void),settings_draw(void);
+static GameTrophyProvider trophyProvider;
+void game_set_trophy_provider(GameTrophyProvider provider){trophyProvider=provider;}
+static int trophySelection;
 static uint32_t *fb;static int pitch;
 #ifdef NARCADE_3D
 static uint32_t *renderTarget;
@@ -111,12 +115,26 @@ static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x
 static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){px(x,y,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
 static void circle(int x,int y,int r,uint32_t c){for(int yy=-r;yy<=r;yy++){int xx=(int)sqrtf((float)(r*r-yy*yy));rect(x-xx,y+yy,xx*2+1,1,c);}}
 static void outline(int x,int y,int w,int h,uint32_t c){rect(x,y,w,1,c);rect(x,y+h-1,w,1,c);rect(x,y,1,h,c);rect(x+w-1,y,1,h,c);}
-static void text_raw(int x,int y,const char *s,uint32_t c,int scale){int start=x;for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';for(int yy=0;yy<12;yy++){unsigned row=font_bits[(ch-32)*12+yy];for(int xx=0;xx<7;xx++)if(row&(1<<xx)){if(scale==1)px(x+xx,y+yy,c);else rect(x+xx*scale,y+yy*scale,scale,scale,c);}}x+=7*scale;}}
+static void font_text(int x,int y,const char *s,uint32_t c,int scale,int heading){
+ const UiFont *f=&uiFonts[scale>1?(scale>2?3:2):heading];int start=x;
+ for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';
+  unsigned off=f->offset+(ch-32)*f->w*f->h;
+  for(int yy=0;yy<f->h;yy++){int py=y+yy;if((unsigned)py>=H)continue;
+   for(int xx=0;xx<f->w;xx++){int sx=x+xx;if((unsigned)sx>=W)continue;unsigned a=uiGlyphs[off+yy*f->w+xx];if(a<8)continue;
+    uint32_t old=fb[py*pitch+sx];
+    px(sx,py,RGB(((old&255)*(255-a)+(c&255)*a+127)/255,
+      (((old>>8)&255)*(255-a)+((c>>8)&255)*a+127)/255,
+      (((old>>16)&255)*(255-a)+((c>>16)&255)*a+127)/255));
+   }
+  }x+=7*scale;
+ }
+}
+static void text_raw(int x,int y,const char *s,uint32_t c,int scale){font_text(x,y,s,c,scale,0);}
 static void text(int x,int y,const char *s,uint32_t c,int scale){text_raw(x,y,locale_text(s),c,scale);}
 static int textwrap_raw(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text_raw(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
 static int textwrap(int x,int y,int width,const char *s,uint32_t c){return textwrap_raw(x,y,width,locale_text(s),c);}
 static void label(int x,int y,const char *s,uint32_t c){s=locale_text(s);rect(x-4,y-2,(int)strlen(s)*7+8,15,INK);text_raw(x,y,s,c,1);}
-static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,20,LIME);text(28,12,a,WHITE,1);text(28,29,b,MUTED,1);}
+static void header(const char *a,const char *b){rect(0,0,W,48,INK);rect(16,16,4,20,LIME);font_text(28,12,locale_text(a),WHITE,1,1);text(28,29,b,MUTED,1);}
 static void footer(const char *s){rect(0,252,W,20,INK);text(12,257,s,MUTED,1);}
 static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].steps[g.step];}
 static int parkblock(int bx,int by){return cm_park(bx,by);}
@@ -1102,7 +1120,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   if(r<.18f&&!(g.screen==WORLD&&g.car<0))ax=ay=0;
   }
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
- if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE&&g.screen!=SETTINGS){
+ if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE&&g.screen!=SETTINGS&&g.screen!=CREDITS&&g.screen!=TROPHIES){
   g.weaponWheel=0;g.weaponHold=0;
   g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;menu_click();return;
  }
@@ -1112,22 +1130,25 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   }else{
    if(pressed(B_CIRCLE)){g.titleStage=0;g.screenT=0;}
    else{
-    /* v2.41 (Claude): navegacion en rejilla. Tarjetas arriba (0 continuar, 1 nueva), ajustes debajo (2):
-       ABAJO va directo a ajustes; ARRIBA vuelve a la ultima tarjeta; IZQ/DER eligen tarjeta. */
-    {static int lastCard;if(g.menu<2)lastCard=g.menu;
-     if(pressed(B_DOWN))g.menu=2;
-     else if(pressed(B_UP)){if(g.menu==2)g.menu=lastCard;}
-     else if(pressed(B_LEFT))g.menu=0;
-     else if(pressed(B_RIGHT))g.menu=1;}
+    /* Five-panel spatial navigation. Existing IDs 0/1/2 stay compatible. */
+    {static const int down[5]={3,4,2,3,4},up[5]={0,1,2,0,1},left[5]={0,0,1,3,3},right[5]={1,2,2,4,2};
+     if(pressed(B_DOWN))g.menu=down[g.menu];else if(pressed(B_UP))g.menu=up[g.menu];
+     else if(pressed(B_LEFT))g.menu=left[g.menu];else if(pressed(B_RIGHT))g.menu=right[g.menu];}
     if(pressed(B_CROSS)||pressed(B_START)){
      if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}
      else if(g.menu==2){g.screen=SETTINGS;g.menu=0;menu_click();}
+     else if(g.menu==3){g.screen=CREDITS;menu_click();}
+     else if(g.menu==4){g.screen=TROPHIES;trophySelection=0;menu_click();}
      else{g.menu=0;dialog("NUEVA HISTORIA","Empezar una historia nueva sustituye el progreso anterior al guardar. X confirma. Pulsa O para volver al inicio.",3);}
     }
    }
   }
  }
  else if(g.screen==SETTINGS){if(pressed(B_CIRCLE)||pressed(B_START)){settings_finish();g.screen=TITLE;g.menu=2;menu_click();}else settings_tick();}
+ else if(g.screen==CREDITS||g.screen==TROPHIES){
+  if(pressed(B_CIRCLE)||pressed(B_START)){g.menu=g.screen==CREDITS?3:4;g.screen=TITLE;menu_click();}
+  else if(g.screen==TROPHIES&&(pressed(B_UP)||pressed(B_DOWN))){trophySelection=wrapi(trophySelection+pressed(B_DOWN)-pressed(B_UP),GAME_TROPHY_COUNT);menu_click();}
+ }
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
  else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);}}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
@@ -1152,7 +1173,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
     (oldScreen==PAUSE&&g.screen==PAUSE&&(oldMenu!=g.menu||oldTab!=g.pauseTab||oldMap!=g.mapSel||oldJournal!=g.journalPage))||
     (oldScreen==MAP&&oldMap!=g.mapSel)||(oldScreen==JOURNAL&&oldJournal!=g.journalPage)||
     (oldScreen==MINI&&oldCursor!=g.p.cursor)||(oldScreen==CHOICE&&oldMenu!=g.menu))menu_click();
- int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE)||rhythm;
+ int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE&&g.screen!=CREDITS&&g.screen!=TROPHIES)||rhythm;
  audioAmbient=g.screen==WORLD;
  if(rhythm)audioPos=(unsigned)(g.p.t*44100)%(track_length[3]*2);
 }
@@ -1310,7 +1331,7 @@ static void title_image(const unsigned short *src,int sw,int sh,int dx,int dy){
  for(int y=0;y<sh;y++){int sy=dy+y;if((unsigned)sy>=H)continue;
   for(int x=0;x<sw;x++){int sx=dx+x;if((unsigned)sx<W)fb[sy*pitch+sx]=title_color(src[y*sw+x]);}}
 }
-/* UI letterforms are rendered by Pillow from Bahnschrift/Segoe UI/Allura at
+/* UI letterforms are rendered by Pillow from Oxanium/Rajdhani/Allura at
    native PSP resolution. Alpha compositing preserves antialiased edges. */
 static void title_label(int id,int x,int y,uint32_t color){
  if(prefsLanguage)id+=TL_EN_LOGO;
@@ -1326,15 +1347,21 @@ static void title_label(int id,int x,int y,uint32_t color){
   }
  }
 }
-static void title_card(int x,int selected,int isContinue){
- uint32_t accent=isContinue?RGB(95,223,232):RGB(249,185,108);
- if(selected){rect(x-5,77,218,139,RGB(29,70,83));outline(x-4,78,216,137,accent);}
- else{rect(x-3,79,214,135,RGB(11,22,35));outline(x-3,79,214,135,RGB(72,88,103));}
- title_image(isContinue?title_card_continue_v213:title_card_new_v213,208,95,x,82);
- rect(x,177,208,39,RGB(10,18,29));rect(x,177,208,2,accent);
- title_label(isContinue?TL_CONTINUE:TL_NEW,x+11,182,WHITE);
- title_label(isContinue?TL_CONTINUE_SUB:TL_NEW_SUB,x+11,201,MUTED);
- if(selected){rect(x,216,208,3,accent);rect(x+197,82,11,3,accent);}
+typedef struct {int x,y,w,h,label;const unsigned short *image;} MenuPanel;
+static const MenuPanel menuPanels[5]={
+ {14,64,146,94,TL_CONTINUE,menu_continue_v242},
+ {174,64,146,94,TL_NEW,menu_new_v242},
+ {334,64,132,164,TL_SETTINGS,menu_settings_v242},
+ {14,172,146,56,TL_CREDITS,menu_credits_v242},
+ {174,172,146,56,TL_TROPHIES,menu_trophies_v242}
+};
+static void title_card(int id){
+ const MenuPanel *p=&menuPanels[id];int selected=g.menu==id;
+ /* Compiled image dimensions are exact: use the same extents for selection. */
+ title_image(p->image,p->w,p->h,p->x,p->y);
+ title_label(p->label,p->x+8,p->y+p->h-24,WHITE);
+ outline(p->x-2,p->y-2,p->w+4,p->h+4,selected?LIME:RGB(64,77,96));
+ if(selected){outline(p->x-3,p->y-3,p->w+6,p->h+6,LIME);rect(p->x,p->y,22,2,LIME);}
 }
 static void title_draw(void){
  if(!g.titleStage){
@@ -1354,21 +1381,45 @@ static void title_draw(void){
   title_image(title_menu_v213,W,H,0,0);
   rect(0,0,W,4,RGB(68,204,218));
   rect(0,0,W,65,RGB(7,13,23));
-  title_label(TL_LOGO_SMALL,21,15,WHITE);
-  rect(151,17,2,27,RGB(60,108,124));
-  title_label(TL_STORY,169,13,WHITE);
-  title_label(TL_STORY_KICKER,21,59,RGB(153,186,196));
-  title_card(20,g.menu==0,1);
-  title_card(252,g.menu==1,0);
-  rect(20,224,440,20,g.menu==2?RGB(29,70,83):RGB(11,22,35));
-  if(g.menu==2)outline(20,224,440,20,RGB(95,223,232));
-  title_label(TL_SETTINGS,(W-titleLabels[TL_SETTINGS+(prefsLanguage?TL_EN_LOGO:0)].width)/2,225,g.menu==2?LIME:WHITE);
-  rect(0,246,W,26,RGB(7,13,23));
-  rect(20,246,440,1,RGB(58,84,96));
-  title_label(TL_FOOTER,21,253,RGB(190,212,219));
+  title_label(TL_LOGO_SMALL,14,13,WHITE);
+  title_label(TL_STORY,185,13,WHITE);
+  title_label(TL_STORY_KICKER,14,43,RGB(153,186,196));
+  for(int i=0;i<5;i++)title_card(i);
+  title_label(TL_FOOTER,14,249,RGB(190,212,219));
   title_label(TL_MADE_BY,356,252,MUTED);title_label(TL_CREDIT,395,246,WHITE);
  }
  if(g.noticeT>0){rect(0,246,W,26,INK);textwrap(12,247,W-24,g.notice,CORAL);}
+}
+static void credits_draw(void){
+ title_image(title_menu_v213,W,H,0,0);header("NARCADE / CREDITOS","UN PROYECTO ORIGINAL PARA PSP");
+ font_text(24,61,locale_text("CREADO POR NARESZ"),LIME,2,1);
+ text(24,97,"Idea, direccion creativa y universo: Naresz",WHITE,1);
+ text(24,122,"ASISTENCIA DE DESARROLLO",TEAL,1);
+ text(24,141,"Codex (OpenAI) / Claude Code (Anthropic)",WHITE,1);
+ text(24,165,"Inspirado en Medellin y el valle de Aburra",WHITE,1);
+ text(24,186,"Personajes originales: Nico, Luna y su comunidad",MUTED,1);
+ text(24,207,"Oxanium / Rajdhani: tipografias SIL OFL",MUTED,1);
+ text(24,226,"Version en desarrollo / gracias por jugar",GOLD,1);
+ footer("O VOLVER");
+}
+static void trophies_draw(void){
+ title_image(title_menu_v213,W,H,0,0);header("NARCADE / TROFEOS","CADA HISTORIA DEJA SU HUELLA");
+ static const char *names[5]={"PRIMEROS PASOS","EXPLORADOR DEL VALLE","SOBRE RUEDAS","HISTORIA EN MARCHA","VIDA DE BARRIO"};
+ int completed=0;
+ for(int i=0;i<GAME_TROPHY_COUNT;i++){
+  GameTrophyInfo info={names[i],"Sistema de trofeos en preparacion",0,1,0};
+  int valid=trophyProvider&&trophyProvider(i,&info);if(!valid){info.title=names[i];info.detail="Sistema de trofeos en preparacion";info.current=0;info.target=1;info.unlocked=0;}
+  int y=57+i*35;uint32_t accent=info.unlocked?GOLD:TEAL;
+  completed+=info.unlocked!=0;rect(14,y,452,32,PANEL);
+  if(i==trophySelection)outline(14,y,452,32,accent);
+  circle(30,y+16,7,info.unlocked?GOLD:MUTED);text(45,y+3,info.title?info.title:names[i],WHITE,1);
+  text(45,y+17,info.unlocked?"DESBLOQUEADO":(valid?"EN PROGRESO":"PROXIMAMENTE"),info.unlocked?GOLD:MUTED,1);
+  float amount=info.unlocked?1:info.target>0?clampf((float)info.current/info.target,0,1):0;
+  rect(339,y+21,114,3,INK);rect(339,y+21,(int)(114*amount),3,accent);
+  if(valid){char b[40];snprintf(b,sizeof b,"%d/%d",info.current,info.target);text(339,y+4,b,MUTED,1);}
+  if(i==trophySelection&&info.detail)textwrap(17,237,450,info.detail,MUTED);
+ }
+ (void)completed;footer("ARRIBA/ABAJO EXPLORAR  O VOLVER");
 }
 static void mini_draw(void){
  Puzzle *p=&g.p;char b[180];rect(0,0,W,H,INK);header("NARCADE / INTERACCION",puzzleNames[p->kind]);
@@ -1512,7 +1563,7 @@ static void build_scene(R3Scene *sp){
 }
 #endif
 static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
- if(g.screen==TITLE){title_draw();return;}if(g.screen==SETTINGS){settings_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
+ if(g.screen==TITLE){title_draw();return;}if(g.screen==CREDITS){credits_draw();return;}if(g.screen==TROPHIES){trophies_draw();return;}if(g.screen==SETTINGS){settings_draw();return;}if(g.screen==MINI){mini_draw();return;}if(g.screen==MAP){map_draw();return;}if(g.screen==JOURNAL){journal_draw();return;}if(g.screen==PAUSE){pause_draw();return;}
 #ifdef NARCADE_3D
  static R3Scene scene;build_scene(&scene);
  r3_draw(renderTarget,&scene);
@@ -1532,7 +1583,7 @@ void game_draw(uint32_t *pixels,int stride){
  renderTarget=pixels;
 #ifndef R3_HOST
  uint32_t *overlay=hudLayer;
- int world=!(g.screen==TITLE||g.screen==MINI||g.screen==MAP||g.screen==JOURNAL||g.screen==PAUSE||g.screen==SETTINGS);
+ int world=!(g.screen==TITLE||g.screen==MINI||g.screen==MAP||g.screen==JOURNAL||g.screen==PAUSE||g.screen==SETTINGS||g.screen==CREDITS||g.screen==TROPHIES);
  if(!world){memset(overlay,0,512*272*sizeof(uint32_t));memset(hudPrev,1,sizeof hudPrev);}
  draw_frame(overlay,512);
  if(!world)memset(hudBand,1,sizeof hudBand);

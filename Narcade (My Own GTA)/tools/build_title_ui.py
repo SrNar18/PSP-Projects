@@ -28,10 +28,25 @@ for n, half in enumerate((cards.crop((0, 0, cards.width // 2, cards.height)),
     rgb565(ImageOps.fit(half, (208, 115), method=Image.Resampling.LANCZOS),
            f"title-card-{n}-v213.565")
 
+# Five original menu panels, no baked-in text. Native PSP dimensions.
+for name,source,size in [
+    ('continue','loading-v241/valley-source.jpg',(146,94)),
+    ('new','loading-v241/street-source.jpg',(146,94)),
+    ('settings','luna-menu-source.png',(132,164)),
+    ('credits','loading-v241/rooftop-source.jpg',(146,56)),
+    ('trophies','loading-v241/street-source.jpg',(146,56))]:
+    im=ImageOps.fit(Image.open(ASSETS/source).convert('RGB'),size,method=Image.Resampling.LANCZOS)
+    # Keep detail, but provide strong contrast for captions on every panel.
+    scrim=Image.new('RGB',size,(5,9,20))
+    for y in range(size[1]):
+        strength=max(0,(y-(size[1]-36))/36)*.82
+        if strength>0:im.paste(Image.blend(im.crop((0,y,size[0],y+1)),scrim.crop((0,y,size[0],y+1)),strength),(0,y))
+    im.save(ASSETS/f'menu-{name}-v242.png');rgb565(im,f'menu-{name}-v242.565')
+
 fonts = Path("C:/Windows/Fonts")
-font_regular = fonts / "segoeui.ttf"
-font_bold = fonts / "segoeuib.ttf"
-font_logo = fonts / "bahnschrift.ttf"
+font_regular = ROOT / "tools/fonts/Rajdhani-Medium.ttf"
+font_bold = ROOT / "tools/fonts/Oxanium.ttf"
+font_logo = ROOT / "tools/fonts/Oxanium.ttf"
 font_script = ROOT / "tools/Allura-Regular.ttf"
 labels = [
     ("logo", "NARCADE", font_logo, 49),
@@ -40,8 +55,8 @@ labels = [
     ("press", "PULSA X O START", font_bold, 19),
     ("press_sub", "PARA COMENZAR", font_regular, 11),
     ("story", "HISTORIA", font_bold, 26),
-    ("continue", "CONTINUAR PARTIDA", font_bold, 17),
-    ("new", "NUEVA HISTORIA", font_bold, 17),
+    ("continue", "CONTINUAR", font_bold, 14),
+    ("new", "NUEVA PARTIDA", font_bold, 13),
     ("continue_sub", "RETOMA TU AVENTURA", font_regular, 11),
     ("new_sub", "EMPIEZA EN MEDELLÍN", font_regular, 11),
     ("footer", "X SELECCIONAR    O VOLVER", font_regular, 12),
@@ -49,18 +64,21 @@ labels = [
     ("made_by", "made by", font_regular, 10),
     ("story_kicker", "MUNDO ABIERTO  /  36 MISIONES", font_regular, 11),
     ("settings", "AJUSTES", font_bold, 14),
+    ("credits", "CRÉDITOS", font_bold, 14),
+    ("trophies", "TROFEOS", font_bold, 14),
 ]
 english = {
     "cover_sub": "MEDELLIN  /  AN ORIGINAL STORY", "press": "PRESS X OR START",
-    "press_sub": "TO BEGIN", "story": "STORY", "continue": "CONTINUE GAME",
+    "press_sub": "TO BEGIN", "story": "STORY", "continue": "CONTINUE",
     "new": "NEW GAME", "continue_sub": "RESUME YOUR ADVENTURE", "new_sub": "START IN MEDELLIN",
-    "footer": "X SELECT    O BACK", "story_kicker": "OPEN WORLD  /  36 MISSIONS", "settings": "SETTINGS",
+    "footer": "X SELECT    O BACK", "story_kicker": "OPEN WORLD  /  36 MISSIONS", "settings": "SETTINGS", "credits": "CREDITS", "trophies": "TROPHIES",
 }
 labels += [("en_" + name, english.get(name, label), face, size) for name, label, face, size in labels]
 data = bytearray()
 records = []
 for ident, label, face, size in labels:
     font = ImageFont.truetype(str(face), size)
+    if face.name == "Oxanium.ttf": font.set_variation_by_axes([650])
     box = font.getbbox(label)
     width, height = box[2] - box[0] + 4, box[3] - box[1] + 4
     image = Image.new("L", (width, height), 0)

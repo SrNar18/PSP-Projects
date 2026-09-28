@@ -2,37 +2,41 @@
 #ifndef NARCADE_TITLE_UI_H
 #define NARCADE_TITLE_UI_H
 typedef struct { unsigned offset; unsigned short width,height; } TitleLabel;
-enum {TL_LOGO,TL_LOGO_SMALL,TL_COVER_SUB,TL_PRESS,TL_PRESS_SUB,TL_STORY,TL_CONTINUE,TL_NEW,TL_CONTINUE_SUB,TL_NEW_SUB,TL_FOOTER,TL_CREDIT,TL_MADE_BY,TL_STORY_KICKER,TL_SETTINGS,TL_EN_LOGO,TL_EN_LOGO_SMALL,TL_EN_COVER_SUB,TL_EN_PRESS,TL_EN_PRESS_SUB,TL_EN_STORY,TL_EN_CONTINUE,TL_EN_NEW,TL_EN_CONTINUE_SUB,TL_EN_NEW_SUB,TL_EN_FOOTER,TL_EN_CREDIT,TL_EN_MADE_BY,TL_EN_STORY_KICKER,TL_EN_SETTINGS, TL_COUNT };
+enum {TL_LOGO,TL_LOGO_SMALL,TL_COVER_SUB,TL_PRESS,TL_PRESS_SUB,TL_STORY,TL_CONTINUE,TL_NEW,TL_CONTINUE_SUB,TL_NEW_SUB,TL_FOOTER,TL_CREDIT,TL_MADE_BY,TL_STORY_KICKER,TL_SETTINGS,TL_CREDITS,TL_TROPHIES,TL_EN_LOGO,TL_EN_LOGO_SMALL,TL_EN_COVER_SUB,TL_EN_PRESS,TL_EN_PRESS_SUB,TL_EN_STORY,TL_EN_CONTINUE,TL_EN_NEW,TL_EN_CONTINUE_SUB,TL_EN_NEW_SUB,TL_EN_FOOTER,TL_EN_CREDIT,TL_EN_MADE_BY,TL_EN_STORY_KICKER,TL_EN_SETTINGS,TL_EN_CREDITS,TL_EN_TROPHIES, TL_COUNT };
 static const TitleLabel titleLabels[TL_COUNT] = {
-    {0u,225,39}, /* logo */
-    {8775u,116,22}, /* logo_small */
-    {11327u,211,17}, /* cover_sub */
-    {14914u,163,17}, /* press */
-    {17685u,93,12}, /* press_sub */
-    {18801u,126,22}, /* story */
-    {21573u,182,16}, /* continue */
-    {24485u,145,16}, /* new */
-    {26805u,124,12}, /* continue_sub */
-    {28293u,119,15}, /* new_sub */
-    {30078u,155,13}, /* footer */
-    {32093u,84,24}, /* credit */
-    {34109u,43,13}, /* made_by */
-    {34668u,173,14}, /* story_kicker */
-    {37090u,61,14}, /* settings */
-    {37944u,225,39}, /* en_logo */
-    {46719u,116,22}, /* en_logo_small */
-    {49271u,187,14}, /* en_cover_sub */
-    {51889u,171,17}, /* en_press */
-    {54796u,52,12}, /* en_press_sub */
-    {55420u,87,22}, /* en_story */
-    {57334u,144,16}, /* en_continue */
-    {59638u,97,16}, /* en_new */
-    {61190u,145,14}, /* en_continue_sub */
-    {63220u,104,14}, /* en_new_sub */
-    {64676u,104,13}, /* en_footer */
-    {66028u,84,24}, /* en_credit */
-    {68044u,43,13}, /* en_made_by */
-    {68603u,154,14}, /* en_story_kicker */
-    {70759u,68,14}, /* en_settings */
+    {0u,230,38}, /* logo */
+    {8740u,118,21}, /* logo_small */
+    {11218u,182,14}, /* cover_sub */
+    {13766u,163,17}, /* press */
+    {16537u,79,12}, /* press_sub */
+    {17485u,121,22}, /* story */
+    {20147u,84,14}, /* continue */
+    {21323u,106,14}, /* new */
+    {22807u,103,12}, /* continue_sub */
+    {24043u,102,14}, /* new_sub */
+    {25471u,136,12}, /* footer */
+    {27103u,84,24}, /* credit */
+    {29119u,40,12}, /* made_by */
+    {29599u,150,12}, /* story_kicker */
+    {31399u,65,14}, /* settings */
+    {32309u,71,18}, /* credits */
+    {33587u,66,14}, /* trophies */
+    {34511u,230,38}, /* en_logo */
+    {43251u,118,21}, /* en_logo_small */
+    {45729u,161,12}, /* en_cover_sub */
+    {47661u,173,17}, /* en_press */
+    {50602u,44,12}, /* en_press_sub */
+    {51130u,86,22}, /* en_story */
+    {53022u,74,14}, /* en_continue */
+    {54058u,75,14}, /* en_new */
+    {55108u,121,12}, /* en_continue_sub */
+    {56560u,90,12}, /* en_new_sub */
+    {57640u,96,12}, /* en_footer */
+    {58792u,84,24}, /* en_credit */
+    {60808u,40,12}, /* en_made_by */
+    {61288u,137,12}, /* en_story_kicker */
+    {62932u,69,14}, /* en_settings */
+    {63898u,61,14}, /* en_credits */
+    {64752u,71,14}, /* en_trophies */
 };
 #endif
