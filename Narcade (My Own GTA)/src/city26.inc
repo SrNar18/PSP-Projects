@@ -481,7 +481,9 @@ static void metro_train(void){
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
             for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
                 float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
-                box(x+sd*.25f,dz,fl+1.2f,.9f,4.7f,17,0,METAL,METAL,COLOR(226,232,226));
+                box(x+sd*.25f,dz,fl+1.2f,.9f,4.7f,17,0,FLAT,FLAT,COLOR(218,229,222));
+                box(x+sd*.77f,dz+panel*2.23f,fl+1.3f,.08f,.16f,16.4f,0,FLAT,FLAT,COLOR(39,52,53)); /* rubber door seam */
+                box(x+sd*.80f,dz-panel*1.4f,fl+7.8f,.10f,.26f,1.1f,0,FLAT,FLAT,COLOR(78,99,96)); /* recessed grab handle */
                 if(!view->inMetro)box(x+sd*.8f,dz,fl+10,.12f,3.2f,5.4f,0,GLASS,GLASS,COLOR(101,143,147)); /* v2.33: por fuera de la puerta */
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */

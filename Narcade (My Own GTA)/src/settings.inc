@@ -7,16 +7,27 @@ static void settings_apply(void){
 #endif
 }
 static void settings_defaults(void){prefsLanguage=0;prefsBrightness=5;prefsMusic=10;prefsEffects=10;prefsFog=0;settings_apply();}
+static void settings_path(char *path,size_t cap){
+#ifdef _PSP_FW_VERSION
+    raw_snprintf(path,cap,"ms0:/NARCADE.CFG"); /* Outside Sony's SAVEDATA folders. */
+#else
+    raw_snprintf(path,cap,"%s.cfg",g.savepath);
+#endif
+}
 static void settings_load(void){
-    settings_defaults();prefsDirty=0;char path[300];snprintf(path,sizeof path,"%s.cfg",g.savepath);
-    FILE *f=fopen(path,"rb");if(!f)return;PrefsDisk p;int ok=fread(&p,1,sizeof p,f)==sizeof p&&fgetc(f)==EOF;fclose(f);
+    settings_defaults();prefsDirty=0;char path[300];settings_path(path,sizeof path);
+    FILE *f=fopen(path,"rb");
+#ifdef _PSP_FW_VERSION
+    if(!f){raw_snprintf(path,sizeof path,"%s.cfg",g.savepath);f=fopen(path,"rb");} /* Read v2.40 prefs once for migration. */
+#endif
+    if(!f)return;PrefsDisk p;int ok=fread(&p,1,sizeof p,f)==sizeof p&&fgetc(f)==EOF;fclose(f);
     if(ok&&p.magic==0x4643524eu&&p.version==1&&p.check==prefs_check(&p)&&p.language>=0&&p.language<=1&&p.brightness>=0&&p.brightness<=10&&p.music>=0&&p.music<=10&&p.effects>=0&&p.effects<=10&&p.fog>=0&&p.fog<=1){
         prefsLanguage=p.language;prefsBrightness=p.brightness;prefsMusic=p.music;prefsEffects=p.effects;prefsFog=p.fog;settings_apply();}
     prefsDirty=0;
 }
 static int settings_save(void){
     PrefsDisk p={0x4643524eu,1,prefsLanguage,prefsBrightness,prefsMusic,prefsEffects,prefsFog,0};p.check=prefs_check(&p);
-    char path[300],temp[320],backup[320];snprintf(path,sizeof path,"%s.cfg",g.savepath);snprintf(temp,sizeof temp,"%s.tmp",path);snprintf(backup,sizeof backup,"%s.bak",path);
+    char path[300],temp[320],backup[320];settings_path(path,sizeof path);raw_snprintf(temp,sizeof temp,"%s.tmp",path);raw_snprintf(backup,sizeof backup,"%s.bak",path);
     FILE *f=fopen(temp,"wb");if(!f)return 0;int ok=fwrite(&p,1,sizeof p,f)==sizeof p;if(fclose(f))ok=0;if(!ok){remove(temp);return 0;}
     remove(backup);rename(path,backup);if(rename(temp,path)){rename(backup,path);return 0;}prefsDirty=0;return 1;
 }

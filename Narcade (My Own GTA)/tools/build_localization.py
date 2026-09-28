@@ -12,6 +12,17 @@ for es, en in catalog.items():
     assert en and en.isascii(), f'Unsupported English glyphs: {es}'
     assert specs.findall(es) == specs.findall(en), f'Changed format arguments: {es}'
 
+# Validate actual formatter call sites, including newly introduced invariant strings.
+# Length modifiers, star widths and positional conversions are deliberately unsupported.
+call_format = re.compile(r'(?<![A-Za-z_])snprintf\s*\([^,]+,[^,]+,\s*("(?:\\.|[^"\\])*")')
+supported_format = re.compile(r'%(?:[-+ #0\d.]*)(?:[diuscfFgGxXoeE%])')
+for file in ('game.c','combat.inc','settings.inc'):
+    source=(ROOT/'src'/file).read_text(encoding='utf-8')
+    for match in call_format.finditer(source):
+        value=json.loads(match[1])
+        remainder=supported_format.sub('',value)
+        if '%' in remainder:
+            raise SystemExit(f'Unsupported translated printf format in {file}: {value}')
 missing = set()
 for file in ('game.c', 'story.h', 'combat.inc', 'settings.inc', 'assets.h'):
     for match in tokens.finditer((ROOT / 'src' / file).read_text(encoding='utf-8')):

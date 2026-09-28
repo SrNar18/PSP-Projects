@@ -290,7 +290,7 @@ static void box(float x,float z,float bottom,float length,float width,float heig
     /* v2.33 (Claude): una caja larga que cruza una franja de transicion del valle se dibujaba
        recta en pantalla y se salia de su manzana (edificios y puente sobre la calzada). Se
        trocea a lo largo de z para que siga la misma curva que el mapa. */
-    if(geographic&&!rigid&&angle==0&&width>40){float z0=z-width*.5f,z1=z+width*.5f;
+    if(geographic&&!rigid&&!metroFlexible&&angle==0&&width>40){float z0=z-width*.5f,z1=z+width*.5f;
         if(floorf((z0-86.f)/320.f)!=floorf((z1-86.f)/320.f)){
             /* cortes cada ~14 solo dentro de las franjas de transicion (z local 0..86); fuera, una pieza */
             float cut[48];int nc=0;cut[nc++]=z0;
@@ -393,7 +393,7 @@ static void car(const R3Car *c){
         COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
-    if(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200){ /* preserve material capacity in dense traffic */
+    if(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800){ /* preserve material capacity in dense traffic */
         box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);
         if(dist<=170)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
             box(p.x,p.z,5.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,end>0?COLOR(255,244,192):COLOR(255,61,42));}
@@ -430,7 +430,7 @@ static void car(const R3Car *c){
         case 5:prof=suv;mats=suvM;n=7;floor=4;wr=4.2f;break;
         default:prof=sedan;mats=sedanM;n=8;break;
     }
-    hull(c->x,c->z,c->angle,prof,n,mats,floor,paint);
+    hull(c->x,c->z,c->angle,prof,n,mats,floor,paint,dist<100?wr:0);
     /* bajos oscuros */
     box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,METAL,METAL,COLOR(40,40,42));
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
@@ -457,12 +457,12 @@ static void car(const R3Car *c){
        body narrows; their details no longer depend on a stretched door bitmap. */
     for(int end=-1;end<=1;end+=2){
         Point bumper=local(end*18.5f,0,0,c->x,c->z,c->angle);
-        box(bumper.x,bumper.z,3.3f,1.6f,15.8f,2.1f,c->angle,METAL,METAL,shade(paint,.72f));
+        box(bumper.x,bumper.z,3.3f,1.6f,15.8f,2.1f,c->angle,FLAT,FLAT,shade(paint,.55f));
         Point plate=local(end*19.5f,0,0,c->x,c->z,c->angle);
-        box(plate.x,plate.z,5.8f,.55f,4.7f,1.5f,c->angle,METAL,METAL,COLOR(219,219,201));
+        box(plate.x,plate.z,5.8f,.55f,4.7f,1.5f,c->angle,FLAT,FLAT,COLOR(229,214,155));
     }
     Point grille=local(19.1f,0,0,c->x,c->z,c->angle);
-    box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,METAL,METAL,COLOR(56,62,65));
+    box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,FLAT,FLAT,COLOR(33,39,41));
     /* Door shut lines and recessed handles are attached to the correct side
        surface. Their x positions follow each model's cabin, not a shared box. */
     static const float seamX[6][3]={{-9,0,10},{-14,0,9},{-6,7,99},{-9,7,99},{-1,11,99},{-14,0,11}};
@@ -984,7 +984,11 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
         int streetMip=m==ROAD||m==SIDEWALK;
-        sceGuTexMode(GU_PSM_5650,streetMip,0,1);
+        int foliage=m==LEAVES;
+        sceGuTexMode(foliage?GU_PSM_4444:GU_PSM_5650,streetMip,0,1);
+        sceGuTexFunc(GU_TFX_MODULATE,foliage?GU_TCC_RGBA:GU_TCC_RGB);
+        if(foliage){sceGuEnable(GU_ALPHA_TEST);sceGuAlphaFunc(GU_GEQUAL,128,255);}
+        else sceGuDisable(GU_ALPHA_TEST);
         sceGuTexFilter(streetMip?GU_LINEAR_MIPMAP_LINEAR:GU_LINEAR,GU_LINEAR);
         if(m<VRAM_MATERIALS)sceGuTexImage(0,128,128,128,(const char*)textureBase+m*128*128*2);
         else if(m>=WEAPON_METAL)sceGuTexImage(0,64,64,64,textures3d_data+753664+14*8192+(m-WEAPON_METAL)*8192);
@@ -993,6 +997,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
         sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,used[m],0,mesh[m]);
     }
 #endif
+    sceGuDisable(GU_ALPHA_TEST);sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);
     /* v2.5: pase de sombras (oscurece) y pase aditivo (luces, nubes, sol). Sin textura ni niebla. */
     sceGuDisable(GU_FOG);sceGuDisable(GU_TEXTURE_2D);sceGuEnable(GU_BLEND);sceGuDepthMask(GU_TRUE);
     if(shadowUsed){sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);sceGumDrawArray(GU_TRIANGLES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_3D,shadowUsed,0,shadowMesh);}
