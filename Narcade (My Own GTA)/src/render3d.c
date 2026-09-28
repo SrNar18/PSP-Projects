@@ -72,6 +72,7 @@ static const R3Scene *view;
 static float planes[6][4];
 static Point eye,target;
 static int overflow;
+static float r3FogNear=420.f; /* v2.39: inicio de la niebla de distancia */
 /* Opaque horizon silhouettes, rendered behind the playable city. They hide
    the empty far plane without washing out world textures with distance fog. */
 static Vertex __attribute__((aligned(16))) horizonMesh[96*12];
@@ -960,7 +961,10 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
         sceGuEnable(GU_DEPTH_TEST);sceGuDepthMask(GU_FALSE);sceGuEnable(GU_TEXTURE_2D);
     }
 #ifndef NARCADE_TOPVIEW
-    sceGuDisable(GU_FOG);
+    /* v2.39 (Claude): niebla de distancia hacia el color del horizonte. Sin ella lo lejano entraba y
+       salia de golpe en el plano lejano (720) y en los cambios de detalle: ahora aparece poco a poco.
+       La hace el GE por vertice: sin coste de CPU. */
+    sceGuFog(r3FogNear,700.f,horizonColor&0x00ffffffu);sceGuEnable(GU_FOG);
 #endif
 #ifndef AB_NODRAW
     for(int m=0;m<MAT_COUNT;m++)if(used[m]){
