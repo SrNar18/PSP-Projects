@@ -67,13 +67,72 @@ static void wheel(float cx,float cz,float angle,float lx,float ly,float lz,float
 /* Carroceria por secciones. prof[i] = {x, ytop, halfwidth}; mats[i] = material del tramo i (techo) ; los laterales
    usan CAR_SIDE en tramos de cabina y CAR_PAINT en el resto. floor = altura del bajo. */
 typedef struct {float x,y,w;} HullSec;
-static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsigned char *topMat,float floor,uint32_t paint){
+/* Three horizontal contours: tucked sill, full shoulder, tapered cabin. */
+static float car_width_at(float width,float top,float floor,float y){
+    float belt=fminf(top,floor+6.0f);
+    if(y<=belt)return width*(.90f+.10f*fmaxf(0,(y-floor)/fmaxf(belt-floor,.01f)));
+    return width*(1-.14f*fminf(1,(y-belt)/fmaxf(top-belt,.01f)));
+}
+static float car_arch_bottom(float x,float floor,float wheelRadius){
+    float low=floor;if(wheelRadius<=0)return low;
+    for(int e=-1;e<=1;e+=2){float d=x-e*11.f,r=wheelRadius+.7f;
+        if(fabsf(d)<r)low=fmaxf(low,wheelRadius+sqrtf(fmaxf(0,r*r-d*d)));}
+    return low;
+}
+/* Immutable local body patches: 39KB, no heap allocation in the frame loop.
+   Each of six types has close and medium detail; lights/wheels remain dynamic. */
+typedef struct{float u,v,x,y,z;}HullVertex;
+typedef struct{HullVertex v[4];}HullPatch;
+typedef struct{const HullSec *profile;int close,count;HullPatch patch[40];}HullCache;
+static HullCache hullCache[12];
+static void hull_sides(float cx,float cz,float angle,const HullSec *s,int n,float floor,uint32_t paint,float wheelRadius){
+    HullCache *cache=0;int close=wheelRadius>0;
+    for(int k=0;k<12;k++)if(hullCache[k].profile==s&&hullCache[k].close==close){cache=&hullCache[k];break;}
+    if(!cache){
+        for(int k=0;k<12;k++)if(!hullCache[k].profile){cache=&hullCache[k];break;}
+        if(!cache)return; /* Only the six fixed internal profiles are supported. */
+        cache->profile=s;cache->close=close;cache->count=0;
+        for(int i=0;i<n-1;i++){const HullSec *a=&s[i],*b=&s[i+1];float dx=b->x-a->x,dy=b->y-a->y;
+        float cuts[16];int nc=0;cuts[nc++]=a->x;
+        if(wheelRadius>0)for(int e=-1;e<=1;e+=2)for(int k=0;k<=4;k++){
+            float q=e*11.f+(wheelRadius+.7f)*(k*.5f-1);
+            if(q>a->x+.001f&&q<b->x-.001f){int j=nc;while(j>0&&cuts[j-1]>q){cuts[j]=cuts[j-1];j--;}cuts[j]=q;nc++;}}
+        cuts[nc++]=b->x;
+        for(int k=0;k<nc-1;k++){
+            float xx[2]={cuts[k],cuts[k+1]},topY[2],low[2],belt[2],ww[2];
+            for(int j=0;j<2;j++){float t=(xx[j]-a->x)/fmaxf(.001f,dx);
+                topY[j]=a->y+dy*t;ww[j]=a->w+(b->w-a->w)*t;
+                low[j]=fminf(topY[j],car_arch_bottom(xx[j],floor,wheelRadius));belt[j]=fminf(topY[j],floor+6);}
+            int bands=wheelRadius>0?2:1;
+            for(int band=0;band<bands;band++){
+                float lo0=band?fmaxf(low[0],belt[0]):low[0],lo1=band?fmaxf(low[1],belt[1]):low[1];
+                float hi0=band?topY[0]:fmaxf(low[0],belt[0]),hi1=band?topY[1]:fmaxf(low[1],belt[1]);
+                if(bands==1){lo0=low[0];lo1=low[1];hi0=topY[0];hi1=topY[1];}
+                if(hi0-lo0<.001f&&hi1-lo1<.001f)continue;
+                Point p[4]={point(xx[0],hi0,car_width_at(ww[0],topY[0],floor,hi0)),
+                    point(xx[1],hi1,car_width_at(ww[1],topY[1],floor,hi1)),
+                    point(xx[1],lo1,car_width_at(ww[1],topY[1],floor,lo1)),
+                    point(xx[0],lo0,car_width_at(ww[0],topY[0],floor,lo0))};
+                if(cache->count<40){HullPatch *patch=&cache->patch[cache->count++];
+                    for(int j=0;j<4;j++)patch->v[j]=(HullVertex){(xx[j==1||j==2]+20)/40.f,(20-p[j].y)/20.f,p[j].x,p[j].y,p[j].z};}
+            }
+        }
+        }
+    }
+    float ca=cosf(angle),sa=sinf(angle);
+    uint32_t colors[2]={lit_color(paint,-sa,.3f,ca),lit_color(paint,sa,.3f,-ca)};
+    for(int k=0;k<cache->count;k++)for(int side=-1;side<=1;side+=2){Vertex v[4];
+        for(int j=0;j<4;j++){HullVertex *h=&cache->patch[k].v[j];Point p=local(h->x,h->y,side*h->z,cx,cz,angle);
+            v[j]=(Vertex){h->u,h->v,colors[side>0],p.x,p.y,p.z};}
+        polygon(CAR_SIDE,v,4);
+    }
+}
+static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsigned char *topMat,float floor,uint32_t paint,float wheelRadius){
     uint32_t glass=0xffffffffu;
     for(int i=0;i<n-1;i++){
         const HullSec *a=&s[i],*b=&s[i+1];int tm=topMat[i];int cabin=tm>=200;if(cabin)tm-=200; /* >=200: tramo de cabina (laterales con puertas/ventanas) */
         float dx=b->x-a->x,dy=b->y-a->y,len=sqrtf(dx*dx+dy*dy);float nx=-dy/len,ny=dx/len; /* normal del techo en plano x-y local */
         Point tl0=local(a->x,a->y,-a->w*.86f,cx,cz,angle),tr0=local(a->x,a->y,a->w*.86f,cx,cz,angle),tl1=local(b->x,b->y,-b->w*.86f,cx,cz,angle),tr1=local(b->x,b->y,b->w*.86f,cx,cz,angle);
-        Point bl0=local(a->x,floor,-a->w,cx,cz,angle),br0=local(a->x,floor,a->w,cx,cz,angle),bl1=local(b->x,floor,-b->w,cx,cz,angle),br1=local(b->x,floor,b->w,cx,cz,angle);
         float ca=cosf(angle),sa=sinf(angle);
         uint32_t tc=lit_color(tm==GLASS?glass:paint,nx*ca,ny,nx*sa);
         litAlready=1;
@@ -81,28 +140,25 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
         /* Metallic reflections share car-local UVs across all body sections.
            Vertical UV follows actual height, so the shoulder and sill cannot
            bend when the bonnet or roof changes height. */
-        int sideMat=CAR_SIDE;
-        uint32_t lc=lit_color(paint,-sa,.3f,ca),rc=lit_color(paint,sa,.3f,-ca);
         /* Shared longitudinal UVs keep paint detail aligned across doors,
            bonnet and rear quarter instead of restarting each section. */
-        float u0=(a->x+20)/40.f,u1=(b->x+20)/40.f;
-        float v0=(20-a->y)/20.f,v1=(20-b->y)/20.f,vfloor=(20-floor)/20.f;
-        Vertex left[4]={{u0,v0,lc,tl0.x,tl0.y,tl0.z},{u1,v1,lc,tl1.x,tl1.y,tl1.z},{u1,vfloor,lc,bl1.x,bl1.y,bl1.z},{u0,vfloor,lc,bl0.x,bl0.y,bl0.z}};polygon(sideMat,left,4);
-        Vertex right[4]={{u1,v1,rc,tr1.x,tr1.y,tr1.z},{u0,v0,rc,tr0.x,tr0.y,tr0.z},{u0,vfloor,rc,br0.x,br0.y,br0.z},{u1,vfloor,rc,br1.x,br1.y,br1.z}};polygon(sideMat,right,4);
+        /* Open wheel wells are absent geometry, not painted dark circles.
+           Split only at arch knots, preserving shared longitudinal UVs. */
+        if(i==0)hull_sides(cx,cz,angle,s,n,floor,paint,wheelRadius);
         litAlready=0;
         for(int side=-1;side<=1;side+=2){
             float y0=floor+2.4f,y1=y0+.45f;
-            float a0=a->w*(1-.14f*(y0-floor)/fmaxf(a->y-floor,1))+.08f;
-            float b0=b->w*(1-.14f*(y0-floor)/fmaxf(b->y-floor,1))+.08f;
-            float a1=a->w*(1-.14f*(y1-floor)/fmaxf(a->y-floor,1))+.08f;
-            float b1=b->w*(1-.14f*(y1-floor)/fmaxf(b->y-floor,1))+.08f;
+            float a0=car_width_at(a->w,a->y,floor,y0)+.08f;
+            float b0=car_width_at(b->w,b->y,floor,y0)+.08f;
+            float a1=car_width_at(a->w,a->y,floor,y1)+.08f;
+            float b1=car_width_at(b->w,b->y,floor,y1)+.08f;
             quad(METAL,local(a->x,y1,side*a1,cx,cz,angle),local(b->x,y1,side*b1,cx,cz,angle),
                 local(b->x,y0,side*b0,cx,cz,angle),local(a->x,y0,side*a0,cx,cz,angle),shade(paint,.48f),1,1);
         }
         if(cabin&&(a->y>12||b->y>12))for(int side=-1;side<=1;side+=2){
             float ya=fminf(a->y-.35f,11.5f),yb=fminf(b->y-.35f,11.5f);
-            float wa=a->w*(.86f+.14f*(a->y-ya)/fmaxf(a->y-floor,1))+.13f;
-            float wb=b->w*(.86f+.14f*(b->y-yb)/fmaxf(b->y-floor,1))+.13f;
+            float wa=car_width_at(a->w,a->y,floor,ya)+.13f;
+            float wb=car_width_at(b->w,b->y,floor,yb)+.13f;
             Point p0=local(a->x,a->y-.15f,side*(a->w*.86f+.13f),cx,cz,angle);
             Point p1=local(b->x,b->y-.15f,side*(b->w*.86f+.13f),cx,cz,angle);
             Point p2=local(b->x,yb,side*wb,cx,cz,angle);
@@ -118,7 +174,7 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
     }
     /* tapas delantera y trasera */
     for(int e=0;e<2;e++){const HullSec *a=e?&s[n-1]:&s[0];float ca=cosf(angle),sa=sinf(angle);uint32_t c=lit_color(paint,e?ca:-ca,.2f,e?sa:-sa);
-        Point p0=local(a->x,a->y,-a->w*.86f,cx,cz,angle),p1=local(a->x,a->y,a->w*.86f,cx,cz,angle),p2=local(a->x,floor,a->w,cx,cz,angle),p3=local(a->x,floor,-a->w,cx,cz,angle);
+        Point p0=local(a->x,a->y,-a->w*.86f,cx,cz,angle),p1=local(a->x,a->y,a->w*.86f,cx,cz,angle),p2=local(a->x,floor,a->w*.9f,cx,cz,angle),p3=local(a->x,floor,-a->w*.9f,cx,cz,angle);
         litAlready=1;Vertex q[4]={{0,0,c,p0.x,p0.y,p0.z},{1,0,c,p1.x,p1.y,p1.z},{1,1,c,p2.x,p2.y,p2.z},{0,1,c,p3.x,p3.y,p3.z}};polygon(CAR_PAINT,q,4);litAlready=0;}
 }
 /* Point on the actual sloped side of a car body, at car-local x and height.
@@ -128,8 +184,7 @@ static Point car_skin(float cx,float cz,float angle,const HullSec *s,int n,float
     float t=(x-s[i].x)/fmaxf(.01f,s[i+1].x-s[i].x);t=fmaxf(0,fminf(1,t));
     float top=s[i].y+(s[i+1].y-s[i].y)*t;
     float width=s[i].w+(s[i+1].w-s[i].w)*t;
-    float height=fmaxf(0,fminf(1,(y-floor)/fmaxf(top-floor,.01f)));
-    return local(x,y,side*(width*(1-.14f*height)+offset),cx,cz,angle);
+    return local(x,y,side*(car_width_at(width,top,floor,y)+offset),cx,cz,angle);
 }
 static void car_seam(float cx,float cz,float angle,const HullSec *s,int n,float floor,float x,int side){
     float low=floor+2.4f,high=fminf(10.8f,s[n-1].y+2.8f);
@@ -141,24 +196,20 @@ static void car_seam(float cx,float cz,float angle,const HullSec *s,int n,float 
 }
 /* Arboles: tipo por hash de posicion (0 frondoso, 1 palma, 2 cipres). */
 static void foliage_lobe(float x,float z,float bottom,float radius,float height,unsigned seed,uint32_t tint){
-    /* Six-sided, three-level round crown. Irregular radii break the cone look
-       without raising the old near-tree polygon budget. */
-    Point ring[3][6];float rot=(seed&255)*(2*PI/255);
-    for(int level=0;level<3;level++)for(int k=0;k<6;k++){
-        unsigned h=seed^(unsigned)k*2654435761u^(unsigned)level*2246822519u;
-        float a=rot+k*2*PI/6,variation=.90f+(h>>12&31)/155.f;
-        float r=radius*variation*(level==0?.58f:level==1?1.f:.36f);
-        float y=bottom+height*(level==0?.08f:level==1?.46f:.92f);
-        ring[level][k]=point(x+cosf(a)*r,y,z+sinf(a)*r);
-    }
-    int saved=litAlready;litAlready=1;
-    for(int level=0;level<2;level++)for(int k=0;k<6;k++){
-        int j=(k+1)%6;float a=rot+(k+.5f)*2*PI/6;
-        uint32_t c=lit_color(shade(tint,.83f+((seed>>(k+4))&3)*.08f),cosf(a)*.7f,level?.75f:.35f,sinf(a)*.7f);
-        quad(LEAVES,ring[level][k],ring[level][j],ring[level+1][j],ring[level+1][k],c,1,1);
+    /* Alpha-tested branch sprays keep sky visible inside the crown. */
+    /* Crossed sprays have open space inside the crown. No closed green shell.
+       Three cards replace twelve lobe faces, reducing the foliage vertex cost. */
+    float rot=(seed&255)*(2*PI/255);int saved=litAlready;litAlready=1;
+    for(int k=0;k<3;k++){
+        float a=rot+k*PI/3,ex=cosf(a)*radius,ez=sinf(a)*radius;
+        int light=200+((tint>>8)&255)/10+(seed&7);
+        uint32_t c=lit_color(COLOR(light,light+8,light-5),cosf(a)*.35f,.8f,sinf(a)*.35f);
+        quad(LEAVES,point(x-ex,bottom,z-ez),point(x+ex,bottom+.6f,z+ez),
+            point(x+ex*.82f,bottom+height,z+ez*.82f),point(x-ex*.85f,bottom+height-.5f,z-ez*.85f),c,1,1);
     }
     litAlready=saved;
 }
+
 static void tree_shape(float x,float z,int kind,int simple){
     unsigned h=(unsigned)(x*7.3f)*2654435761u^(unsigned)(z*3.1f)*40503u;float rot=(h&255)/255.f*6.28f;float s=.85f+((h>>8)&127)/127.f*.4f;
     if(kind==1){ /* palma: tronco en dos tramos ligeramente inclinado, frondas colgantes */

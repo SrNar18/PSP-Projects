@@ -21,6 +21,9 @@ int main(void){
         assert(strcmp(locale_text(missions[i].outro),missions[i].outro));
         for(int j=0;j<missions[i].count;j++)assert(strcmp(locale_text(missions[i].steps[j].text),missions[i].steps[j].text));
     }
+    assert(!locale_format_valid("%ld %s")&&!locale_format_valid("%zu")&&!locale_format_valid("%*d"));
+    char raw[100];raw_snprintf(raw,sizeof raw,"%s", "GUARDAR PARTIDA");assert(!strcmp(raw,"GUARDAR PARTIDA"));
+    assert(locale_snprintf(raw,sizeof raw,"%ld %s",4L,"safe")==-1&&raw[0]==0);
     char line[200];snprintf(line,sizeof line,"Mision %02d/36 - %s",1,missions[0].title);
     assert(!strcmp(line,"Mission 01/36 - A delivery gone wrong"));
     snprintf(line,sizeof line,"SENAL %d%%  /  ENLACE %.1f de 4.0 s",75,2.5);
