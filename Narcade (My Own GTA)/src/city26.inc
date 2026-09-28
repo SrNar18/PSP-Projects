@@ -458,12 +458,30 @@ static void tunnel_building(int bx,float z0,float z1,int far){
    escalera de 60 de recorrido en la orilla, y tren de dos coches (paneles bajos + pilares de ventana: se ve la ciudad
    desde dentro cuando el jugador va a bordo). */
 static void rail_canopy(float x,float z,float width,float length,float y,float rise){
+    /* Static roofs must follow the same city-curve lattice as the track deck.
+       One long chord cut into the moving train and adjacent buildings. Moving
+       carriage roofs stay flexible and keep their existing stable UV topology. */
+    if(geographic&&!metroFlexible&&length>40){float z0=z-length*.5f,z1=z+length*.5f;
+        if(floorf((z0-86.f)/320.f)!=floorf((z1-86.f)/320.f)){
+            float cut[48];int nc=0;cut[nc++]=z0;
+            for(int row=(int)floorf(z0/320.f);row<=(int)floorf(z1/320.f)&&nc<44;row++){
+                float t0=fmaxf(z0,row*320.f),t1=fminf(z1,row*320.f+86.f);if(t1<=t0)continue;
+                int n=(int)ceilf((t1-t0)/14.f);
+                for(int k=0;k<=n&&nc<46;k++){float c=t0+(t1-t0)*k/n;if(c>cut[nc-1]+.01f&&c<z1-.01f)cut[nc++]=c;}
+            }
+            cut[nc++]=z1;
+            for(int k=0;k+1<nc;k++)rail_canopy(x,(cut[k]+cut[k+1])*.5f,width,cut[k+1]-cut[k],y,rise);
+            return;
+        }
+    }
+
     float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);litAlready=1;
     for(int k=0;k<4;k++){
         float a=PI*k/4,b=PI*(k+1)/4;
         float xa=x+cosf(a)*width*.5f,xb=x+cosf(b)*width*.5f,ya=y+sinf(a)*rise,yb=y+sinf(b)*rise;
         quad(METAL,point(xa,ya,z-length*.5f),point(xa,ya,z+length*.5f),point(xb,yb,z+length*.5f),point(xb,yb,z-length*.5f),lit_color(COLOR(210,224,215),cosf((a+b)*.5f),sinf((a+b)*.5f),0),length/45,.5f);
-        quad(METAL,point(xb,yb,z-length*.5f),point(xb,yb,z+length*.5f),point(xa,ya,z+length*.5f),point(xa,ya,z-length*.5f),lit_color(COLOR(129,155,154),0,-1,0),length/45,.5f);
+        /* GE culling is disabled: one surface is already visible from both sides.
+           The old reversed duplicate fought for the same depth and shimmered. */
     }
     litAlready=0;fixedGround=saved;
 }
@@ -550,10 +568,12 @@ static void metro(int bz,int far){
    box(CM_METRO_X+side*18.2f,z+160,CM_PLAT_H,.55f,198,5.5f,0,METAL,METAL,COLOR(73,111,108));
   }
   for(int k=0;k<3;k++)for(int side=-1;side<=1;side+=2)cylinder(CM_METRO_X+side*15,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu);
-  for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,24,0,METAL,METAL,COLOR(113,143,144));
-  rail_canopy(CM_METRO_X,z+160,38,208,CM_PLAT_H+24,5);
+  for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,26,0,METAL,METAL,COLOR(113,143,144));
+  /* Platform canopies leave the central track open: the follow camera can
+     see trains/rails instead of looking through one opaque full-width roof. */
+  for(int side=-1;side<=1;side+=2)rail_canopy(CM_METRO_X+side*15,z+160,8,208,CM_PLAT_H+24,2);
   if(!far){
-   for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+23.5f,37,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
+   for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+25,37,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
    for(int side=-1;side<=1;side+=2)for(int k=0;k<3;k++){
     box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H+2.5f,3,10,.8f,0,FLAT,FLAT,COLOR(50,137,121));
     box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H,1,7,2.5f,0,METAL,METAL,COLOR(68,86,87));
@@ -563,7 +583,12 @@ static void metro(int bz,int far){
   for(int k=0;k<20;k++)box(1470.5f,z+316.5f-k*3,0,8,3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214));
   for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
   box(1470.5f,z+257,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
-  if(!far){metro_marker(CM_METRO_X,z+58,CM_PLAT_H+19,(bz+1)/2);metro_marker(1470.5f,z+314,19,(bz+1)/2);}
+  if(!far){
+   /* Ground entrance sign stands on its own posts, below the viaduct;
+      no floating board or frame crosses the train/roof equipment envelope. */
+   for(int side=-1;side<=1;side+=2)box(1470.5f+side*9.4f,z+314,0,.7f,.7f,24.8f,0,METAL,METAL,COLOR(113,143,144));
+   metro_marker(1470.5f,z+314,19,(bz+1)/2);
+  }
  }
 }
 /* Metrocable: pilonas, cable y cabinas entre (CM_CABLE_X0,Z0) y (CM_CABLE_X1,Z1). */

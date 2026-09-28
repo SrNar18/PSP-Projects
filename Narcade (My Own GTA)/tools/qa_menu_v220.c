@@ -8,7 +8,7 @@ int main(void){
  game_init();g.screen=TITLE;g.titleStage=1;g.menu=0;
  unsigned before=menuEvent;
  game_tick(B_DOWN,0,0,1.f/60);
- assert(g.menu==1&&menuEvent==before+1);
+ assert(g.menu==3&&menuEvent==before+1);
  short samples[4410*2];game_audio(samples,4410);
  int peak=0,tail=0;
  for(int i=0;i<4410*2;i++){

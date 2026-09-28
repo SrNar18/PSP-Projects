@@ -43,7 +43,6 @@ for name,source,size in [
         if strength>0:im.paste(Image.blend(im.crop((0,y,size[0],y+1)),scrim.crop((0,y,size[0],y+1)),strength),(0,y))
     im.save(ASSETS/f'menu-{name}-v242.png');rgb565(im,f'menu-{name}-v242.565')
 
-fonts = Path("C:/Windows/Fonts")
 font_regular = ROOT / "tools/fonts/Rajdhani-Medium.ttf"
 font_bold = ROOT / "tools/fonts/Oxanium.ttf"
 font_logo = ROOT / "tools/fonts/Oxanium.ttf"

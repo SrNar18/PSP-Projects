@@ -1316,10 +1316,10 @@ static void hud(void){
  /* Abajo al centro: aviso > accion contextual > frase del objetivo. */
  const char *line=NULL;uint32_t col=WHITE;
  if(g.noticeT>0){line=g.notice;col=WHITE;}
+ else if(g.inMetro){line=g.metroWait>0?"R+[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
+ else if(metro_boardable()){line="R+[] SUBIR AL METRO";col=LIME;}
  else if(g.mission<36){const Step *st=step_now();
-  if(g.inMetro){line=g.metroWait>0?"R+[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
-  else if(metro_boardable()){line="R+[] SUBIR AL METRO";col=LIME;}
-  else if(!g.side&&near_hub(st->loc,58)){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
+  if(!g.side&&near_hub(st->loc,58)){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
  if(!line&&!combat.aiming&&combat_wall_at(g.x,g.y,14))line="[] ESCALAR MURO";
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
