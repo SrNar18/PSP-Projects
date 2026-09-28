@@ -104,8 +104,10 @@ static int weapon_menu(float ax,float ay,float dt){
  return 0;
 }
 /* v1.1: dibujo optimizado para PSP real: recorrido por filas y trazado de pixel sin recorte por llamada. */
-static inline void px(int x,int y,uint32_t c){if((unsigned)x<(unsigned)W&&(unsigned)y<(unsigned)H)fb[y*pitch+x]=c;}
-static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;if(x1<=x0||y1<=y0)return;int n=x1-x0;for(int j=y0;j<y1;j++){uint32_t *row=fb+j*pitch+x0;for(int i=0;i<n;i++)row[i]=c;}}
+/* v2.41 (Claude): franjas de 16 filas con HUD en este fotograma: solo esas se limpian y se componen en la GPU. */
+static unsigned char hudBand[17];
+static inline void px(int x,int y,uint32_t c){if((unsigned)x<(unsigned)W&&(unsigned)y<(unsigned)H){fb[y*pitch+x]=c;hudBand[y>>4]=1;}}
+static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;if(x1<=x0||y1<=y0)return;for(int b=y0>>4;b<=(y1-1)>>4;b++)hudBand[b]=1;int n=x1-x0;for(int j=y0;j<y1;j++){uint32_t *row=fb+j*pitch+x0;for(int i=0;i<n;i++)row[i]=c;}}
 static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){px(x,y,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
 static void circle(int x,int y,int r,uint32_t c){for(int yy=-r;yy<=r;yy++){int xx=(int)sqrtf((float)(r*r-yy*yy));rect(x-xx,y+yy,xx*2+1,1,c);}}
 static void outline(int x,int y,int w,int h,uint32_t c){rect(x,y,w,1,c);rect(x,y+h-1,w,1,c);rect(x,y,1,h,c);rect(x+w-1,y,1,h,c);}
@@ -470,6 +472,71 @@ static const char *LOAD_STEPS[]={"Leyendo la partida","Trazando calles y manzana
 static void build_scene(R3Scene *sp);
 #endif
 enum{LOAD_WARM_MAX=14}; /* v2.37: etapas 6..19 construyen la ciudad visible (6 piezas cada una) */
+/* v2.41 (Claude): pantalla de carga ilustrada (arte de Codex, assets/loading-v241). Las imagenes NO van en el
+   ejecutable (885 KB; vamos justos de memoria): el ISO las lleva en PSP_GAME/USRDIR/LOADn.BIN (RGB565 512x288)
+   y se leen durante la carga en la capa del HUD, que en ese momento no se usa. Cada frase describe el trabajo
+   que se hace mientras se ve (la etapa siguiente); la barra sigue las etapas reales. */
+static uint32_t __attribute__((aligned(16))) hudLayer[512*512];
+static unsigned char hudPrev[17]={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+#define LOAD_IMG_W 512
+#define LOAD_IMG_H 288
+static uint16_t *const loadSlot[2]={(uint16_t*)hudLayer,(uint16_t*)hudLayer+LOAD_IMG_W*LOAD_IMG_H};
+static int loadShown=-1,loadPrev=-1,loadOk[3],loadSlotOf[3]={-1,-1,-1},loadFade=256;
+static float loadZoom=1,loadBar;
+static int load_image(int k){ /* lee LOADk.BIN en la ranura libre; 0 si no esta (fondo liso) */
+ static const char *const dirs[]={"disc0:/PSP_GAME/USRDIR/","ms0:/PSP/GAME/NARCADE/"};
+ static const char *const host[]={"assets/loading-v241/valley.rgb565","assets/loading-v241/street.rgb565","assets/loading-v241/rooftop.rgb565"};
+ int slot=loadShown>=0&&loadSlotOf[loadShown]==0?1:0;
+ for(int d=0;d<3;d++){char path[96];
+  if(d<2){strcpy(path,dirs[d]);size_t n=strlen(path);path[n]='L';path[n+1]='O';path[n+2]='A';path[n+3]='D';path[n+4]=(char)('0'+k);strcpy(path+n+5,".BIN");}
+  else strcpy(path,host[k]);
+  FILE *f=fopen(path,"rb");if(!f)continue;size_t got=fread(loadSlot[slot],2,LOAD_IMG_W*LOAD_IMG_H,f);fclose(f);
+  if(got==LOAD_IMG_W*LOAD_IMG_H){for(int q=0;q<3;q++)if(loadSlotOf[q]==slot)loadSlotOf[q]=-1;loadSlotOf[k]=slot;return 1;}}
+ return 0;
+}
+static inline uint32_t rgb565_to_8888(uint16_t c){unsigned r=c&31,g5=(c>>5)&63,b=(c>>11)&31; /* formato PSP 5650: rojo en los bits bajos */return 0xff000000u|(((b<<3)|(b>>2))<<16)|(((g5<<2)|(g5>>4))<<8)|((r<<3)|(r>>2));}
+/* imagen con zoom centrado (1 = recorte 480x272 del centro), brillo 0..256 y mezcla opcional sobre lo que hay */
+static void load_blit(uint32_t *dst,int stride,const uint16_t *img,float zoom,int light,int blend){
+ float sw=480.f/zoom,sh=272.f/zoom,x0=(LOAD_IMG_W-sw)*.5f,y0=(LOAD_IMG_H-sh)*.5f;
+ int fx0=(int)(x0*65536),fdx=(int)(sw/480.f*65536),fy0=(int)(y0*65536),fdy=(int)(sh/272.f*65536);
+ for(int y=0;y<272;y++){const uint16_t *row=img+((fy0+y*fdy)>>16)*LOAD_IMG_W;uint32_t *out=dst+y*stride;int fx=fx0;
+  for(int x=0;x<480;x++,fx+=fdx){uint32_t c=rgb565_to_8888(row[fx>>16]);
+   unsigned r=(c&255)*light>>8,g=((c>>8)&255)*light>>8,b=((c>>16)&255)*light>>8;
+   if(blend){uint32_t o=out[x];r=(r*blend+(o&255)*(256-blend))>>8;g=(g*blend+((o>>8)&255)*(256-blend))>>8;b=(b*blend+((o>>16)&255)*(256-blend))>>8;}
+   out[x]=0xff000000u|(b<<16)|(g<<8)|r;}}
+}
+static const char *const loadEs[]={"Recuperando tu historia","Trazando las calles y manzanas de Medellin","Arrancando los motores del trafico",
+ "Llenando las aceras de vecinos","Dibujando el mapa del barrio","Cargando cartuchos y ajustando la mira","Encendiendo las luces de la ciudad","Listo. Buena suerte, Nico"};
+static const char *const loadEn[]={"Restoring your story","Laying out Medellin's streets and blocks","Starting the traffic engines",
+ "Filling the sidewalks with neighbors","Drawing the neighborhood map","Loading magazines and zeroing the sights","Switching on the city lights","Ready. Good luck, Nico"};
+static void load_screen_draw(uint32_t *pixels,int stride,int stage,int anim){
+ fb=pixels;pitch=stride;
+ static int drawnStage;if(anim)stage=drawnStage;else drawnStage=stage; /* la animacion repite la etapa ya dibujada (incluido el final) */
+ if(stage==0&&!anim){loadShown=loadPrev=-1;loadOk[0]=loadOk[1]=loadOk[2]=0;loadSlotOf[0]=loadSlotOf[1]=loadSlotOf[2]=-1;loadFade=256;loadZoom=1;loadBar=0;}
+ int warmEnd=6+LOAD_WARM_MAX,finished=stage>=warmEnd;
+ int caption=finished?7:stage+1<6?stage+1:6;            /* trabajo que se hace mientras se ve este cuadro */
+ int want=caption<=1?0:caption<=5?1:2;
+ if(!anim&&want!=loadShown){loadPrev=loadShown;loadOk[want]=load_image(want);loadShown=want;loadFade=0;loadZoom=1;}
+ loadZoom=fminf(1.066f,loadZoom+.005f);if(loadFade<256)loadFade=loadFade+43>256?256:loadFade+43;
+ float target=finished?1.f:(float)(stage+1)/(warmEnd+1);
+ if(finished)loadBar=1;else if(loadBar<target)loadBar=fminf(target,loadBar+fmaxf(.015f,(target-loadBar)*.45f));
+ if(loadShown>=0&&loadOk[loadShown]){
+  int prevOk=loadFade<256&&loadPrev>=0&&loadOk[loadPrev]&&loadSlotOf[loadPrev]>=0;
+  if(prevOk)load_blit(pixels,stride,loadSlot[loadSlotOf[loadPrev]],1.066f,210,0);else if(loadFade<256)rect(0,0,W,H,INK);
+  load_blit(pixels,stride,loadSlot[loadSlotOf[loadShown]],loadZoom,210,loadFade<256?loadFade:0);
+ }else{rect(0,0,W,H,INK);text(W/2-7*3,90,"NARCADE",LIME,1);}
+ rect(0,H-58,W,58,RGB(7,13,23));rect(0,H-58,W,2,LIME);
+ text(16,H-50,"NARCADE",LIME,1);
+ text(16,H-32,prefsLanguage?loadEn[caption]:loadEs[caption],WHITE,1);
+ int bw=W-32;rect(16,H-12,bw,5,PANEL);rect(16,H-12,(int)(bw*loadBar),5,LIME);
+ char b[16];int pct=(int)(loadBar*100+.5f);b[0]=0;if(pct>=100){b[0]='1';b[1]='0';b[2]='0';b[3]='%';b[4]=0;}else{b[0]=(char)(pct>=10?'0'+pct/10:' ');b[1]=(char)('0'+pct%10);b[2]='%';b[3]=0;}
+ text(W-16-(int)strlen(b)*7,H-50,b,MUTED,1);
+}
+/* fotogramas de animacion entre etapas (zoom y fundido siguen sin tocar la carga) */
+/* devuelve 1 mientras quede fundido por terminar: la carga no sigue con una imagen a medio fundir */
+int game_load_anim(uint32_t *pixels,int stride,int stage){load_screen_draw(pixels,stride,stage,1);return loadFade<256;}
+/* la capa del HUD tuvo imagenes: el primer fotograma de juego la limpia entera */
+void game_load_finish(void){memset(hudPrev,1,sizeof hudPrev);}
 int game_load_stage(uint32_t *pixels,int stride,int stage){
  static int warmDone;if(stage==0)warmDone=0;else if(warmDone)return 1;
  switch(stage){
@@ -485,16 +552,7 @@ int game_load_stage(uint32_t *pixels,int stride,int stage){
 #endif
    return 1;
  }
- /* pintar el progreso */
- fb=pixels;pitch=stride;
- rect(0,0,W,H,INK);rect(0,0,W,3,LIME);
- text(W/2-8*6,60,"NARCADE",LIME,1);
- text(W/2-11*7,92,"CARGANDO MEDELLIN...",WHITE,1);
- int total=6+LOAD_WARM_MAX,done=stage+1;if(done>total)done=total;
- const char *step=locale_text(LOAD_STEPS[stage<6?stage:stage<6+LOAD_WARM_MAX?6:7]);
- text_raw(W/2-((int)strlen(step)*7)/2,140,step,MUTED,1);
- rect(W/2-100,170,200,8,PANEL);rect(W/2-100,170,200*done/total,8,LIME);
- char b[32];snprintf(b,sizeof(b),"%d%%",100*done/total);text(W/2-12,190,b,MUTED,1);
+ load_screen_draw(pixels,stride,stage,0);
  return 0;
 }
 void game_world_reset(void){world_init();}
@@ -743,7 +801,7 @@ static void civilian_traffic_tick(int i,float dt){
  /* v2.39 (Claude): un choque puede desplazarlo de lado; vuelve poco a poco al centro de su carril
     (42+-14 en la rejilla). Antes seguia recto desplazado y acababa en un parque. */
  if(c->speed>1){int horizontal=fabsf(cosf(c->a))>.7f;float cur=horizontal?yy:xx;
-  float lane=roundf((cur-42)/320.f)*320.f+42.f;float want=lane+(cur>=lane?14.f:-14.f);
+  float lane=roundf((cur-42)/320.f)*320.f+42.f;float want=lane+(horizontal?(cosf(c->a)>0?14.f:-14.f):(sinf(c->a)>0?-14.f:14.f)); /* v2.41: carril segun el sentido (como respawn_civilian), no segun el lado en que quedo */
   float step=clampf(want-cur,-25*dt,25*dt);if(horizontal)yy+=step;else xx+=step;}
  if(car_free_at(c,xx,yy)){c->x=xx;c->y=yy;g.wallTime[i]=0;}
  else{c->speed=0;if(target>0){g.wallTime[i]+=dt;if(g.wallTime[i]>3&&(dist(c->x,c->y,g.x,g.y)>250||!in_view(c->x,c->y)))respawn_civilian(i);}}
@@ -1054,8 +1112,13 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   }else{
    if(pressed(B_CIRCLE)){g.titleStage=0;g.screenT=0;}
    else{
-    if(pressed(B_UP)||pressed(B_LEFT))g.menu=wrapi(g.menu-1,3);
-    if(pressed(B_DOWN)||pressed(B_RIGHT))g.menu=(g.menu+1)%3;
+    /* v2.41 (Claude): navegacion en rejilla. Tarjetas arriba (0 continuar, 1 nueva), ajustes debajo (2):
+       ABAJO va directo a ajustes; ARRIBA vuelve a la ultima tarjeta; IZQ/DER eligen tarjeta. */
+    {static int lastCard;if(g.menu<2)lastCard=g.menu;
+     if(pressed(B_DOWN))g.menu=2;
+     else if(pressed(B_UP)){if(g.menu==2)g.menu=lastCard;}
+     else if(pressed(B_LEFT))g.menu=0;
+     else if(pressed(B_RIGHT))g.menu=1;}
     if(pressed(B_CROSS)||pressed(B_START)){
      if(g.menu==0){if(nativeSave)saveRequest=2;else game_continue();}
      else if(g.menu==2){g.screen=SETTINGS;g.menu=0;menu_click();}
@@ -1425,6 +1488,10 @@ static void weapon_wheel_draw(void){
  label(153,8,"SELECCIONAR ARMA",WHITE);
  footer("MANTEN L + JOYSTICK elegir / SUELTA L equipar");
 }
+static void hud_clear_bands(uint32_t *layer){ /* limpia lo dibujado el fotograma anterior y empieza el registro */
+ for(int b=0;b<17;b++)if(hudPrev[b]){int y0=b*16,y1=y0+16>H?H:y0+16;memset(layer+y0*512,0,(size_t)(y1-y0)*512*sizeof(uint32_t));}
+ memset(hudBand,0,sizeof hudBand);
+}
 #ifdef NARCADE_3D
 static void build_scene(R3Scene *sp){
  memset(sp,0,sizeof(*sp));sp->x=g.x;sp->z=g.y;sp->angle=g.a;sp->yaw=g.viewYaw;sp->time=g.clock;
@@ -1450,7 +1517,7 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  static R3Scene scene;build_scene(&scene);
  r3_draw(renderTarget,&scene);
 #ifndef R3_HOST
- memset(fb,0,512*272*sizeof(uint32_t)); /* v2.37: se limpia la capa del HUD mientras el GE pinta la escena */
+ hud_clear_bands(fb); /* v2.37: se limpia la capa del HUD mientras el GE pinta la escena (v2.41: solo sus franjas) */
 #endif
 #else
  world_draw();
@@ -1464,9 +1531,12 @@ void game_draw(uint32_t *pixels,int stride){
 #ifdef NARCADE_3D
  renderTarget=pixels;
 #ifndef R3_HOST
- static uint32_t __attribute__((aligned(16))) overlay[512*512];
+ uint32_t *overlay=hudLayer;
  int world=!(g.screen==TITLE||g.screen==MINI||g.screen==MAP||g.screen==JOURNAL||g.screen==PAUSE||g.screen==SETTINGS);
- if(!world)memset(overlay,0,512*272*sizeof(uint32_t));draw_frame(overlay,512);r3_overlay(pixels,overlay);
+ if(!world){memset(overlay,0,512*272*sizeof(uint32_t));memset(hudPrev,1,sizeof hudPrev);}
+ draw_frame(overlay,512);
+ if(!world)memset(hudBand,1,sizeof hudBand);
+ r3_overlay_bands(pixels,overlay,hudBand);memcpy(hudPrev,hudBand,sizeof hudPrev);
 #else
  draw_frame(pixels,stride);
 #endif

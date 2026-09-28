@@ -243,7 +243,47 @@ static inline int cm_solid(float x,float z){return cm_parcel_at(x,z)==0;}
    mas cercano fuera de toda parcela en radio 3 y con una parcela a menos de 5, evitando el coche
    aparcado del punto (x+54, y+18). Lo usan el dibujo (render3d.c) y la colision (game.c). */
 static inline int cm_block(float x,float z){return cm_parcel_at(x,z)>=0;}
+/* v2.41 (Claude): la busqueda fina tarda ~150 ms en PC (varios segundos en PSP) y se hacia de forma diferida
+   en el primer fotograma tras cargar (render) y otra vez al primer paso (juego): el parón tras el 100 %.
+   Las posiciones son fijas: tabla precalculada; tools/qa_terminal_table_v241.c comprueba que coincide. */
+static const float cmTerminalTable[30][4]={ /* lx,ly -> tx,tz: generado por tools/qa_terminal_table_v241.c */
+    {62.f,1022.f,94.470871f,1056.05286f},
+    {382.f,1342.f,409.949768f,1366.02087f},
+    {1022.f,1022.f,1055.12878f,1056.31287f},
+    {62.f,382.f,90.90979f,410.482025f},
+    {1342.f,702.f,1386.f,746.f},
+    {1342.f,1022.f,1386.f,1066.f},
+    {62.f,702.f,90.7564468f,728.392212f},
+    {702.f,382.f,729.274353f,415.748871f},
+    {1342.f,62.f,1386.f,106.f},
+    {1662.f,1342.f,1690.75647f,1368.39221f},
+    {382.f,62.f,410.90979f,90.4820404f},
+    {1982.f,1982.f,2010.38586f,2004.1897f},
+    {382.f,1982.f,410.756439f,2008.39221f},
+    {702.f,1022.f,734.470886f,1056.05286f},
+    {1022.f,1662.f,1054.47083f,1696.05286f},
+    {1982.f,702.f,2008.83081f,727.515015f},
+    {62.f,62.f,90.3859024f,84.1897049f},
+    {1022.f,1342.f,1054.47083f,1376.05286f},
+    {1982.f,1662.f,2009.94983f,1686.02087f},
+    {2302.f,382.f,2335.12891f,416.312805f},
+    {1662.f,62.f,1689.27441f,95.7488708f},
+    {1342.f,1342.f,1386.f,1386.f},
+    {1022.f,702.f,1055.78577f,736.56604f},
+    {2302.f,1982.f,2335.12891f,2016.31287f},
+    {702.f,1662.f,730.90979f,1690.48206f},
+    {1342.f,1982.f,1386.f,2026.f},
+    {382.f,702.f,409.274353f,735.748901f},
+    {1982.f,62.f,2010.50659f,94.3359222f},
+    {1342.f,1662.f,1386.f,1706.f},
+    {2302.f,1022.f,2335.12891f,1056.31287f},
+};
+static inline void cm_terminal_search(float lx,float ly,float *tx,float *tz);
 static inline void cm_terminal_pos(float lx,float ly,float *tx,float *tz){
+    for(int i=0;i<30;i++)if(cmTerminalTable[i][0]==lx&&cmTerminalTable[i][1]==ly){*tx=cmTerminalTable[i][2];*tz=cmTerminalTable[i][3];return;}
+    cm_terminal_search(lx,ly,tx,tz);
+}
+static inline void cm_terminal_search(float lx,float ly,float *tx,float *tz){
     float ox=lx+18,oz=ly;
     for(float r=0;r<=40;r+=.5f)for(int k=0,n=r==0?1:(int)(r*2.f)+12;k<n;k++){ /* fina: solo se calcula una vez por terminal */
         float a=k*(6.2831853f/n),px=ox+cosf(a)*r,pz=oz+sinf(a)*r;

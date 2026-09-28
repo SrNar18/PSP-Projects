@@ -19,5 +19,7 @@ int main(void){
   }
  }
  printf("15 min: coches atascados >30s %d | fotogramas-coche dentro de edificios %d | fuera de calzada %d | solapes %d",stuckCars,inside,offroad,overlap);putchar(10);
+ /* v2.41: umbrales (base 3D actual: ~5 atascos, ~30-300 fotogramas fuera). Falla si empeora. */
+ if(inside>0||overlap>0||offroad>600||stuckCars>8){puts("FAIL: trafico por encima de los umbrales");return 1;}
  return 0;
 }

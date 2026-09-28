@@ -167,12 +167,12 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
     uint32_t tint=lit_color(0xffffffffu,0,0,-1);
     /* v2.39 (Claude): visto desde la calle (mirando hacia +z) la derecha es -x: la u crece hacia -x.
        Antes crecia hacia +x y los nombres se leian en espejo ("MIGA" -> "AGIM"). */
-    Vertex sign[4]={{u+.5f-eps,v+eps,tint,cx-w*.5f+2,23.8f,z0+.85f},
-        {u+eps,v+eps,tint,cx+w*.5f-2,23.8f,z0+.85f},
-        {u+eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.85f},
-        {u+.5f-eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.85f}};
+    Vertex sign[4]={{u+.5f-eps,v+eps,tint,cx-w*.5f+2,23.8f,z0+.35f},
+        {u+eps,v+eps,tint,cx+w*.5f-2,23.8f,z0+.35f},
+        {u+eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.35f},
+        {u+.5f-eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.35f}};
     litAlready=1;polygon(mat,sign,4);litAlready=0;
-    box(cx,z0+4.3f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim); /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
+    box(cx,z0-.4f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim); /* v2.41: toldo saliente (z0-2,9..z0+2,1); letrero a 0,65 de la fachada (antes 0,15: parpadeaba) */ /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
     if(w>42){
         float xx=cx+w*.23f-5;
         box(xx,z0+1.1f,7,2,1,13,0,METAL,METAL,COLOR(225,210,175)); /* v2.33: por delante de la fachada */
@@ -734,7 +734,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
 /* v2.31 (Claude): ver CACHE DE LA CIUDAD en render3d.c. */
 static void replay_range(const unsigned char *p,const unsigned char *end){
     while(p<end){RecHdr h;memcpy(&h,p,4);p+=4;
-        if(h.kind==0){Vertex tmp[16];memcpy(tmp,p,h.count*sizeof(Vertex));p+=h.count*sizeof(Vertex);polygon_emit(h.mat,tmp,h.count,h.lit);}
+        if(h.kind==0){polygon_emit(h.mat,(Vertex*)p,h.count,h.lit);p+=h.count*sizeof(Vertex);} /* v2.41: sin copia intermedia (polygon_emit ya no escribe en su entrada) */
         else if(h.kind<3){Vertex t[3];memcpy(t,p,sizeof t);p+=sizeof t;fx_triangle(t[0],t[1],t[2],h.kind==2);}
         else{float q[3];memcpy(q,p,sizeof q);p+=sizeof q;int nc=noClip;noClip=0;litAlready=0;traffic_light(q[0],q[1],q[2]);noClip=nc;}
     }

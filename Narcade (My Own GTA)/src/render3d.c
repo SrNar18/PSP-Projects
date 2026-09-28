@@ -205,6 +205,11 @@ static void polygon(int mat,Vertex *input,int count){
     polygon_emit(mat,buffers[0],count,litAlready);
 }
 static void polygon_emit(int mat,Vertex *input,int count,int lit){
+    /* v2.41 (Claude): ruta rapida. Un poligono ya iluminado de un trozo de cache entero dentro de la vista
+       (noClip) va directo de la cache a la malla, sin copias intermedias ni pruebas de planos. */
+    if(noClip&&lit&&mat!=WATER&&count>=3){int needed=(count-2)*3;if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
+        Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;const Vertex *v0=input;
+        for(int j=1;j<count-1;j++){*p++=*v0;*p++=input[j];*p++=input[j+1];}return;}
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     /* Animate after cache replay, so a cached river never freezes its flow.
        World-space UVs join the current across every strip and row. */
@@ -1011,7 +1016,11 @@ void r3_shutdown(void){
 }
 static int displayBrightness;
 void r3_set_brightness(int level){displayBrightness=level<-5?-5:level>5?5:level;}
-void r3_overlay(uint32_t *fb,const uint32_t *rgba){
+void r3_overlay_bands(uint32_t *fb,const uint32_t *rgba,const unsigned char *bands);
+void r3_overlay(uint32_t *fb,const uint32_t *rgba){static const unsigned char all[17]={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};r3_overlay_bands(fb,rgba,all);}
+/* v2.41 (Claude): solo se componen las franjas de 16 filas que tienen HUD (antes toda la pantalla, 480x272
+   RGBA leida de la RAM y mezclada cada fotograma). */
+void r3_overlay_bands(uint32_t *fb,const uint32_t *rgba,const unsigned char *bands){
 #ifndef R3_HOST
     typedef struct {float u,v,x,y,z;} SpriteVertex;
     sceKernelDcacheWritebackAll();ge_wait(),sceGuStart(GU_DIRECT,commands);
@@ -1023,12 +1032,14 @@ void r3_overlay(uint32_t *fb,const uint32_t *rgba){
     sceGuTexFunc(GU_TFX_REPLACE,GU_TCC_RGBA);sceGuTexFilter(GU_NEAREST,GU_NEAREST);
     sceGuTexScale(1,1);sceGuTexOffset(0,0);sceGuTexWrap(GU_CLAMP,GU_CLAMP);
     /* Narrow sprites avoid the GE's large textured-sprite cache penalty. */
-    for(int x=0;x<480;x+=32){
+    for(int b=0;b<17;){if(!bands[b]){b++;continue;}int e=b;while(e<17&&bands[e])e++;
+     float y0=b*16.f,y1=e*16.f>272?272.f:e*16.f;b=e;
+     for(int x=0;x<480;x+=32){
         int end=x+32>480?480:x+32;
         SpriteVertex *v=sceGuGetMemory(2*sizeof(*v));
-        v[0]=(SpriteVertex){x,0,x,0,0};v[1]=(SpriteVertex){end,272,end,272,0};
+        v[0]=(SpriteVertex){x,y0,x,y0,0};v[1]=(SpriteVertex){end,y1,end,y1,0};
         sceGuDrawArray(GU_SPRITES,GU_TEXTURE_32BITF|GU_VERTEX_32BITF|GU_TRANSFORM_2D,2,0,v);
-    }
+     }}
     if(displayBrightness){
         typedef struct {uint32_t color;float x,y,z;} ToneVertex;
         ToneVertex *tone=sceGuGetMemory(2*sizeof(*tone));
@@ -1038,6 +1049,6 @@ void r3_overlay(uint32_t *fb,const uint32_t *rgba){
     }
     sceGuFinish();sceGuSync(0,0);
 #else
-    (void)fb;(void)rgba;
+    (void)fb;(void)rgba;(void)bands;
 #endif
 }
