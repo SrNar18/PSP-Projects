@@ -31,5 +31,6 @@ int r3_overflow(void);int r3_used(int m); /* diagnostico: poligonos descartados 
 void r3_draw(uint32_t *framebuffer, const R3Scene *scene);
 int r3_prewarm(const R3Scene *scene); /* v2.37: llena la cache de ciudad sin dibujar; 0 = listo */
 void r3_overlay(uint32_t *framebuffer,const uint32_t *rgba);
+void r3_set_brightness(int level); /* -5..5; display adjustment, no terrain rebuild */
 void r3_shutdown(void);
 #endif

@@ -687,7 +687,7 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
          if(!cityMid&&memo[ci].ok[0])traffic_light(memo[ci].x[0],memo[ci].z[0],0);
          if(!cityMid&&memo[ci].ok[1])bus_stop(memo[ci].x[1],memo[ci].z[1]);
          if(memo[ci].ok[2]){float lx=memo[ci].x[2],lz=memo[ci].z[2];
-            if(cityMid){box(lx,lz,0,1.5f,1.5f,34,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(lx-3,lz,33,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
+            if(cityMid){box(lx,lz,0,1.5f,1.5f,28,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(lx-7.5f,lz,27.5f,8,3,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
             else lamp_post(lx,lz,PI);}
          if(!cityMid&&memo[ci].ok[3])cylinder(memo[ci].x[3],memo[ci].z[3],1.2f,2.2f,5,6,0,METAL,METAL,COLOR(70,120,80));} /* v2.7: papelera */
     }
