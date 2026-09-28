@@ -29,15 +29,15 @@ int main(void){
     assert(n==(int)strlen("A delivery gone wrong")&&small.guard=='Q'&&small.out[4]==0);
     tap(B_DOWN);for(int i=0;i<15;i++)tap(B_RIGHT);assert(prefsBrightness==10);
     for(int i=0;i<15;i++)tap(B_LEFT);assert(prefsBrightness==0);for(int i=0;i<5;i++)tap(B_RIGHT);
-    tap(B_DOWN);tap(B_LEFT);assert(prefsMusic==9);snapshot("build/settings-en.ppm");
+    tap(B_DOWN);tap(B_LEFT);assert(prefsMusic==9);tap(B_DOWN);tap(B_DOWN);tap(B_RIGHT);assert(prefsFog==1);snapshot("build/settings-en.ppm");
     tap(B_CIRCLE);assert(g.screen==TITLE&&g.menu==2);snapshot("build/menu-en.ppm");
-    settings_defaults();settings_load();assert(prefsLanguage==1&&prefsBrightness==5&&prefsMusic==9);
+    settings_defaults();settings_load();assert(prefsLanguage==1&&prefsBrightness==5&&prefsMusic==9&&prefsFog==1);
     fresh_game();g.screen=WORLD;tap(B_START);assert(g.screen==PAUSE);
     tap(B_R);tap(B_R);tap(B_R);assert(g.pauseTab==3);tap(B_CROSS);assert(prefsLanguage==0);
     tap(B_DOWN);tap(B_RIGHT);assert(g.pauseTab==3&&prefsBrightness==6);
     tap(B_START);assert(g.screen==WORLD);settings_load();assert(prefsBrightness==6&&prefsLanguage==0);
     FILE *f=fopen("build/settings-qa.sav.cfg","wb");assert(f);fputs("invalid",f);fclose(f);settings_load();
-    assert(!prefsLanguage&&prefsBrightness==5&&prefsMusic==10&&prefsEffects==10);
+    assert(!prefsLanguage&&prefsBrightness==5&&prefsMusic==10&&prefsEffects==10&&prefsFog==0);
     remove("build/settings-qa.sav.cfg");remove("build/settings-qa.sav.cfg.bak");
     puts("PASS: title/pause settings, all 36 missions in English, formats, truncation, brightness bounds, persistence and corrupt-config recovery.");
     return 0;

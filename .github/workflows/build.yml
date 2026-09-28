@@ -13,6 +13,7 @@ jobs:
       - name: Compilar (PRX + EBOOT.PBP)
         run: |
           cd 'Narcade (My Own GTA)'
+          python3 tools/build_localization.py
           make
           make -f Makefile.iso
           file narcade_static.elf || true

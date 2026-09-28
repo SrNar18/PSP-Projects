@@ -60,7 +60,7 @@ static struct {
  Car cars[CAR_COUNT]; Ped peds[42]; Puzzle p;
 } g;
 #include "localization.inc"
-static int prefsBrightness=5,prefsDirty;
+static int prefsBrightness=5,prefsFog,prefsDirty;
 static volatile int prefsMusic=10,prefsEffects=10;
 static void settings_load(void),settings_finish(void),settings_tick(void),settings_draw(void);
 static uint32_t *fb;static int pitch;

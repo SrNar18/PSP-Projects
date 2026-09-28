@@ -501,5 +501,8 @@
   "O golpear   R+[] interactuar": "O punch   R+[] interact",
   "O disparar   R+[] interactuar": "O shoot   R+[] interact",
   "Partida cargada. SELECT camara / O cuaderno.": "Game loaded. SELECT camera / O journal.",
-  "O: mensajes. SELECT: camara. START: menu.": "O: messages. SELECT: camera. START: menu."
+  "O: mensajes. SELECT: camara. START: menu.": "O: messages. SELECT: camera. START: menu.",
+  "NIEBLA LEJANA": "DISTANCE FOG",
+  "ACTIVADA": "ON",
+  "DESACTIVADA": "OFF"
 }
