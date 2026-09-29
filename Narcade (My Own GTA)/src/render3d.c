@@ -166,6 +166,7 @@ static void rigid_cache(void){
     geo_project(objectX,objectZ,&rigGX,&rigGZ);
     float da=geo_heading(objectX,objectZ,objectYaw)-objectYaw;rigCos=cosf(da);rigSin=sinf(da);
     rigH=geo_height(objectX,objectZ)+playerLift;
+    if(rigid==2&&objectX>=1392.f&&objectX<=1464.f)rigH+=cm_surface(objectX,objectZ); /* v2.45: coches sobre el tablero del puente */
     if(rigid==2){
         float a=geo_heading(objectX,objectZ,objectYaw),c=cosf(a),s=sinf(a);
         float pitch=(projected_height(rigGX+c*14,rigGZ+s*14)-projected_height(rigGX-c*14,rigGZ-s*14))/28;
@@ -975,7 +976,9 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
 #ifndef AB_NOPEOPLE
     for(int i=0;i<s->personCount;i++){
         const R3Person *p=&s->people[i];objectX=p->x;objectZ=p->z;objectYaw=p->angle;npcFall=p->fall;npcPhase=p->phase;npcFlee=p->flee;
+        playerLift=cm_surface(objectX,objectZ);rigX=-1e9f; /* v2.45: peatones sobre la acera, no hundidos 1,2 */
         person(objectX,objectZ,objectYaw,p->style,p->fall==0);
+        playerLift=0;
         npcFall=0;
         if(p->hit>0&&nearby(p->x,p->z,220)){
             for(int k=0;k<5;k++){float t=.32f-p->hit;Point a=point(p->x+(k-2)*t*12,9-t*t*45+(k%2)*.7f,p->z+t*15);
@@ -996,7 +999,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     TRACE("r3:hubs");landmarks();
     /* v2.5: sombras proyectadas, faros, farolas y nubes (en coordenadas logicas; geo_point proyecta). */
     for(int i=0;i<s->carCount;i++)if(nearby(s->cars[i].x,s->cars[i].z,320)){cast_shadow(s->cars[i].x,s->cars[i].z,11,9);headlights(s->cars[i].x,s->cars[i].z,s->cars[i].angle);}
-    if(!s->driving&&!s->inMetro&&s->lift<1)cast_shadow(s->x,s->z,3,17);
+    if(!s->driving&&!s->inMetro&&s->lift<3)cast_shadow(s->x,s->z,3,17);
     for(int i=0;i<s->personCount;i++)if(nearby(s->people[i].x,s->people[i].z,220))cast_shadow(s->people[i].x,s->people[i].z,2.5f,17);
 #ifndef AB_NOFX
     TRACE("r3:efectos");building_shadows();street_lamps_glow();clouds(s->time);
