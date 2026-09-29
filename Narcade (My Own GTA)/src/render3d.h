@@ -29,6 +29,7 @@ void r3_gu_buffers(uint32_t *draw,uint32_t *disp);void r3_gu_display(int on);voi
 void r3_trace(void (*fn)(const char*),int frames);void r3_phase_hook(void (*fn)(const char*)); /* v2.13.4: trazas de diagnostico */
 int r3_overflow(void);int r3_used(int m); /* diagnostico: poligonos descartados por presupuesto y vertices usados por material */
 void r3_draw(uint32_t *framebuffer, const R3Scene *scene);
+void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int alpha); /* v2.44 */
 int r3_prewarm(const R3Scene *scene); /* v2.37: llena la cache de ciudad sin dibujar; 0 = listo */
 void r3_overlay(uint32_t *framebuffer,const uint32_t *rgba);
 void r3_overlay_bands(uint32_t *fb,const uint32_t *rgba,const unsigned char *bands); /* v2.41 */

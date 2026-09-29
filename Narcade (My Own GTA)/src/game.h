@@ -22,7 +22,7 @@ void game_set_native_savedata(int on);
 void game_set_lowmem(int kb);void game_set_lowmem2(const char *msg);
 void game_loading_screen(uint32_t *pixels,int stride);void game_world_reset(void);void game_player_pos(int *x,int *y);
 int game_load_stage(uint32_t *pixels,int stride,int stage); /* v2.13.3: carga por etapas */
-int game_load_anim(uint32_t *pixels,int stride,int stage);void game_load_clock(float seconds);void game_load_finish(void); /* v2.41: animacion y cierre de la pantalla de carga */
+void game_load_present(uint32_t *pixels,int stride,int stage,int finished);void game_load_begin(void);void game_load_clock(float seconds);void game_load_finish(void); /* v2.41: animacion y cierre de la pantalla de carga */
 int game_take_request(void);
 void game_request_result(int req,int ok);
 int game_export_save(void *buf,int cap);

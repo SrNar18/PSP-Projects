@@ -757,7 +757,10 @@ static void city_cell_v26(int bx,int bz,int far,uint32_t white){
             ground(SIDEWALK,p->x[0]-8,p->z[0]-8,p->x[1]-p->x[0]+16,p->z[2]-p->z[0]+16,1.2f,swc,8);
             if(!far)rect_curbs(p);
         }
-        else{CmParcel sw;parcel_shrunk(p,-8,&sw);if(p->kind==1)slab_draped(&sw,1.2f,SIDEWALK,swc);else prism(&sw,0,1.2f,SIDEWALK,SIDEWALK,swc);}
+        /* v2.44 (Claude): la acera de las parcelas irregulares SIEMPRE sigue el terreno. Antes, alrededor de los
+           edificios era un prisma plano a la altura del punto mas alto: en ladera quedaba un bloque elevado en el
+           lado bajo que el jugador (que camina a la altura del terreno) atravesaba ("aceras en las faldas"). */
+        else{CmParcel sw;parcel_shrunk(p,-8,&sw);slab_draped(&sw,1.2f,SIDEWALK,swc);}
         /* parcelas edificadas: todo comparte el nivel del podio (sin z-fighting en ladera). Las transitables (parques,
            plazas) siguen el terreno, porque el jugador camina sobre ellas a la altura del terreno. */
         float savedLevel=fixedGround;if(p->kind==0)fixedGround=parcel_level(p);

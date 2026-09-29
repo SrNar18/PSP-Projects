@@ -6,7 +6,7 @@ static void settings_apply(void){
     r3_set_distance_fog(prefsFog);
 #endif
 }
-static void settings_defaults(void){prefsLanguage=0;prefsBrightness=5;prefsMusic=10;prefsEffects=10;prefsFog=0;settings_apply();}
+static void settings_defaults(void){prefsLanguage=1; /* v2.44 (Claude): ingles por defecto en una instalacion nueva */prefsBrightness=5;prefsMusic=10;prefsEffects=10;prefsFog=0;settings_apply();}
 static void settings_path(char *path,size_t cap){
 #ifdef _PSP_FW_VERSION
     raw_snprintf(path,cap,"ms0:/NARCADE.CFG"); /* Outside Sony's SAVEDATA folders. */
