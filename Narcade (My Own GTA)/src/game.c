@@ -233,6 +233,14 @@ static void wanted_crime(int kind){ /* 0 leve, 1 muerte de civil, 2 policia, 3 r
 static int wanted_stars(void){return (int)(g.heat+.001f);}
 static int cachecount(void);
 #include "trophies.inc" /* v2.42 (Claude) */
+/* v2.45 (Claude): el jugador pisa la superficie real (acera, plaza, puente...) y sube o baja los desniveles
+   con un escalon suave; la escalera y el anden del metro siguen mandando cuando corresponde. */
+static void surface_tick(float dt){
+ if(g.car>=0||g.inMetro)return;
+ float st=cm_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)return;
+ float tg=cm_surface(g.x,g.y),d=tg-g.lift;
+ if(fabsf(d)>3.f)g.lift=tg;else g.lift+=d>0?fminf(d,dt*14.f):fmaxf(d,-dt*14.f);
+}
 static int near_hub(int i,float radius){float tx,ty;terminal_xy(i,&tx,&ty);return dist(g.x,g.y,locations[i].x,locations[i].y)<radius||dist(g.x,g.y,tx,ty)<24;}
 static int foot_free(float x,float y){
  if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
@@ -272,7 +280,7 @@ static void spring(float *x,float *v,float target,float w,float dt){
 static float cam_distance(void);static float cam_eye(void);
 static void camera_heights(float dt){
 #ifdef NARCADE_3D
- if(g.inMetro||g.lift>1){g.camBase=g.camClear=0;return;}
+ if(g.inMetro||g.lift>3){g.camBase=g.camClear=0;return;} /* v2.45: >3 (las aceras y plazas levantan 1,2-2,3) */
  float base=geo_height(g.x,g.y);
  float px,pz;geo_project(g.x,g.y,&px,&pz);float d=g.cameraDistance>0?g.cameraDistance:cam_distance();
  float lx,lz;geo_unproject(px-cosf(g.viewYaw)*d,pz-sinf(g.viewYaw)*d,&lx,&lz);float clear=geo_height(lx,lz)+12;
@@ -940,7 +948,7 @@ static void world_tick(float ax,float ay,float dt){
     if(!moved)break;
    }
    (void)slideOff; /* v2.28: la camara sigue al deslizamiento; ya no hace falta guia */
-   g.lift=cm_lift(g.x,g.y,g.lift>15);
+   {float st=cm_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)g.lift=st;} /* escalera y anden; la superficie baja la lleva surface_tick */
   }
   float ax2,az2;physics_project(g.x,g.y,&ax2,&az2);
   float mvx=ax2-bx,mvz=az2-bz;g.footTravel=hypotf(mvx,mvz);
@@ -1152,7 +1160,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
   else if(g.screen==TROPHIES&&(pressed(B_UP)||pressed(B_DOWN))){trophySelection=wrapi(trophySelection+pressed(B_DOWN)-pressed(B_UP),GAME_TROPHY_COUNT);menu_click();}
  }
  else if(g.screen==DIALOG){if(g.dialogAction==3&&pressed(B_CIRCLE))g.screen=TITLE;else if(pressed(B_CROSS)&&g.screenT>.12f){if(g.dialogAction==3)fresh_game();else end_dialog();}}
- else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);trophies_tick(dt);}}
+ else if(g.screen==WORLD){if(!weapon_menu(ax,ay,dt)){g.playtime+=dt;world_tick(ax,ay,dt);surface_tick(dt);trophies_tick(dt);}}
  else if(g.screen==MINI){g.playtime+=dt;puzzle_tick(ax,ay,dt);}
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
@@ -1274,40 +1282,62 @@ static uint32_t map_ground(float gx,float gz){
  return c==4?RGB(57+h,91+h,68):RGB(51+h,67+h,54);
 }
 static void map_point(float x,float y,float sc,int ox,int oy,int *mx,int *my){float gx,gz;geo_project(x,y,&gx,&gz);*mx=ox+(int)(gx*sc);*my=oy+(int)(gz*sc);}
+/* v2.45 (Claude): minimapa nuevo. Gira con la camara (arriba = hacia donde miras, como en GTA), se muestrea a
+   resolucion completa (antes bloques de 2x2: pixelado) y con bordes suavizados (antes un aro de puntos sueltos).
+   Coste: la conversion proyectado->logico se hace en una rejilla 9x9 y se interpola entre sus nodos. */
+static inline void pxa(int x,int y,uint32_t c,int a){ /* pixel con alfa 0..255 sobre lo que haya */
+ if((unsigned)x>=(unsigned)W||(unsigned)y>=(unsigned)H||a<=0)return;if(a>=255){px(x,y,c);return;}uint32_t o=fb[y*pitch+x];
+ px(x,y,RGB(((o&255)*(255-a)+(c&255)*a)/255,(((o>>8)&255)*(255-a)+((c>>8)&255)*a)/255,(((o>>16)&255)*(255-a)+((c>>16)&255)*a)/255));}
+static uint32_t map_cell(float wx,float wy){
+ if(wx<0||wy<0||wx>=WORLD_W||wy>=WORLD_H)return RGB(14,22,28);
+ unsigned char v=mapGrid[(int)wy/MG_STEP][(int)wx/MG_STEP],c=v&7;int h=(v>>3)*2;
+ if(c==1)return RGB(52,130,176);if(c==2)return RGB(150,156,160);if(c==3)return RGB(104,112,118); /* rio, calle, acera */
+ return c==4?RGB(62+h,112+h,70):RGB(62+h,70+h,82+h);                                            /* parque, edificio */
+}
 static void minimap(int cx,int cy,int r){
- const float scale=6.0f; /* unidades de mundo por pixel */
+ const float scale=6.0f; /* unidades proyectadas por pixel */
+ if(!mapGridBuilt)map_grid_build();
  float gx,gz;geo_project(g.x,g.y,&gx,&gz);
- circle(cx,cy,r+4,RGB(7,14,23));
- for(int dy=-r;dy<=r;dy+=2)for(int dx=-r;dx<=r;dx+=2){ /* v2.6: bloques 2x2 (4x menos muestras; costaba 5 ms) */
-  if(dx*dx+dy*dy>r*r)continue;
-  uint32_t c=map_ground(gx+dx*scale,gz+dy*scale);
-  px(cx+dx,cy+dy,c);
-  if((dx+1)*(dx+1)+dy*dy<=r*r)px(cx+dx+1,cy+dy,c);
-  if(dx*dx+(dy+1)*(dy+1)<=r*r)px(cx+dx,cy+dy+1,c);
-  if((dx+1)*(dx+1)+(dy+1)*(dy+1)<=r*r)px(cx+dx+1,cy+dy+1,c);
+ float fx=cosf(g.viewYaw),fz=sinf(g.viewYaw),rx=-fz,rz=fx; /* adelante y derecha de la camara (proyectado) */
+ enum{GN=9};float nwx[GN][GN],nwy[GN][GN];float step=(2.f*r)/(GN-1);
+ for(int j=0;j<GN;j++)for(int i=0;i<GN;i++){float dx=-r+i*step,dy=-r+j*step;
+  geo_unproject(gx+(rx*dx-fx*dy)*scale,gz+(rz*dx-fz*dy)*scale,&nwx[j][i],&nwy[j][i]);}
+ for(int dy=-r-1;dy<=r+1;dy++)for(int dx=-r-1;dx<=r+1;dx++){
+  float d=sqrtf((float)(dx*dx+dy*dy));if(d>r+.5f)continue;
+  float u=(dx+r)/step,v=(dy+r)/step;int i=(int)u,j=(int)v;if(i>GN-2)i=GN-2;if(j>GN-2)j=GN-2;if(i<0)i=0;if(j<0)j=0;u-=i;v-=j;
+  float wx=(nwx[j][i]*(1-u)+nwx[j][i+1]*u)*(1-v)+(nwx[j+1][i]*(1-u)+nwx[j+1][i+1]*u)*v;
+  float wy=(nwy[j][i]*(1-u)+nwy[j][i+1]*u)*(1-v)+(nwy[j+1][i]*(1-u)+nwy[j+1][i+1]*u)*v;
+  uint32_t c=map_cell(wx,wy);
+  int shade=d>r-10?(int)(255-(d-(r-10))*7):255;if(shade<185)shade=185; /* vineta suave hacia el borde */
+  c=RGB((c&255)*shade/255,((c>>8)&255)*shade/255,((c>>16)&255)*shade/255);
+  int a=d>r-.5f?(int)((r+.5f-d)*255):255;pxa(cx+dx,cy+dy,c,a);
  }
- for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||wanted_stars()<1)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
- if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float pxp,pyp;geo_project(locations[t].x,locations[t].y,&pxp,&pyp);float dx=(pxp-gx)/scale,dy=(pyp-gz)/scale;float d=sqrtf(dx*dx+dy*dy);
-  if(d>r-6){dx=dx/d*(r-6);dy=dy/d*(r-6);}circle(cx+(int)dx,cy+(int)dy,4,INK);circle(cx+(int)dx,cy+(int)dy,2,GOLD);}
- /* Crisp pointer: a filled chevron with dark keyline remains readable on roads. */
- float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a),co=cosf(a),si=sinf(a);
- int tx=cx+(int)(co*8),ty=cy+(int)(si*8);
- int lx=cx+(int)(-co*5-si*4),ly=cy+(int)(-si*5+co*4);
- int rx=cx+(int)(-co*5+si*4),ry=cy+(int)(-si*5-co*4);
- for(int yy=cy-8;yy<=cy+8;yy++)for(int xx=cx-8;xx<=cx+8;xx++){
-  int e0=(xx-tx)*(ly-ty)-(yy-ty)*(lx-tx);
-  int e1=(xx-lx)*(ry-ly)-(yy-ly)*(rx-lx);
-  int e2=(xx-rx)*(ty-ry)-(yy-ry)*(tx-rx);
-  if((e0>=0&&e1>=0&&e2>=0)||(e0<=0&&e1<=0&&e2<=0))px(xx,yy,WHITE);
- }
- line(tx,ty,lx,ly,INK);line(lx,ly,rx,ry,INK);line(rx,ry,tx,ty,INK);
- /* Double bezel and north tick, inspired by the legibility of classic GTA HUDs. */
- for(int k=0;k<128;k++){float t=k*PI*2/128;
-  int dx=(int)(cosf(t)*(r+2)),dy=(int)(sinf(t)*(r+2));
-  px(cx+dx,cy+dy,k%16<2?RGB(90,218,225):RGB(90,118,132));
-  dx=(int)(cosf(t)*(r+4));dy=(int)(sinf(t)*(r+4));px(cx+dx,cy+dy,RGB(8,15,26));
- }
- line(cx,cy-r-5,cx,cy-r-1,LIME);
+ /* marco: aro oscuro de 3 px y filo claro, ambos con antialias */
+ for(int dy=-r-5;dy<=r+5;dy++)for(int dx=-r-5;dx<=r+5;dx++){float d=sqrtf((float)(dx*dx+dy*dy));
+  if(d>=r+.5f&&d<=r+4.5f){int a=d<r+1.5f?(int)((d-(r+.5f))*255):d>r+3.5f?(int)((r+4.5f-d)*255):255;pxa(cx+dx,cy+dy,RGB(8,13,21),a);}
+  float e=fabsf(d-(r+1.2f));if(e<1.f)pxa(cx+dx,cy+dy,RGB(96,206,214),(int)((1-e)*200));}
+ /* norte: marca y letra N en el aro, giradas con el mapa */
+ {float nx=-rz,ny=fz; /* direccion de -z logico (norte) en pantalla del minimapa */
+  float n=sqrtf(nx*nx+ny*ny);nx/=n;ny/=n;int mx=cx+(int)(nx*(r+3)),my=cy+(int)(ny*(r+3));
+  circle(mx,my,5,RGB(8,13,21));text_raw(mx-3,my-6,"N",LIME,1);}
+ /* objetos: offset proyectado -> coordenadas del minimapa girado */
+ #define MM_POS(X,Y,OX,OY) do{float px_,pz_;geo_project((X),(Y),&px_,&pz_);float ox_=px_-gx,oz_=pz_-gz;OX=(ox_*rx+oz_*rz)/scale;OY=-(ox_*fx+oz_*fz)/scale;}while(0)
+ for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||wanted_stars()<1)continue;float ox,oy;MM_POS(g.cars[i].x,g.cars[i].y,ox,oy);
+  if(ox*ox+oy*oy<(r-3)*(r-3)){int blink=((int)(g.clock*6))&1;circle(cx+(int)ox,cy+(int)oy,2,blink?RGB(230,60,60):RGB(70,110,240));}}
+ if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float ox,oy;MM_POS(locations[t].x,locations[t].y,ox,oy);
+  float d=sqrtf(ox*ox+oy*oy);if(d>r-6){ox=ox/d*(r-6);oy=oy/d*(r-6);}int tx=cx+(int)ox,ty=cy+(int)oy;
+  for(int k=4;k>=0;k--){rect(tx-k,ty-(4-k),2*k+1,1,INK);rect(tx-k,ty+(4-k),2*k+1,1,INK);} /* rombo con borde */
+  for(int k=3;k>=0;k--){rect(tx-k,ty-(3-k),2*k+1,1,GOLD);rect(tx-k,ty+(3-k),2*k+1,1,GOLD);}}
+ #undef MM_POS
+ /* flecha del jugador: rumbo relativo a la camara */
+ float ha=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);float hx=cosf(ha),hz=sinf(ha);
+ float co=hx*rx+hz*rz,si=-(hx*fx+hz*fz);
+ int tx=cx+(int)(co*7),ty=cy+(int)(si*7),lx=cx+(int)(-co*5-si*5),ly=cy+(int)(-si*5+co*5),bx=cx+(int)(-co*2),by=cy+(int)(-si*2),qx=cx+(int)(-co*5+si*5),qy=cy+(int)(-si*5-co*5);
+ for(int pass=0;pass<2;pass++)for(int yy=cy-9;yy<=cy+9;yy++)for(int xx=cx-9;xx<=cx+9;xx++){
+  int in1=((xx-tx)*(ly-ty)-(yy-ty)*(lx-tx))*((bx-tx)*(ly-ty)-(by-ty)*(lx-tx))>=0&&((xx-lx)*(by-ly)-(yy-ly)*(bx-lx))*((tx-lx)*(by-ly)-(ty-ly)*(bx-lx))>=0&&((xx-bx)*(ty-by)-(yy-by)*(tx-bx))*((lx-bx)*(ty-by)-(ly-by)*(tx-bx))>=0;
+  int in2=((xx-tx)*(qy-ty)-(yy-ty)*(qx-tx))*((bx-tx)*(qy-ty)-(by-ty)*(qx-tx))>=0&&((xx-qx)*(by-qy)-(yy-qy)*(bx-qx))*((tx-qx)*(by-qy)-(ty-qy)*(bx-qx))>=0&&((xx-bx)*(ty-by)-(yy-by)*(tx-bx))*((qx-bx)*(ty-by)-(qy-by)*(tx-bx))>=0;
+  if(!(in1||in2))continue;
+  if(pass==0){for(int oy=-1;oy<=1;oy++)for(int ox=-1;ox<=1;ox++)px(xx+ox,yy+oy,INK);}else px(xx,yy,in1?WHITE:RGB(205,214,220));}
 }
 #ifdef NARCADE_PROFILE
 static float profileMs=0,profileMax=0;void game_set_profile(float ms){profileMs=ms;if(ms>profileMax)profileMax=ms;if(g.clock<.5f)profileMax=0;}
