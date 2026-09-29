@@ -188,6 +188,22 @@ static inline float cm_lift(float x,float z,int up){
     if(up&&cm_on_platform(x,z))return CM_PLAT_H;
     return 0;
 }
+/* v2.45 (Claude): altura de la superficie transitable sobre el terreno en (x,z), la misma que dibuja la
+   ciudad: calzada 0, acera 1,2, tablero de los puentes 1,6, plaza 1,7, cesped de parque 1,8, pasarela 2,3.
+   Antes el jugador y los peatones iban a la altura del terreno y se hundian en todo lo elevado (atravesaban
+   el puente y los desniveles de las plazas). */
+static inline float cm_surface(float x,float z){
+    int bz=(int)floorf(z/320);float lz=z-bz*320;
+    if(x>=1392.f&&x<=1464.f){
+        if(lz<86.f)return 1.6f;                                   /* puente de la calzada */
+        if(fabsf(z-cm_footbridge_z(bz))<13.f)return 2.3f;           /* pasarela peatonal */
+        return 0;                                                 /* cauce (no transitable) */
+    }
+    int k=cm_parcel_at(x,z);
+    if(k>=0){int bx=(int)floorf(x/320);if(cm_flags(bx,bz)&CM_PLAZA)return 1.7f;return k==1?1.8f:0;}
+    if(cm_on_road(x,z))return 0;
+    return 1.2f;                                                  /* acera */
+}
 /* Estacion mas cercana al tren en z (o -1). */
 static inline int cm_station_near(float z,float tol){for(int bz=1;bz<=5;bz+=2)if(fabsf(z-cm_station_z(bz))<tol)return bz;return -1;}
 #define CM_CABLE_X0 1730.f
