@@ -1,0 +1,18 @@
+# Codex → Claude: portada, avisos y metro v2.45
+
+Rama `codex/cover-hud-metro-v245`, basada en tu `main` v2.45 (`b1bc68c`). Tu minimapa giratorio, `cm_surface`, los desniveles del jugador, el puente y la cámara permanecen en la integración. No cambié la lógica de caminar ni las colisiones que te asignó Naresz. Tu informe del metro en `LEER_PRIMERO_CODEX_local.md` guio la segunda pasada; tus capturas están en `assets/reference/claude-review-metro-v245-a/b.png`.
+
+## Cambios
+
+- Portada: logo reparado en la punta azul mediante cierre de pequeños huecos en la máscara de `tools/build_logo_v244.py`; se muestra compacto encima de «PRESS X OR START». Quité el subtítulo de Medellín y la frase «OPEN WORLD / 36 MISSIONS» del menú. El panel de inicio tiene esquinas recortadas y colores acordes al logo. Eliminé la copia grande sin uso del logo: el ELF ahorra ~120 KB.
+- Avisos del mundo: nombre del barrio y mensajes inferiores con panel recortado, detalle de color y fuente Rajdhani/Oxanium. El minimapa nuevo de tu rama no se modificó.
+- Viaducto: losa de 18 unidades, dos vigas inferiores continuas y 35 soportes físicos fuera de las intersecciones. Carriles, andenes y cubiertas usan tramos que comparten vértices exactos en los límites de las siete filas; la curva se muestrea cada 12 unidades y la parte recta cada 48 o hasta el siguiente cambio de pendiente. Añadí `qa_metro_seams_v245` para las seis uniones.
+- Estaciones: tres marquesinas más limpias, con revestimiento lateral continuo. Las parcelas del borde este se retranquean solo junto a las tres estaciones para que los edificios no corten el andén/cubierta. `qa_zfight_v233` ya no registra el solapamiento SIDEWALK/METAL o GLASS/METAL que aparecía en torno a (1505,558). Las escaleras y colisiones de los 18 soportes de andén siguen operativas.
+- Tren: conservé la deformación suave `metroFlexible`; proyecta cada vértice del vagón a la misma ruta y altura que el tablero. La prueba de 480 fotogramas comprueba ahora también las cuatro esquinas del suelo de cada vagón en ambas puertas. Evité convertirlo en una caja rígida tangente a la curva, que habría separado el cuerpo de la vía en los cambios bruscos de perfil.
+- Recoloreado de calzada/acera: por tu hallazgo P2, el color se ajusta una vez dentro de la pieza cacheada cuando cambia la luz >0,4 %, en lugar de multiplicar los vértices de ROAD/SIDEWALK durante cada reproducción. `qa_cache_daylight_v245` verifica la actualización y la estabilidad de fotogramas repetidos.
+
+## Verificación y pendientes
+
+Pasaron compilaciones PSP PBP e ISO, traducciones (562), 14 pruebas de personaje/historia/escenas, metro en nueve vistas de ciudad, continuidad, tren en 480 fotogramas, colisión de andenes, acceso a las escaleras, superficies transitables y tabla de terminales. `qa_city28` no encontró desbordamiento de malla en 512 escenas. `qa_cpucost_v230` midió ~0,81 ms/fotograma de geometría en este PC; no es una medición de FPS en la consola. ELF estático: 19.056.932 bytes text+data+bss. La ISO y el ZIP `release/Narcade_v2.45_PSP.zip` se generan con `tools/package_iso.py` y `tools/package_v245.py`.
+
+La auditoría de parpadeos todavía lista el solapamiento antiguo bajo el puente cerca de (1396,2006), así como 27 pares METAL/CONCRETE menores en el extremo del viaducto. En PSP real hay que comprobar el logo, legibilidad de los avisos, estaciones desde el suelo, giro del tren y fluidez. No he instalado esta versión en la PSP. Las estaciones tienen andenes/cubiertas y acceso de escalera, pero aún no hay torniquetes ni un vestíbulo jugable; eso requeriría modelo y colisión nuevos.

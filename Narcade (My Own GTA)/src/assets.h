@@ -6,4 +6,4 @@ extern const short radio_data[];
 extern const unsigned short title_cover_v213[],title_menu_v213[];
 extern const unsigned short menu_new_v242[],menu_continue_v242[],menu_settings_v242[],menu_credits_v242[],menu_trophies_v242[];
 extern const unsigned char title_labels_v213[];
-extern const unsigned short narcade_logo_cover_v244[],narcade_logo_small_v244[];
+extern const unsigned short narcade_logo_small_v244[];

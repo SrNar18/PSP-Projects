@@ -457,22 +457,57 @@ static void tunnel_building(int bx,float z0,float z1,int far){
 /* Metro de Medellin a escala del jugador (citymap.h: CM_METRO_*): viaducto sobre pilares, estaciones con anden a 30,
    escalera de 60 de recorrido en la orilla, y tren de dos coches (paneles bajos + pilares de ventana: se ve la ciudad
    desde dentro cuando el jugador va a bordo). */
+static Point metro_point(float x,float z,float y){
+ float gx,gz;geo_project(x,z,&gx,&gz);
+ return point(gx,geo_height(CM_METRO_X,z)+y,gz);
+}
+static float metro_next_z(float z,float end){
+ float row=floorf(z/320.f),local=z-row*320.f;
+ float limit=local<86.f?row*320.f+86.f:geo_next_z(z);
+ float step=local<86.f?12.f:48.f;
+ float next=fminf(end,fminf(z+step,limit));
+ return next<=z+.001f?fminf(end,z+step):next;
+}
+/* Adjacent rows share exactly the same projected edge coordinates and rail
+   height. A long box used its highest corner as one flat foundation, creating
+   seams whenever the route crosses a valley terrace. */
+static void metro_ribbon(float x,float z0,float z1,float width,float bottom,float height,int side,int top,uint32_t color){
+ int saved=geographic;geographic=0;
+ float left=x-width*.5f,right=x+width*.5f,upper=bottom+height;
+ for(float a=z0;a<z1-.001f;){
+  float b=metro_next_z(a,z1);
+  Point la=metro_point(left,a,upper),lb=metro_point(left,b,upper);
+  Point ra=metro_point(right,a,upper),rb=metro_point(right,b,upper);
+  Point lda=metro_point(left,a,bottom),ldb=metro_point(left,b,bottom);
+  Point rda=metro_point(right,a,bottom),rdb=metro_point(right,b,bottom);
+  quad(top,la,lb,rb,ra,color,width/12.f,(b-a)/12.f);
+  quad(side,lda,ldb,lb,la,shade(color,.75f),1,(b-a)/12.f);
+  quad(side,rb,ra,rda,rdb,shade(color,.68f),1,(b-a)/12.f);
+  if(a<=z0+.001f)quad(side,la,ra,rda,lda,shade(color,.71f),1,1);
+  if(b>=z1-.001f)quad(side,lb,ldb,rdb,rb,shade(color,.71f),1,1);
+  a=b;
+ }
+ geographic=saved;
+}
 static void rail_canopy(float x,float z,float width,float length,float y,float rise){
-    /* Static roofs must follow the same city-curve lattice as the track deck.
-       One long chord cut into the moving train and adjacent buildings. Moving
-       carriage roofs stay flexible and keep their existing stable UV topology. */
-    if(geographic&&!metroFlexible&&length>40){float z0=z-length*.5f,z1=z+length*.5f;
-        if(floorf((z0-86.f)/320.f)!=floorf((z1-86.f)/320.f)){
-            float cut[48];int nc=0;cut[nc++]=z0;
-            for(int row=(int)floorf(z0/320.f);row<=(int)floorf(z1/320.f)&&nc<44;row++){
-                float t0=fmaxf(z0,row*320.f),t1=fminf(z1,row*320.f+86.f);if(t1<=t0)continue;
-                int n=(int)ceilf((t1-t0)/14.f);
-                for(int k=0;k<=n&&nc<46;k++){float c=t0+(t1-t0)*k/n;if(c>cut[nc-1]+.01f&&c<z1-.01f)cut[nc++]=c;}
+    /* Station roofs follow every curve and terrace at the same 16-unit
+       sampling as the rail deck. Moving carriage roofs keep their existing
+       flexible topology and UVs. */
+    if(geographic&&!metroFlexible){int saved=geographic;geographic=0;
+        float z0=z-length*.5f,z1=z+length*.5f;litAlready=1;
+        for(float za=z0;za<z1-.001f;){
+            float zb=metro_next_z(za,z1);
+            for(int k=0;k<4;k++){
+                float a=PI*k/4,b=PI*(k+1)/4;
+                float xa=x+cosf(a)*width*.5f,xb=x+cosf(b)*width*.5f;
+                float ya=y+sinf(a)*rise,yb=y+sinf(b)*rise;
+                quad(GLASS,metro_point(xa,za,ya),metro_point(xa,zb,ya),
+                    metro_point(xb,zb,yb),metro_point(xb,za,yb),
+                    lit_color(COLOR(111,153,167),cosf((a+b)*.5f),sinf((a+b)*.5f),0),1,1);
             }
-            cut[nc++]=z1;
-            for(int k=0;k+1<nc;k++)rail_canopy(x,(cut[k]+cut[k+1])*.5f,width,cut[k+1]-cut[k],y,rise);
-            return;
+            za=zb;
         }
+        litAlready=0;geographic=saved;return;
     }
 
     float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);litAlready=1;
@@ -548,32 +583,45 @@ static void metro_marker(float x,float z,float bottom,int number){
 }
 static void metro(int bz,int far){
  float z=bz*320;
- for(int k=0;k<4;k++)cylinder(CM_METRO_X,z+100+k*64,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
- box(CM_METRO_X,z+160,CM_METRO_DECK,14,320,3,0,CONCRETE,SIDEWALK,COLOR(133,140,139));
+ /* Supports stay off the east/west intersection (local z 0..86). Their
+    48-unit rhythm and two continuous under-deck girders make the elevated
+    structure read as a viaduct even where it spans a road without a pillar. */
+ for(int k=0;k<5;k++)cylinder(CM_METRO_X,z+96+k*48,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
+ for(int side=-1;side<=1;side+=2)
+  metro_ribbon(CM_METRO_X+side*5.2f,z,z+320,1.3f,CM_METRO_DECK-4,4,CONCRETE,CONCRETE,COLOR(106,115,115));
+ metro_ribbon(CM_METRO_X,z,z+320,18,CM_METRO_DECK,3,CONCRETE,SIDEWALK,COLOR(133,140,139));
  /* Rails remain visible in both LODs. A continuous silver cap replaces dark
     car paint; the station never draws pavement over this central track bed. */
  for(int side=-1;side<=1;side+=2)
-  box(CM_METRO_X+side*6,z+160,CM_METRO_DECK+3.06f,.65f,320,.55f,0,METAL,FLAT,COLOR(206,220,222));
+  metro_ribbon(CM_METRO_X+side*6,z,z+320,.65f,CM_METRO_DECK+3.06f,.55f,METAL,FLAT,COLOR(206,220,222));
  if(!far){
   for(int k=0;k<16;k++)box(CM_METRO_X,z+10+k*20,CM_METRO_DECK+3.01f,13,1.1f,.16f,0,FLAT,FLAT,COLOR(60,70,69));
   if(!cm_metro_station(bz))for(int side=-1;side<=1;side+=2)
-   box(CM_METRO_X+side*6.85f,z+160,CM_METRO_DECK+3,.3f,320,2,0,CONCRETE,CONCRETE,COLOR(153,163,158));
+   metro_ribbon(CM_METRO_X+side*8.2f,z,z+320,.4f,CM_METRO_DECK+3,2,CONCRETE,CONCRETE,COLOR(153,163,158));
  }
  if(cm_metro_station(bz)){
   for(int side=-1;side<=1;side+=2){
    /* Left side extends to the original stair landing; right ends before buildings at x1506. */
    float width=side<0?9.5f:8.5f,cx=CM_METRO_X+side*(10.5f+width*.5f);
-   box(cx,z+160,CM_PLAT_H-1.2f,width,200,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
-   box(CM_METRO_X+side*10.9f,z+160,CM_PLAT_H+.02f,.55f,200,.12f,0,FLAT,FLAT,COLOR(250,200,60));
-   box(CM_METRO_X+side*18.2f,z+160,CM_PLAT_H,.55f,198,5.5f,0,METAL,METAL,COLOR(73,111,108));
+   metro_ribbon(cx,z+60,z+260,width,CM_PLAT_H-1.2f,1.2f,SIDEWALK,SIDEWALK,COLOR(226,222,214));
+   metro_ribbon(CM_METRO_X+side*10.9f,z+60,z+260,.55f,CM_PLAT_H+.02f,.12f,FLAT,FLAT,COLOR(250,200,60));
+   metro_ribbon(CM_METRO_X+side*16.5f,z+61,z+259,.55f,CM_PLAT_H,5.5f,METAL,METAL,COLOR(73,111,108));
   }
   for(int k=0;k<3;k++)for(int side=-1;side<=1;side+=2)cylinder(CM_METRO_X+side*15,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu);
   for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,26,0,METAL,METAL,COLOR(113,143,144));
   /* Platform canopies leave the central track open: the follow camera can
      see trains/rails instead of looking through one opaque full-width roof. */
-  for(int side=-1;side<=1;side+=2)rail_canopy(CM_METRO_X+side*15,z+160,8,208,CM_PLAT_H+24,2);
+  for(int side=-1;side<=1;side+=2){
+   float roofX=CM_METRO_X+side*15;
+   rail_canopy(roofX,z+160,8,208,CM_PLAT_H+24,2);
+   /* Continuous dark fascia hides the raw canopy edges and identifies the
+      platform as a station rather than an exposed piece of track. */
+   metro_ribbon(CM_METRO_X+side*20.8f,z+56,z+264,.8f,CM_PLAT_H+23.6f,1.4f,METAL,METAL,COLOR(44,82,93));
+   metro_ribbon(roofX,z+56,z+264,.55f,CM_PLAT_H+25.6f,.55f,METAL,METAL,COLOR(209,230,226));
+  }
   if(!far){
-   for(int k=0;k<4;k++)box(CM_METRO_X,z+74+k*57,CM_PLAT_H+25,37,1.2f,1.1f,0,METAL,METAL,COLOR(56,80,74));
+   for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++)
+    metro_ribbon(CM_METRO_X+side*15,z+74+k*57-.6f,z+74+k*57+.6f,8,CM_PLAT_H+24.2f,1.1f,METAL,METAL,COLOR(56,80,74));
    for(int side=-1;side<=1;side+=2)for(int k=0;k<3;k++){
     box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H+2.5f,3,10,.8f,0,FLAT,FLAT,COLOR(50,137,121));
     box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H,1,7,2.5f,0,METAL,METAL,COLOR(68,86,87));
@@ -798,13 +846,35 @@ static void replay_range(const unsigned char *p,const unsigned char *end){
         else{float q[3];memcpy(q,p,sizeof q);p+=sizeof q;int nc=noClip;noClip=0;litAlready=0;traffic_light(q[0],q[1],q[2]);noClip=nc;}
     }
 }
-static void cache_replay(const CellCache *c){
+/* Retint the cached road/sidewalk records only when daylight has changed
+   perceptibly. They are subsequently copied to the mesh unchanged, avoiding
+   the old per-vertex multiply on every frame. The cache is rebuilt regularly
+   from source geometry, so 8-bit rounding never accumulates indefinitely. */
+static void cache_relight_ground(CellCache *c,uint32_t now){
+ float light[3]={(float)(now&255),(float)((now>>8)&255),(float)((now>>16)&255)};
+ float gain[3];int changed=0;
+ for(int i=0;i<3;i++){
+  gain[i]=light[i]/fmaxf(c->groundLight[i],1.f);
+  if(fabsf(gain[i]-1.f)>.004f)changed=1;
+ }
+ if(!changed)return;
+ unsigned char *p=cachePool+c->off,*end=p+c->len;
+ while(p<end){RecHdr h;memcpy(&h,p,4);p+=4;
+  if(h.kind==0){
+   if((h.mat==ROAD||h.mat==SIDEWALK)&&h.lit)for(int j=0;j<h.count;j++){
+    Vertex *v=(Vertex*)(p+j*sizeof(Vertex));uint32_t col=v->color;
+    int r=(int)((col&255)*gain[0]+.5f),g=(int)(((col>>8)&255)*gain[1]+.5f),b=(int)(((col>>16)&255)*gain[2]+.5f);
+    v->color=COLOR(r>255?255:r,g>255?255:g,b>255?255:b);
+   }
+   p+=h.count*sizeof(Vertex);
+  }else if(h.kind<3)p+=3*sizeof(Vertex);else p+=3*sizeof(float);
+ }
+ for(int i=0;i<3;i++)c->groundLight[i]=light[i];
+}
+static void cache_replay(CellCache *c){
     float savedGround=fixedGround;int savedLit=litAlready,savedRigid=rigid;
-    float prevGain[3]={cacheGroundGain[0],cacheGroundGain[1],cacheGroundGain[2]};
     uint32_t now=lit_color(COLOR(160,160,160),0,1,0);
-    cacheGroundGain[0]=(float)(now&255)/fmaxf(c->groundLight[0],1);
-    cacheGroundGain[1]=(float)((now>>8)&255)/fmaxf(c->groundLight[1],1);
-    cacheGroundGain[2]=(float)((now>>16)&255)/fmaxf(c->groundLight[2],1);
+    cache_relight_ground(c,now);
     fixedGround=-1000000;rigid=0;
     const unsigned char *base=cachePool+c->off;
     for(unsigned k=0;k<c->nchunks;k++){const CacheChunk *ch=&chunkPool[c->chunk0+k];
@@ -815,7 +885,6 @@ static void cache_replay(const CellCache *c){
         noClip=inside;replay_range(base+ch->off,base+ch->off+ch->len);noClip=0;
     }
     fixedGround=savedGround;litAlready=savedLit;rigid=savedRigid;
-    for(int i=0;i<3;i++)cacheGroundGain[i]=prevGain[i];
 }
 /* Divide lo grabado de una manzana en trozos de ~100 vertices con su esfera envolvente. */
 static int cache_chunks(CellCache *cc){
