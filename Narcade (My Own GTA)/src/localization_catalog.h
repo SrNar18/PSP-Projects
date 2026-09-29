@@ -69,6 +69,7 @@ static const LocaleEntry localeCatalog[] = {
     {"CONSOLA / SESION DE RITMO","CONSOLE / RHYTHM SESSION"},
     {"CORAL: tu posicion","CORAL: your position"},
     {"CREADO POR NARESZ","CREATED BY NARESZ"},
+    {"CREDITOS","CREDITS"},
     {"CRUCETA mover  X girar pieza  O salir","D-PAD move  X rotate piece  O exit"},
     {"CRUCETA o ANALOGICO mover  Evita los haces rojos  O salir","D-PAD or ANALOG move  Avoid red beams  O exit"},
     {"CRUCETA recorrer lugares  SELECT u O volver","D-PAD browse places  SELECT or O back"},
