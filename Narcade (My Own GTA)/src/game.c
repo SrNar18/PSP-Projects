@@ -136,8 +136,7 @@ static void text_raw(int x,int y,const char *s,uint32_t c,int scale){font_text(x
    title panels use the same RGBA4444 resource after branch integration. */
 static void title_logo(const unsigned short *src,int sw,int sh,int dx,int dy);
 static void logo_draw(int x,int y,int large){
- if(large)title_logo(narcade_logo_cover_v244,420,143,x,y);
- else title_logo(narcade_logo_small_v244,115,39,x,y);
+ (void)large;title_logo(narcade_logo_small_v244,115,39,x,y);
 }
 static void text(int x,int y,const char *s,uint32_t c,int scale){text_raw(x,y,locale_text(s),c,scale);}
 static int textwrap_raw(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text_raw(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
@@ -1250,6 +1249,21 @@ int cachecount_public(void){return cachecount();}
    - Abajo a la izquierda: minimapa circular con calles, rio, objetivo y posicion. */
 static void text_center(int cx,int y,const char *s,uint32_t c,int scale){s=locale_text(s);text_raw(cx-(int)strlen(s)*7*scale/2,y,s,c,scale);}
 static void box_center(int cx,int y,int w,int h,uint32_t c){rect(cx-w/2,y,w,h,c);}
+/* Chamfered HUD glass with a restrained neon edge, shared by location and
+   mission notices. Every pixel goes through rect/line so the PSP HUD bands
+   are marked for composition. */
+static void hud_plaque(int cx,int y,int w,int h,uint32_t accent){
+ int x=cx-w/2;if(w<28||h<13)return;
+ for(int row=0;row<h;row++){
+  int cut=row<6?6-row:(row>h-7?row-(h-7):0);
+  rect(x+cut,y+row,w-cut*2,1,RGB(7,14,27));
+ }
+ line(x+6,y,x+w-7,y,RGB(49,89,109));line(x,y+6,x+6,y,RGB(49,89,109));
+ line(x+w-7,y,x+w-1,y+6,RGB(49,89,109));
+ line(x+6,y+h-1,x+w-7,y+h-1,RGB(40,76,95));
+ rect(x+10,y+2,24,1,accent);rect(x+10,y+h-3,13,1,accent);
+ rect(x+w-23,y+h-3,11,1,RGB(119,67,125));
+}
 /* v2.6: el minimapa se dibuja cada fotograma (3.200 muestras); el trazado se precalcula en una rejilla de 4 unidades
    (640x560 bytes = 358 KB) para no evaluar poligonos por pixel. Codigos: 0 fuera, 1 rio, 2 calle, 3 acera/plaza, 4 parque, 5 edificio. */
 #define MG_STEP 4
@@ -1322,7 +1336,9 @@ static void hud(void){
 #endif
  /* Barrio nuevo: aviso temporal arriba. */
  int d=district(g.x,g.y);if(g.screen==WORLD&&d!=g.hudDistrict){g.hudDistrict=d;g.hudDistrictT=2.2f;}
- if(g.hudDistrictT>0){int w=(int)strlen(districts[d])*7+24;box_center(W/2,10,w,19,INK);text_center(W/2,13,districts[d],TEAL,1);}
+ if(g.hudDistrictT>0){const char *name=locale_text(districts[d]);int w=(int)strlen(name)*7+38;
+  hud_plaque(W/2,7,w,25,RGB(70,202,239));
+  font_text(W/2-(int)strlen(name)*7/2,13,name,WHITE,1,1);}
  /* Objetivo nuevo: frase temporal abajo. */
  if(g.screen==WORLD&&g.mission<36){int key=g.mission*8+g.step+1;if(key!=g.hudStepKey){g.hudStepKey=key;g.hudObjectiveT=5.0f;}}
  /* Esquina superior derecha: vida, carro, dinero, busqueda. */
@@ -1345,8 +1361,9 @@ static void hud(void){
  if(!line&&!combat.aiming&&combat_wall_at(g.x,g.y,14))line="[] ESCALAR MURO";
  if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
   line=locale_text(line);int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
-  box_center(cx,H-14-lines*13,w,lines*13+8,INK);
-  if(lines==1)text_raw(cx-n*7/2,H-10-13,line,col,1);else textwrap_raw(cx-w/2+10,H-10-lines*13,w-20,line,col);}
+  int py=H-15-lines*13;hud_plaque(cx,py,w,lines*13+13,col);
+  if(lines==1)font_text(cx-n*7/2,H-10-13,line,col,1,0);
+  else textwrap_raw(cx-w/2+10,H-10-lines*13,w-20,line,col);}
  /* Minimapa. */
 #ifndef AB_NOMINIMAP
  minimap(46,H-46,32);
@@ -1404,23 +1421,20 @@ static void title_card(int id){
 static void title_draw(void){
  if(!g.titleStage){
   title_image(title_cover_v213,W,H,0,0);
-  rect(0,0,W,3,RGB(31,191,205));
-  title_logo(narcade_logo_cover_v244,420,143,18,15);
-  title_label(TL_COVER_SUB,26,157,RGB(188,220,230));
-  rect(0,174,275,98,RGB(7,14,25));
-  rect(20,190,4,48,RGB(84,218,230));
+  /* Let the Medellin illustration occupy the screen. The repaired mark
+     sits just above the invitation inside one shaped glass panel. */
+  hud_plaque(150,157,274,107,RGB(63,202,234));
+  title_logo(narcade_logo_small_v244,115,39,28,164);
   uint32_t prompt=sinf(g.clock*3.2f)>-.45f?WHITE:RGB(116,165,176);
-  title_label(TL_PRESS,33,194,prompt);
-  title_label(TL_PRESS_SUB,34,218,RGB(146,184,195));
+  title_label(TL_PRESS,31,208,prompt);
+  title_label(TL_PRESS_SUB,32,232,RGB(146,184,195));
   title_label(TL_MADE_BY,356,234,WHITE);title_label(TL_CREDIT,397,224,WHITE);
-  rect(20,253,122,2,RGB(64,145,161));
  }else{
   title_image(title_menu_v213,W,H,0,0);
   rect(0,0,W,4,RGB(68,204,218));
   rect(0,0,W,65,RGB(7,13,23));
   title_logo(narcade_logo_small_v244,115,39,14,5);
   title_label(TL_STORY,185,13,WHITE);
-  title_label(TL_STORY_KICKER,14,43,RGB(153,186,196));
   for(int i=0;i<5;i++)title_card(i);
   title_label(TL_FOOTER,14,249,RGB(190,212,219));
   title_label(TL_MADE_BY,356,252,MUTED);title_label(TL_CREDIT,395,246,WHITE);

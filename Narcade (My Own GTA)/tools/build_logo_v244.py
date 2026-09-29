@@ -1,11 +1,11 @@
 """Extract the original PSP cover mark as one reusable, transparent logo.
 
-The source is our own icon artwork. Keeping the source here lets the cover,
-menu and future screens share precisely the same identity.
+The source is our own icon artwork. The compact mark is shared by the cover,
+menu and future screens without embedding an unused 120 KB large duplicate.
 """
 from pathlib import Path
 import struct
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
@@ -22,11 +22,15 @@ for y in range(crop.height):
         strength = max(0, min(255, (hi - 44) * 3))
         saturation = max(0, min(255, (hi - lo - 19) * 5))
         ap[x, y] = min(strength, saturation)
-alpha = alpha.filter(ImageFilter.GaussianBlur(.65))
+# The source mark has tiny pale cuts along the sharp blue N. A luminance/
+# saturation key alone drops those highlights. Close only subpixel-size gaps
+# in the extracted mark, keeping the interior letter counters transparent.
+closed = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.MinFilter(9))
+alpha = ImageChops.lighter(alpha, closed).filter(ImageFilter.GaussianBlur(.65))
 mark = crop.convert("RGBA")
 mark.putalpha(alpha)
 
-for name, size in (("cover", (420, 143)), ("small", (115, 39))):
+for name, size in (("small", (115, 39)),):
     image = mark.resize(size, Image.Resampling.LANCZOS)
     image.save(ASSETS / f"narcade-logo-{name}-v244.png")
     # PSP-friendly RGBA4444, little endian (GU_PSM_4444 layout).
