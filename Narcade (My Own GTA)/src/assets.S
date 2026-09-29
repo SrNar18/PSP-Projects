@@ -47,6 +47,14 @@ menu_trophies_v242:
 .global title_labels_v213
 title_labels_v213:
 .incbin "assets/title-labels-v213.a8"
+.balign 16
+.global narcade_logo_cover_v244
+narcade_logo_cover_v244:
+.incbin "assets/narcade-logo-cover-v244.4444"
+.balign 16
+.global narcade_logo_small_v244
+narcade_logo_small_v244:
+.incbin "assets/narcade-logo-small-v244.4444"
 #ifndef _WIN32
 .section .note.GNU-stack,"",@progbits
 #endif

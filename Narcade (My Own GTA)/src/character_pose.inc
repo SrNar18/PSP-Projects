@@ -47,10 +47,10 @@ static Point pose_arm(Point p,int bone){
 static Point player_surface(const PlayerVertex *a){
  Point p=point(a->x,a->y,a->z);
  /* A closed hair shell covers the scalp, including during head turns. */
- if(a->mat==HAIR){p.x*=1.10f;p.z*=1.10f;p.y=25.2f+(p.y-25.2f)*1.07f+.16f;}
+ if(a->mat==HAIR){p.x*=1.14f;p.z*=1.14f;p.y=25.2f+(p.y-25.2f)*1.09f+.22f;}
  if((a->mat==SKIN||a->mat==FACE)&&a->bone==0&&p.y>27.1f){p.x*=.94f;p.z*=.94f;}
  /* Hide the skin underneath the sleeve; don't enlarge exposed forearms. */
- if(a->mat==SKIN&&a->bone>=3&&p.y>19){float c=(a->bone==3?-1:1)*4.8f;p.x*=.86f;p.z=c+(p.z-c)*.86f;}
- if(a->mat==SLEEVE){float c=(a->bone==3?-1:1)*4.8f;p.x*=1.06f;p.z=c+(p.z-c)*1.06f;}
+ if(a->mat==SKIN&&a->bone>=3&&p.y>18.6f){float c=(a->bone==3?-1:1)*4.8f;p.x*=.80f;p.z=c+(p.z-c)*.80f;}
+ if(a->mat==SLEEVE){float c=(a->bone==3?-1:1)*4.8f;p.x*=1.14f;p.z=c+(p.z-c)*1.14f;}
  return p;
 }

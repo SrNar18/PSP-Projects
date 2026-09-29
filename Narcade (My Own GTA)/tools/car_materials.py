@@ -31,8 +31,8 @@ def create(name):
             u = x / 127
             # Reflections are broad enough to survive the PSP's RGB565 atlas.
             skyline = 0.25 + 0.035 * math.sin(u * 17) + 0.018 * math.sin(u * 39)
-            sky = 22 * math.exp(-((v - skyline) / 0.095) ** 2)
-            long_glint = 27 * math.exp(-((v - (0.46 + 0.025 * math.sin(u * 8))) / 0.035) ** 2)
+            sky = 27 * math.exp(-((v - skyline) / 0.095) ** 2)
+            long_glint = 38 * math.exp(-((v - (0.46 + 0.025 * math.sin(u * 8))) / 0.035) ** 2)
             soft_reflection = 13 * math.exp(-((u - 0.68 - v * 0.12) / 0.18) ** 2)
             metal = rng.gauss(0, 2.1)
             if side:
@@ -50,7 +50,7 @@ def create(name):
             luminance = .2126*photo[0]+.7152*photo[1]+.0722*photo[2]
             # Preserve the old neutral tint range so car paint colors stay intact.
             # Stronger reference reflection at the shoulder; softer on the roof.
-            reflection = (luminance-145) * (0.27 if side else 0.20)
+            reflection = (luminance-145) * (0.46 if side else 0.30)
             q = clamp(base + reflection + metal)
             pixels[x, y] = (q, clamp(q + 2), clamp(q + 5))
 

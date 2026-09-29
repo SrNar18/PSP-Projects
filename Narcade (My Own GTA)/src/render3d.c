@@ -43,12 +43,13 @@ static int used[MAT_COUNT];
 #define CITY_CACHE_BYTES (5u*512u*1024u) /* 2,5 MB (v2.34: el suelo troceado en las transiciones ocupa mas); limite de RAM ~20 MB */
 #endif
 typedef struct{unsigned char kind,mat,count,lit;}RecHdr; /* kind: 0 poligono, 1 luz, 2 sombra, 3 semaforo */
-typedef struct{unsigned off,len;float day;int valid;unsigned chunk0,nchunks,used;}CellCache; /* v2.36: used = ultimo fotograma en que se dibujo */
+typedef struct{unsigned off,len;float day,groundLight[3];int valid;unsigned chunk0,nchunks,used;}CellCache; /* v2.36: used = ultimo fotograma en que se dibujo */
 static unsigned r3Frame;
 typedef struct{unsigned off,len;float x,y,z,r;}CacheChunk; /* trozo de ~100 vertices con esfera envolvente (off relativo a la manzana) */
 #define CHUNK_MAX 7000
 static CacheChunk chunkPool[CHUNK_MAX];static unsigned chunkUsed;
 static int noClip; /* v2.31: el trozo entero cae dentro de la vista: sin pruebas de recorte */
+static float cacheGroundGain[3]={1,1,1};
 static unsigned char __attribute__((aligned(16))) cachePool[CITY_CACHE_BYTES];
 static unsigned cacheUsed;static int cacheRec,recFail;static float recDist,recRange;
 unsigned long r3CacheNew,r3CacheLight,r3CacheReset; /* diagnostico: reconstrucciones por manzana nueva/LOD, por luz y vaciados */
@@ -205,11 +206,19 @@ static void polygon(int mat,Vertex *input,int count){
     polygon_emit(mat,buffers[0],count,litAlready);
 }
 static void polygon_emit(int mat,Vertex *input,int count,int lit){
+    int relight=(mat==ROAD||mat==SIDEWALK)&&lit&&
+        (fabsf(cacheGroundGain[0]-1)>.002f||fabsf(cacheGroundGain[1]-1)>.002f||fabsf(cacheGroundGain[2]-1)>.002f);
     /* v2.41 (Claude): ruta rapida. Un poligono ya iluminado de un trozo de cache entero dentro de la vista
        (noClip) va directo de la cache a la malla, sin copias intermedias ni pruebas de planos. */
     if(noClip&&lit&&mat!=WATER&&count>=3){int needed=(count-2)*3;if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
         Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;const Vertex *v0=input;
-        for(int j=1;j<count-1;j++){*p++=*v0;*p++=input[j];*p++=input[j+1];}return;}
+        for(int j=1;j<count-1;j++){*p++=*v0;*p++=input[j];*p++=input[j+1];}
+        if(relight)for(int j=0;j<needed;j++){
+            uint32_t c=mesh[mat][used[mat]-needed+j].color;
+            int r=(int)((c&255)*cacheGroundGain[0]),g=(int)(((c>>8)&255)*cacheGroundGain[1]),b=(int)(((c>>16)&255)*cacheGroundGain[2]);
+            mesh[mat][used[mat]-needed+j].color=COLOR(r>255?255:r,g>255?255:g,b>255?255:b);
+        }
+        return;}
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     /* Animate after cache replay, so a cached river never freezes its flow.
        World-space UVs join the current across every strip and row. */
@@ -245,6 +254,11 @@ static void polygon_emit(int mat,Vertex *input,int count,int lit){
     if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
     Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;
     for(int j=1;j<count-1;j++){*p++=buffers[src][0];*p++=buffers[src][j];*p++=buffers[src][j+1];}
+    if(relight)for(int j=0;j<needed;j++){
+        uint32_t c=mesh[mat][used[mat]-needed+j].color;
+        int r=(int)((c&255)*cacheGroundGain[0]),g=(int)(((c>>8)&255)*cacheGroundGain[1]),b=(int)(((c>>16)&255)*cacheGroundGain[2]);
+        mesh[mat][used[mat]-needed+j].color=COLOR(r>255?255:r,g>255?255:g,b>255?255:b);
+    }
 }
 /* Optimizacion (Claude): descarte por esfera envolvente contra el frustum (en coordenadas proyectadas). */
 static int sphere_visible(float x,float z,float radius){
@@ -389,12 +403,18 @@ static void car(const R3Car *c){
     if(!hullWarmOnly&&!nearby(c->x,c->z,500))return;
     if(!hullWarmOnly&&!sphere_visible(c->x,c->z,30))return;
     float dist=view_distance(c->x,c->z);
-    static const uint32_t colors[]={COLOR(93,196,173),COLOR(245,198,75),COLOR(221,106,86),COLOR(232,230,211),COLOR(108,157,207),COLOR(167,124,182),
-        COLOR(48,88,112),COLOR(159,64,65),COLOR(195,204,200),COLOR(142,112,80),COLOR(82,126,91),COLOR(72,74,87)};
+    /* Muted production-car paint. Saturated colors made the shells read as toys. */
+    static const uint32_t colors[]={COLOR(48,92,102),COLOR(205,172,76),COLOR(154,48,43),COLOR(213,217,215),COLOR(48,75,113),COLOR(99,91,114),
+        COLOR(34,51,67),COLOR(115,44,43),COLOR(152,160,162),COLOR(117,95,80),COLOR(56,91,76),COLOR(45,49,55)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
     if(!hullWarmOnly&&(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800)){ /* preserve material capacity in dense traffic */
-        box(c->x,c->z,3,36,18,7,c->angle,CAR_PAINT,CAR_PAINT,paint);box(c->x,c->z,10,20,15,7,c->angle,CAR_SIDE,CAR_PAINT,paint);
+        static const float roofLen[]={19,22,17,29,17,25};
+        static const float roofBack[]={0,-2,2,0,1,-1};
+        static const float roofHeight[]={6.5f,7.5f,7,10,4.5f,8.5f};
+        box(c->x,c->z,3,type==3?40:36,18,type==4?6:7,c->angle,CAR_PAINT,CAR_PAINT,paint);
+        Point roof=local(roofBack[type],0,0,c->x,c->z,c->angle);
+        box(roof.x,roof.z,type==4?9:10,roofLen[type],type==4?14:15,roofHeight[type],c->angle,GLASS,CAR_PAINT,COLOR(94,124,139));
         if(dist<=170)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
             box(p.x,p.z,5.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,end>0?COLOR(255,244,192):COLOR(255,61,42));}
         return;
