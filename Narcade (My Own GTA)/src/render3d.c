@@ -452,6 +452,7 @@ static void car(const R3Car *c){
     }
     if(hullWarmOnly){hull_sides(0,0,0,prof,n,floor,paint,wr);hull_sides(0,0,0,prof,n,floor,paint,0);return;}
     hull(c->x,c->z,c->angle,prof,n,mats,floor,paint,dist<100?wr:0);
+    car_rear_glass(c->x,c->z,c->angle,type);
     /* bajos oscuros */
     box(c->x,c->z,floor-1.2f,prof[n-1].x-prof[0].x-4,prof[0].w*1.7f,1.2f,c->angle,METAL,METAL,COLOR(40,40,42));
     if(dist>300)return; /* LOD: sin ruedas detalladas a lo lejos */
@@ -506,11 +507,11 @@ static void car(const R3Car *c){
     }
     if(type==2){ /* bed rails give the pickup a distinct open cargo section */
         for(int side=-1;side<=1;side+=2){Point rail=local(-12,0,side*8.3f,c->x,c->z,c->angle);
-            box(rail.x,rail.z,11,12,1,1.2f,c->angle,METAL,METAL,shade(paint,.65f));}
+            box(rail.x,rail.z,8.8f,12,1,1.2f,c->angle,METAL,METAL,shade(paint,.65f));}
     }else if(type==5){for(int side=-1;side<=1;side+=2){Point rail=local(0,0,side*6.2f,c->x,c->z,c->angle);
-        box(rail.x,rail.z,19,19,.75,.75,c->angle,METAL,METAL,COLOR(74,82,84));}}
+        box(rail.x,rail.z,17.8f,19,.75,.75,c->angle,METAL,METAL,COLOR(74,82,84));}}
     else if(type==4){Point spoiler=local(-16,0,0,c->x,c->z,c->angle);
-        box(spoiler.x,spoiler.z,12.5f,2,14,1,c->angle,CAR_PAINT,CAR_PAINT,shade(paint,.8f));}
+        box(spoiler.x,spoiler.z,9.2f,2,14,.9f,c->angle,CAR_PAINT,CAR_PAINT,shade(paint,.8f));}
     if(c->police)box(c->x,c->z,prof[3].y+.6f,3,13,2,c->angle,CAR_PAINT,CAR_PAINT,((int)(view->time*5)&1)?COLOR(255,65,49):COLOR(45,147,255));
 }
 static const float ringC[9]={1,.7071068f,0,-.7071068f,-1,-.7071068f,0,.7071068f,1};
@@ -820,6 +821,38 @@ void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
     sceGuDisplay(GU_TRUE);
 #else
     (void)draw;(void)disp;
+#endif
+}
+/* v2.44 (Claude): ilustracion de la pantalla de carga dibujada por el GE: filtrado bilineal (zoom suave, sin
+   "vibracion" del muestreo por CPU) y fundido por mezcla alfa. img: RGB565 (5650 PSP) de 512x288 en RAM.
+   zoom 1 = recorte 480x272 centrado; light 0..255 atenua; alpha 0..255 mezcla sobre lo que haya. */
+void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int alpha){
+#ifndef R3_HOST
+    typedef struct {float u,v;uint32_t color;float x,y,z;} SpriteV;
+    sceKernelDcacheWritebackRange(img,512*288*2); /* la imagen se leyo del disco por la cache de la CPU */
+    ge_wait(),sceGuStart(GU_DIRECT,commands);
+    sceGuDrawBufferList(GU_PSM_8888,(void*)((uintptr_t)fb&0x001fffff),512);
+    sceGuOffset(2048-240,2048-136);sceGuViewport(2048,2048,480,272);sceGuScissor(0,0,480,272);sceGuEnable(GU_SCISSOR_TEST);
+    sceGuDisable(GU_DEPTH_TEST);sceGuDisable(GU_FOG);sceGuDisable(GU_LIGHTING);sceGuDisable(GU_ALPHA_TEST);
+    sceGuEnable(GU_TEXTURE_2D);sceGuTexMode(GU_PSM_5650,0,0,0);sceGuTexImage(0,512,512,512,img);
+    sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);sceGuTexFilter(GU_LINEAR,GU_LINEAR);sceGuTexWrap(GU_CLAMP,GU_CLAMP);
+    sceGuTexScale(1,1);sceGuTexOffset(0,0); /* en 2D las coordenadas van en texeles */
+    if(alpha<255){sceGuEnable(GU_BLEND);sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);}else sceGuDisable(GU_BLEND);
+    uint32_t col=((uint32_t)alpha<<24)|((uint32_t)light<<16)|((uint32_t)light<<8)|(uint32_t)light;
+    float sw=480.f/zoom,sh=272.f/zoom,u0=(512-sw)*.5f,v0=(288-sh)*.5f;
+    for(int x=0;x<480;x+=32){int end=x+32>480?480:x+32; /* tiras de 32 px: evita la penalizacion de sprites anchos */
+        SpriteV *v=sceGuGetMemory(2*sizeof(SpriteV));
+        v[0]=(SpriteV){u0+sw*x/480.f,v0,col,(float)x,0,0};v[1]=(SpriteV){u0+sw*end/480.f,v0+sh,col,(float)end,272,0};
+        sceGuDrawArray(GU_SPRITES,GU_TEXTURE_32BITF|GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_2D,2,0,v);}
+    sceGuDisable(GU_BLEND);sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);
+    sceGuFinish();sceGuSync(0,0);
+#else
+    /* PC: muestreo simple por CPU (solo para vistas previas) */
+    float sw=480.f/zoom,sh=272.f/zoom,x0=(512-sw)*.5f,y0=(288-sh)*.5f;
+    for(int y=0;y<272;y++)for(int x=0;x<480;x++){uint16_t c=img[(int)(y0+y*sh/272.f)*512+(int)(x0+x*sw/480.f)];
+        unsigned r=((c&31)*255/31)*light/255,g=(((c>>5)&63)*255/63)*light/255,b=(((c>>11)&31)*255/31)*light/255;uint32_t o=fb[y*512+x];
+        r=(r*alpha+(o&255)*(255-alpha))/255;g=(g*alpha+((o>>8)&255)*(255-alpha))/255;b=(b*alpha+((o>>16)&255)*(255-alpha))/255;
+        fb[y*512+x]=0xff000000u|(b<<16)|(g<<8)|r;}
 #endif
 }
 void r3_gu_display(int on){

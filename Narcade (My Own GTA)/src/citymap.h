@@ -169,6 +169,16 @@ static inline int cm_parcel_at(float x,float z){
 #define CM_TRAIN_CAR 110.f
 static inline int cm_metro_station(int bz){return bz==1||bz==3||bz==5;}
 static inline float cm_station_z(int bz){return bz*320+160.f;}
+/* Concrete supports beneath the three elevated station platforms. Their
+   walkable decks are above the tops of these supports, so callers decide
+   whether the player is at ground level before treating them as obstacles. */
+static inline int cm_metro_support(float x,float z){
+ int row=(int)floorf(z/320.f);if(!cm_metro_station(row))return 0;
+ float localZ=z-row*320.f;
+ for(int side=-1;side<=1;side+=2)if(fabsf(x-(CM_METRO_X+side*15.f))<2.6f)
+  for(int k=0;k<3;k++)if(fabsf(localZ-(80.f+k*80.f))<2.6f)return 1;
+ return 0;
+}
 static inline int cm_on_platform(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1466&&x<1505&&fabsf(x-CM_METRO_X)>10.5f&&lz>=60&&lz<=260;}
 static inline int cm_on_stairs(float x,float z){int bz=(int)floorf(z/320);float lz=z-bz*320;return cm_metro_station(bz)&&x>1466&&x<1475&&lz>=258&&lz<=318;}
 /* Elevacion peatonal en (x,z). up=1 si el jugador ya esta arriba (en el anden). */

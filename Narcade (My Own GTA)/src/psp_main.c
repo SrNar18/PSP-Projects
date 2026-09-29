@@ -93,6 +93,12 @@ static void dbg(const char *msg){
         (int)(sceKernelTotalFreeMemSize()>>10),(int)(sceKernelMaxFreeMemSize()>>10));
     sceIoWrite(f,line,n);sceIoClose(f);
 }
+/* v2.44 (Claude): hilo de carga por etapas (ver savedata_dialog). */
+static volatile int loadStageNow,loadFinished;
+static int load_worker(SceSize args,void *argp){(void)args;(void)argp;
+ for(int stage=0;stage<24;stage++){char m[40];snprintf(m,sizeof(m),"etapa-%d-inicio",stage);dbg(m);
+  loadStageNow=stage;int done=game_load_stage(0,512,stage);snprintf(m,sizeof(m),"etapa-%d-ok",stage);dbg(m);if(done)break;}
+ loadFinished=1;return 0;}
 static int savedata_dialog(int mode,uint32_t **buffers,int *index){
  memset(&sd,0,sizeof(sd));sd.base.size=sizeof(sd);
  sd.base.language=game_language()?PSP_SYSTEMPARAM_LANGUAGE_ENGLISH:PSP_SYSTEMPARAM_LANGUAGE_SPANISH;
@@ -154,22 +160,24 @@ static int savedata_dialog(int mode,uint32_t **buffers,int *index){
    /* v2.41 (Claude): doble bufer (se dibuja en el que no se ve) y un fotograma de animacion entre etapas
       (zoom y fundido de la ilustracion). La ultima imagen se queda hasta que el primer fotograma de juego
       la sustituye: la pantalla de carga dura exactamente hasta que ya te puedes mover. */
+   /* v2.44 (Claude): la carga pesada va en un hilo de menor prioridad y este hilo presenta la pantalla a 30 fps
+      (ilustracion por el GE con zoom suave y fundidos). Antes solo se redibujaba entre etapas: el zoom iba a
+      saltos. La ultima imagen se queda hasta el primer fotograma de juego. */
    int cur=*index^1;uint64_t loadStart=sceKernelGetSystemTimeWide();
-#define LOAD_CLOCK() game_load_clock((float)((sceKernelGetSystemTimeWide()-loadStart)/1000000.0))
-   for(int stage=0;stage<24;stage++){ /* v2.37: + etapas de ciudad visible (terminan antes si ya esta) */
-    char m[40];snprintf(m,sizeof(m),"etapa-%d-inicio",stage);dbg(m);
-    LOAD_CLOCK();int done=game_load_stage(buffers[cur],512,stage);
-    snprintf(m,sizeof(m),"etapa-%d-ok",stage);dbg(m);
-    if(done)break;
-    sceKernelDcacheWritebackAll();
-    sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
-    sceDisplayWaitVblankStart();cur^=1;
-    for(int more=1,k=0;more&&k<8;k++){ /* completa el fundido antes de la siguiente etapa */
-     LOAD_CLOCK();more=game_load_anim(buffers[cur],512,stage);sceKernelDcacheWritebackAll();
+#define LOAD_CLOCK() game_load_clock((float)(sceKernelGetSystemTimeWide()-loadStart)*1e-6f)
+   game_load_begin();loadStageNow=0;loadFinished=0;
+   SceUID worker=sceKernelCreateThread("Narcade carga",load_worker,0x30,0x40000,THREAD_ATTR_USER|THREAD_ATTR_VFPU,0);
+   if(worker>=0&&sceKernelStartThread(worker,0,0)>=0){
+    while(!loadFinished){
+     LOAD_CLOCK();game_load_present(buffers[cur],512,loadStageNow,0);sceKernelDcacheWritebackAll();
      sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
-     sceDisplayWaitVblankStart();cur^=1;
+     sceDisplayWaitVblankStart();sceDisplayWaitVblankStart();cur^=1; /* 30 fps; en la espera trabaja el hilo de carga */
     }
-   }
+    sceKernelWaitThreadEnd(worker,0);sceKernelDeleteThread(worker);
+   }else{dbg("hilo-de-carga-no-disponible");if(worker>=0)sceKernelDeleteThread(worker);load_worker(0,0);} /* sin hilo: carga directa */
+   LOAD_CLOCK();game_load_present(buffers[cur],512,loadStageNow,1);sceKernelDcacheWritebackAll();
+   sceDisplaySetFrameBuf(buffers[cur],512,PSP_DISPLAY_PIXEL_FORMAT_8888,PSP_DISPLAY_SETBUF_NEXTFRAME);
+   sceDisplayWaitVblankStart();cur^=1;
    *index=cur;game_load_finish();
    dbg("carga-por-etapas-ok");
    r3_trace(dbg,3);

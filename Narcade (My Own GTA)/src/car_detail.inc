@@ -61,3 +61,23 @@ static void car_lens_detail(float x,float z,float angle,
     p=car_skin(x,z,angle,body,n,floor,tail+1.1f,floor+4.3f,side,.52f);
     box(p.x,p.z,p.y,1.4f,1.35f,.50f,angle,METAL,METAL,COLOR(195,49,42));
 }
+/* The rear camera needs a real rear pane: a plain painted slab on vans/SUVs
+   was the strongest toy-like cue. A dark gasket and inset blue-grey glass sit
+   just outside each profile's rear surface, including the sloped coupes. */
+static void car_rear_glass(float x,float z,float angle,int type){
+ static const float pane[6][5]={
+  {-9.f,-4.f,11.4f,16.f,5.9f},   /* sedan */
+  {-17.8f,-16.0f,10.7f,14.7f,6.0f}, /* hatch */
+  {-6.55f,-6.55f,11.5f,16.f,5.7f}, /* pickup cab */
+  {-20.2f,-19.2f,11.4f,18.3f,6.7f}, /* van */
+  {-6.4f,-1.f,10.7f,13.7f,5.9f}, /* sport */
+  {-18.2f,-17.2f,11.1f,16.7f,6.3f} /* SUV */
+ };
+ const float *p=pane[type];
+ for(int border=0;border<2;border++){
+  float d=border?.48f:.27f,w=p[4]-(border?.55f:0),yl=p[2]+(border?.55f:0),yh=p[3]-(border?.45f:0);
+  Point a=local(p[0]-d,yl,-w,x,z,angle),b=local(p[0]-d,yl,w,x,z,angle);
+  Point c=local(p[1]-d,yh,w,x,z,angle),e=local(p[1]-d,yh,-w,x,z,angle);
+  quad(border?GLASS:METAL,a,b,c,e,border?day_scale(COLOR(98,132,147)):day_scale(COLOR(27,34,39)),1,1);
+ }
+}
