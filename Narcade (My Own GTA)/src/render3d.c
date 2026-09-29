@@ -49,7 +49,6 @@ typedef struct{unsigned off,len;float x,y,z,r;}CacheChunk; /* trozo de ~100 vert
 #define CHUNK_MAX 7000
 static CacheChunk chunkPool[CHUNK_MAX];static unsigned chunkUsed;
 static int noClip; /* v2.31: el trozo entero cae dentro de la vista: sin pruebas de recorte */
-static float cacheGroundGain[3]={1,1,1};
 static unsigned char __attribute__((aligned(16))) cachePool[CITY_CACHE_BYTES];
 static unsigned cacheUsed;static int cacheRec,recFail;static float recDist,recRange;
 unsigned long r3CacheNew,r3CacheLight,r3CacheReset; /* diagnostico: reconstrucciones por manzana nueva/LOD, por luz y vaciados */
@@ -207,18 +206,11 @@ static void polygon(int mat,Vertex *input,int count){
     polygon_emit(mat,buffers[0],count,litAlready);
 }
 static void polygon_emit(int mat,Vertex *input,int count,int lit){
-    int relight=(mat==ROAD||mat==SIDEWALK)&&lit&&
-        (fabsf(cacheGroundGain[0]-1)>.002f||fabsf(cacheGroundGain[1]-1)>.002f||fabsf(cacheGroundGain[2]-1)>.002f);
     /* v2.41 (Claude): ruta rapida. Un poligono ya iluminado de un trozo de cache entero dentro de la vista
        (noClip) va directo de la cache a la malla, sin copias intermedias ni pruebas de planos. */
     if(noClip&&lit&&mat!=WATER&&count>=3){int needed=(count-2)*3;if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
         Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;const Vertex *v0=input;
         for(int j=1;j<count-1;j++){*p++=*v0;*p++=input[j];*p++=input[j+1];}
-        if(relight)for(int j=0;j<needed;j++){
-            uint32_t c=mesh[mat][used[mat]-needed+j].color;
-            int r=(int)((c&255)*cacheGroundGain[0]),g=(int)(((c>>8)&255)*cacheGroundGain[1]),b=(int)(((c>>16)&255)*cacheGroundGain[2]);
-            mesh[mat][used[mat]-needed+j].color=COLOR(r>255?255:r,g>255?255:g,b>255?255:b);
-        }
         return;}
     Vertex buffers[2][16];memcpy(buffers[0],input,count*sizeof(Vertex));int src=0;
     /* Animate after cache replay, so a cached river never freezes its flow.
@@ -255,11 +247,6 @@ static void polygon_emit(int mat,Vertex *input,int count,int lit){
     if(used[mat]+needed>MAX_VERTICES){overflow++;return;}
     Vertex *p=mesh[mat]+used[mat];used[mat]+=needed;
     for(int j=1;j<count-1;j++){*p++=buffers[src][0];*p++=buffers[src][j];*p++=buffers[src][j+1];}
-    if(relight)for(int j=0;j<needed;j++){
-        uint32_t c=mesh[mat][used[mat]-needed+j].color;
-        int r=(int)((c&255)*cacheGroundGain[0]),g=(int)(((c>>8)&255)*cacheGroundGain[1]),b=(int)(((c>>16)&255)*cacheGroundGain[2]);
-        mesh[mat][used[mat]-needed+j].color=COLOR(r>255?255:r,g>255?255:g,b>255?255:b);
-    }
 }
 /* Optimizacion (Claude): descarte por esfera envolvente contra el frustum (en coordenadas proyectadas). */
 static int sphere_visible(float x,float z,float radius){

@@ -105,7 +105,7 @@ static inline int cm_parcels_compute(int bx,int bz,CmParcel *out){
     unsigned shape=(unsigned)(bx*73+bz*41+bx*bz*17);
     float x0=x+90+(shape%4)*3,z0=z+90+((shape>>2)%4)*3;
     float x1=x+278+((shape>>4)%5)*3,z1=z+270+((shape>>7)%5)*3;
-    if(bx==4)x0=1506;                                  /* orilla este del rio: paseo + viaducto del Metro */
+    if(bx==4)x0=(bz==1||bz==3||bz==5)?1524:1506;       /* dar espacio a los andenes y cubiertas en las tres estaciones */
     if(f&CM_MERGE_E)x1=x+320+288;
     if(f&CM_MERGE_S)z1=z+320+280;
     if((f&CM_TUNNEL)&&(f&CM_MERGE_E)){cm_rect(&out[n++],x0,z0,x+327,z1,kind);cm_rect(&out[n++],x+391,z0,x1,z1,kind);}
@@ -247,7 +247,7 @@ static inline int cm_obstacle(float x,float z){
         if(!cm_roundabout(bx[k],bz[k]))continue; /* v2.37: islas desactivadas */ float dx=x-(bx[k]*320+42),dz=z-(bz[k]*320+42);
         if(dx*dx+dz*dz<12.f*12.f)return 1;
     }
-    if(fabsf(x-CM_METRO_X)<5.f){float lz=fmodf(z,320.f);if(lz<0)lz+=320;for(int k=0;k<4;k++)if(fabsf(lz-(100+k*64))<5.f)return 1;}   /* pilares (v2.34: fuera de la calle) */
+    if(fabsf(x-CM_METRO_X)<5.f){float lz=fmodf(z,320.f);if(lz<0)lz+=320;for(int k=0;k<5;k++)if(fabsf(lz-(96+k*48))<5.f)return 1;}   /* pilares del viaducto, fuera de la interseccion */
     int bx=(int)floorf(x/320),bzc=(int)floorf(z/320);
     for(int dz=-1;dz<=0;dz++)for(int dx=-1;dx<=0;dx++){
         const CmParcel *ps;int n=cm_parcels(bx+dx,bzc+dz,&ps);unsigned f=cm_flags(bx+dx,bzc+dz);

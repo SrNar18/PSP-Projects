@@ -18,7 +18,7 @@ int main(void){
   for(int next=0;next<2;next++){
    memset(used,0,sizeof used);fixedGround=-1000000;metro(row+next,0);
    for(int side=-1;side<=1;side+=2){int k=side>0?1:0;
-    present[next][k]=contains(SIDEWALK,metro_point(CM_METRO_X+side*7,z,CM_METRO_DECK+3));
+    present[next][k]=contains(SIDEWALK,metro_point(CM_METRO_X+side*9,z,CM_METRO_DECK+3));
     present[next][2+k]=contains(FLAT,metro_point(CM_METRO_X+side*6-.325f,z,CM_METRO_DECK+3.61f));
     present[next][4+k]=contains(FLAT,metro_point(CM_METRO_X+side*6+.325f,z,CM_METRO_DECK+3.61f));
    }
@@ -27,6 +27,8 @@ int main(void){
    printf("FAIL: metro seam row %d vertex %d (%d/%d)\n",row,k,present[0][k],present[1][k]);return 1;
   }
  }
- puts("PASS: deck and both rails meet exactly across all six block boundaries.");
+ for(int row=0;row<7;row++)for(int k=0;k<5;k++)
+  assert(cm_obstacle(CM_METRO_X,row*320.f+96+k*48));
+ puts("PASS: deck and rails meet across six boundaries; 35 viaduct supports collide.");
  return 0;
 }
