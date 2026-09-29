@@ -34,6 +34,7 @@ typedef struct {const char *title,*who,*intro,*outro;int count,reward;Step steps
 #include "assets.h"
 #include "title_ui.h"
 #include "ui_font.h"
+#include "logo_narcade.h" /* v2.44 (Claude): logo de la portada, tools/build_logo.py */
 enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE,SETTINGS,CREDITS,TROPHIES};
 typedef struct {float x,y,a,speed,hp;int type,parked,police;} Car;
 typedef struct {float x,y,v,phase;int vertical;} Ped;
@@ -110,6 +111,7 @@ static int weapon_menu(float ax,float ay,float dt){
 /* v1.1: dibujo optimizado para PSP real: recorrido por filas y trazado de pixel sin recorte por llamada. */
 /* v2.41 (Claude): franjas de 16 filas con HUD en este fotograma: solo esas se limpian y se componen en la GPU. */
 static unsigned char hudBand[17];
+static int pauseConfirm; /* v2.44 (Claude): confirmacion de salir sin guardar */
 static inline void px(int x,int y,uint32_t c){if((unsigned)x<(unsigned)W&&(unsigned)y<(unsigned)H){fb[y*pitch+x]=c;hudBand[y>>4]=1;}}
 static void rect(int x,int y,int w,int h,uint32_t c){int x0=x<0?0:x,y0=y<0?0:y,x1=x+w>W?W:x+w,y1=y+h>H?H:y+h;if(x1<=x0||y1<=y0)return;for(int b=y0>>4;b<=(y1-1)>>4;b++)hudBand[b]=1;int n=x1-x0;for(int j=y0;j<y1;j++){uint32_t *row=fb+j*pitch+x0;for(int i=0;i<n;i++)row[i]=c;}}
 static void line(int x,int y,int x1,int y1,uint32_t c){int dx=abs(x1-x),sx=x<x1?1:-1,dy=-abs(y1-y),sy=y<y1?1:-1,e=dx+dy;for(;;){px(x,y,c);if(x==x1&&y==y1)break;int z=2*e;if(z>=dy){e+=dy;x+=sx;}if(z<=dx){e+=dx;y+=sy;}}}
@@ -130,6 +132,11 @@ static void font_text(int x,int y,const char *s,uint32_t c,int scale,int heading
  }
 }
 static void text_raw(int x,int y,const char *s,uint32_t c,int scale){font_text(x,y,s,c,scale,0);}
+/* logo NARCADE (ARGB4444) mezclado con alfa sobre lo que haya debajo */
+static void logo_draw(int x,int y,int large){const unsigned short *img=large?logoLarge:logoSmall;int w=large?LOGOLARGE_W:LOGOSMALL_W,h=large?LOGOLARGE_H:LOGOSMALL_H;
+ for(int yy=0;yy<h;yy++){int py=y+yy;if((unsigned)py>=H)continue;for(int xx=0;xx<w;xx++){int sx=x+xx;if((unsigned)sx>=W)continue;unsigned v=img[yy*w+xx],a=(v>>12)*17;if(a<10)continue;
+  unsigned r=(v&15)*17,gg=((v>>4)&15)*17,b=((v>>8)&15)*17;uint32_t o=fb[py*pitch+sx];
+  px(sx,py,RGB(((o&255)*(255-a)+r*a)/255,(((o>>8)&255)*(255-a)+gg*a)/255,(((o>>16)&255)*(255-a)+b*a)/255));}}}
 static void text(int x,int y,const char *s,uint32_t c,int scale){text_raw(x,y,locale_text(s),c,scale);}
 static int textwrap_raw(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text_raw(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
 static int textwrap(int x,int y,int width,const char *s,uint32_t c){return textwrap_raw(x,y,width,locale_text(s),c);}
@@ -517,47 +524,36 @@ static int load_image(int k){ /* lee LOADk.BIN en la ranura libre; 0 si no esta 
   if(got==LOAD_IMG_W*LOAD_IMG_H){for(int q=0;q<3;q++)if(loadSlotOf[q]==slot)loadSlotOf[q]=-1;loadSlotOf[k]=slot;return 1;}}
  return 0;
 }
-static inline uint32_t rgb565_to_8888(uint16_t c){unsigned r=c&31,g5=(c>>5)&63,b=(c>>11)&31; /* formato PSP 5650: rojo en los bits bajos */return 0xff000000u|(((b<<3)|(b>>2))<<16)|(((g5<<2)|(g5>>4))<<8)|((r<<3)|(r>>2));}
-/* imagen con zoom centrado (1 = recorte 480x272 del centro), brillo 0..256 y mezcla opcional sobre lo que hay */
-static void load_blit(uint32_t *dst,int stride,const uint16_t *img,float zoom,int light,int blend){
- float sw=480.f/zoom,sh=272.f/zoom,x0=(LOAD_IMG_W-sw)*.5f,y0=(LOAD_IMG_H-sh)*.5f;
- int fx0=(int)(x0*65536),fdx=(int)(sw/480.f*65536),fy0=(int)(y0*65536),fdy=(int)(sh/272.f*65536);
- for(int y=0;y<272;y++){const uint16_t *row=img+((fy0+y*fdy)>>16)*LOAD_IMG_W;uint32_t *out=dst+y*stride;int fx=fx0;
-  for(int x=0;x<480;x++,fx+=fdx){uint32_t c=rgb565_to_8888(row[fx>>16]);
-   unsigned r=(c&255)*light>>8,g=((c>>8)&255)*light>>8,b=((c>>16)&255)*light>>8;
-   if(blend){uint32_t o=out[x];r=(r*blend+(o&255)*(256-blend))>>8;g=(g*blend+((o>>8)&255)*(256-blend))>>8;b=(b*blend+((o>>16)&255)*(256-blend))>>8;}
-   out[x]=0xff000000u|(b<<16)|(g<<8)|r;}}
-}
+/* v2.44 (Claude): la imagen la dibuja el GE (r3_loading_image: bilineal, zoom suave); la carga pesada va en un hilo
+   aparte (psp_main) y este cuadro se presenta a 30 fps mientras tanto. Todo por reloj real: cambio de imagen cada
+   5 s como minimo, fundido de 0,6 s y zoom lento durante los 5 s de cada imagen. */
 static const char *const loadEs[]={"Recuperando tu historia","Trazando las calles y manzanas de Medellin","Arrancando los motores del trafico",
  "Llenando las aceras de vecinos","Dibujando el mapa del barrio","Cargando cartuchos y ajustando la mira","Encendiendo las luces de la ciudad","Listo. Buena suerte, Nico"};
-static void load_screen_draw(uint32_t *pixels,int stride,int stage,int anim){
+static float loadShownAt,loadPrevZoom=1;
+static void load_present(uint32_t *pixels,int stride,int stage,int finished){
  fb=pixels;pitch=stride;
- static int drawnStage;if(anim)stage=drawnStage;else drawnStage=stage; /* la animacion repite la etapa ya dibujada (incluido el final) */
- if(stage==0&&!anim){loadShown=loadPrev=-1;loadOk[0]=loadOk[1]=loadOk[2]=0;loadSlotOf[0]=loadSlotOf[1]=loadSlotOf[2]=-1;loadFade=256;loadZoom=1;loadBar=0;}
- int warmEnd=6+LOAD_WARM_MAX,finished=stage>=warmEnd;
- int caption=finished?7:stage+1<6?stage+1:6;            /* trabajo que se hace mientras se ve este cuadro */
- /* v2.42 (Claude): cada ilustracion dura al menos 5 s de reloj real; si la carga es rapida solo se ven una o dos */
+ if(stage<=0&&!finished&&loadShown<0){loadOk[0]=loadOk[1]=loadOk[2]=0;loadSlotOf[0]=loadSlotOf[1]=loadSlotOf[2]=-1;loadZoom=1;loadBar=0;}
+ int warmEnd=6+LOAD_WARM_MAX;int caption=finished?7:stage<0?0:stage<6?stage:6;
  int want=(int)(loadClock/5.f);if(want>2)want=2;
- if(!anim&&want!=loadShown){loadPrev=loadShown;loadOk[want]=load_image(want);loadShown=want;loadFade=0;loadZoom=1;}
- {static float shownAt;if(loadFade==0)shownAt=loadClock;loadZoom=1.f+.066f*fminf(1.f,(loadClock-shownAt)/5.f);} /* zoom lento durante los 5 s de cada imagen */if(loadFade<256)loadFade=loadFade+43>256?256:loadFade+43;
- float target=finished?1.f:(float)(stage+1)/(warmEnd+1);
- if(finished)loadBar=1;else if(loadBar<target)loadBar=fminf(target,loadBar+fmaxf(.015f,(target-loadBar)*.45f));
+ if(want!=loadShown){loadPrev=loadShown;loadPrevZoom=loadZoom;loadOk[want]=load_image(want);loadShown=want;loadShownAt=loadClock;}
+ float fade=fminf(1.f,(loadClock-loadShownAt)/.6f);loadZoom=1.f+.066f*fminf(1.f,(loadClock-loadShownAt)/5.5f);
+ int prevOk=fade<1&&loadPrev>=0&&loadOk[loadPrev]&&loadSlotOf[loadPrev]>=0;
  if(loadShown>=0&&loadOk[loadShown]){
-  int prevOk=loadFade<256&&loadPrev>=0&&loadOk[loadPrev]&&loadSlotOf[loadPrev]>=0;
-  if(prevOk)load_blit(pixels,stride,loadSlot[loadSlotOf[loadPrev]],1.066f,210,0);else if(loadFade<256)rect(0,0,W,H,INK);
-  load_blit(pixels,stride,loadSlot[loadSlotOf[loadShown]],loadZoom,210,loadFade<256?loadFade:0);
- }else{rect(0,0,W,H,INK);text(W/2-7*3,90,"NARCADE",LIME,1);}
+  if(prevOk)r3_loading_image(pixels,loadSlot[loadSlotOf[loadPrev]],loadPrevZoom,210,255);
+  else if(fade<1)rect(0,0,W,H,INK);
+  r3_loading_image(pixels,loadSlot[loadSlotOf[loadShown]],loadZoom,210,(int)(fade*255));
+ }else{rect(0,0,W,H,INK);}
+ float target=finished?1.f:(float)(stage<0?0:stage)/(warmEnd+1);
+ loadBar+=(target-loadBar)*.18f;if(finished)loadBar=1;
  rect(0,H-58,W,58,RGB(7,13,23));rect(0,H-58,W,2,LIME);
- text(16,H-50,"NARCADE",LIME,1);
- text(16,H-32,loadEs[caption],WHITE,1); /* text() traduce con el catalogo (localization_en.json) */
- int bw=W-32;rect(16,H-12,bw,5,PANEL);rect(16,H-12,(int)(bw*loadBar),5,LIME);
- char b[16];int pct=(int)(loadBar*100+.5f);b[0]=0;if(pct>=100){b[0]='1';b[1]='0';b[2]='0';b[3]='%';b[4]=0;}else{b[0]=(char)(pct>=10?'0'+pct/10:' ');b[1]=(char)('0'+pct%10);b[2]='%';b[3]=0;}
- text(W-16-(int)strlen(b)*7,H-50,b,MUTED,1);
+ logo_draw(10,H-54,0);
+ text(126,H-40,loadEs[caption],WHITE,1); /* text() traduce con el catalogo (localization_en.json) */
+ int bw=W-138;rect(126,H-14,bw,4,PANEL);rect(126,H-14,(int)(bw*loadBar),4,LIME);
+ char b[16];raw_snprintf(b,sizeof b,"%d%%",(int)(loadBar*100+.5f));text_raw(W-12-(int)strlen(b)*7,H-52,b,MUTED,1);
 }
-/* fotogramas de animacion entre etapas (zoom y fundido siguen sin tocar la carga) */
-/* devuelve 1 mientras quede fundido por terminar: la carga no sigue con una imagen a medio fundir */
-int game_load_anim(uint32_t *pixels,int stride,int stage){load_screen_draw(pixels,stride,stage,1);return loadFade<256;}
-/* la capa del HUD tuvo imagenes: el primer fotograma de juego la limpia entera */
+void game_load_present(uint32_t *pixels,int stride,int stage,int finished){load_present(pixels,stride,stage,finished);}
+/* se llama al empezar una carga nueva */
+void game_load_begin(void){loadShown=loadPrev=-1;loadClock=0;loadBar=0;loadZoom=1;}
 void game_load_finish(void){memset(hudPrev,1,sizeof hudPrev);}
 int game_load_stage(uint32_t *pixels,int stride,int stage){
  static int warmDone;if(stage==0)warmDone=0;else if(warmDone)return 1;
@@ -574,7 +570,7 @@ int game_load_stage(uint32_t *pixels,int stride,int stage){
 #endif
    return 1;
  }
- load_screen_draw(pixels,stride,stage,0);
+ (void)pixels;(void)stride; /* v2.44: la presentacion la hace game_load_present desde psp_main */
  return 0;
 }
 void game_world_reset(void){world_init();}
@@ -1126,7 +1122,7 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  if(g.screen!=WORLD){g.moveActive=0;g.steerSmooth=0;g.stickActive=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footFiltered=0;g.footStall=0;}
  if(pressed(B_START)&&g.screen!=TITLE&&g.screen!=PAUSE&&g.screen!=SETTINGS&&g.screen!=CREDITS&&g.screen!=TROPHIES){
   g.weaponWheel=0;g.weaponHold=0;
-  g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;menu_click();return;
+  g.pauseBack=g.screen;g.pauseTab=0;g.menu=0;pauseConfirm=0;g.mapSel=g.mission<36?step_now()->loc:0;g.screen=PAUSE;menu_click();return;
  }
  if(g.screen==TITLE){
   if(!g.titleStage){
@@ -1159,19 +1155,22 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
  else if(g.screen==MAP){if(pressed(B_SELECT)||pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_LEFT)||pressed(B_UP))g.mapSel=wrapi(g.mapSel-1,30);if(pressed(B_RIGHT)||pressed(B_DOWN))g.mapSel=(g.mapSel+1)%30;}
  else if(g.screen==JOURNAL){if(pressed(B_CIRCLE))g.screen=WORLD;if(pressed(B_R)||pressed(B_RIGHT))g.journalPage=(g.journalPage+1)%3;if(pressed(B_L)||pressed(B_LEFT))g.journalPage=wrapi(g.journalPage-1,3);}
  else if(g.screen==PAUSE){
+  /* v2.44 (Claude): pestanas MAPA, MENSAJES, AJUSTES, TROFEOS, SALIR (sin PARTIDA). SALIR: guardar y salir,
+     o salir sin guardar con confirmacion. */
+  if(pauseConfirm){if(pressed(B_CROSS)){pauseConfirm=0;trophies_flush();g.screen=TITLE;g.titleStage=1;g.menu=0;menu_click();}
+   else if(pressed(B_CIRCLE)||pressed(B_START)){pauseConfirm=0;menu_click();}return;}
   if(pressed(B_START)||pressed(B_CIRCLE)){settings_finish();g.screen=g.pauseBack;menu_click();return;}
-  if(pressed(B_L)||(g.pauseTab!=3&&pressed(B_LEFT))){settings_finish();g.pauseTab=wrapi(g.pauseTab-1,6);g.menu=0;}
-  if(pressed(B_R)||(g.pauseTab!=3&&pressed(B_RIGHT))){settings_finish();g.pauseTab=(g.pauseTab+1)%6;g.menu=0;}
+  if(pressed(B_L)||(g.pauseTab!=2&&pressed(B_LEFT))){settings_finish();g.pauseTab=wrapi(g.pauseTab-1,5);g.menu=0;}
+  if(pressed(B_R)||(g.pauseTab!=2&&pressed(B_RIGHT))){settings_finish();g.pauseTab=(g.pauseTab+1)%5;g.menu=0;}
   int delta=pressed(B_DOWN)-pressed(B_UP);
   if(g.pauseTab==0)g.mapSel=wrapi(g.mapSel+delta,30);
   else if(g.pauseTab==1)g.journalPage=wrapi(g.journalPage+delta,3);
-  else if(g.pauseTab==2)g.menu=wrapi(g.menu+delta,2);
-  else if(g.pauseTab==3)settings_tick();
-  else if(g.pauseTab==4)trophySelection=wrapi(trophySelection+delta,GAME_TROPHY_COUNT);
-  if(pressed(B_CROSS)){
-   if(g.pauseTab==2&&g.menu==0){if(nativeSave&&g.active)saveRequest=1;else notice(game_save()?"Partida guardada correctamente.":"No se pudo guardar. Revisa la Memory Stick.");}
-   else if(g.pauseTab==2&&g.menu==1)g.screen=g.pauseBack;
-   else if(g.pauseTab==5){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
+  else if(g.pauseTab==2)settings_tick();
+  else if(g.pauseTab==3)trophySelection=wrapi(trophySelection+delta,GAME_TROPHY_COUNT);
+  else if(g.pauseTab==4)g.menu=wrapi(g.menu+delta,2);
+  if(pressed(B_CROSS)&&g.pauseTab==4){
+   if(g.menu==0){if(nativeSave&&g.active)saveRequest=3;else if(game_save()){g.screen=TITLE;g.titleStage=1;g.menu=0;}else notice("No se pudo guardar. Sigues en la partida.");}
+   else{pauseConfirm=1;menu_click();}
   }
  }else if(g.screen==CHOICE){if(pressed(B_UP)||pressed(B_DOWN))g.menu=1-g.menu;if(pressed(B_CROSS)){g.ending=g.menu+1;advance();}}
  if((oldScreen==TITLE&&g.screen==TITLE&&(oldMenu!=g.menu||oldTitleStage!=g.titleStage))||
@@ -1495,28 +1494,38 @@ static void journal_draw(void){
  footer("L/R paginas  O volver");
 }
 static void pause_draw(void){
- const char *tabs[]={"MAPA","MENSAJES","PARTIDA","AJUSTES","TROFEOS","SALIR"};char b[100];
+ /* v2.44 (Claude): cabecera con el logo de la portada y la tipografia de titulos; pestanas con subrayado. */
+ const char *tabs[]={"MAPA","MENSAJES","AJUSTES","TROFEOS","SALIR"};
  if(g.pauseTab==0)map_draw();
  else if(g.pauseTab==1)journal_draw();
- else if(g.pauseTab==3)settings_draw();
- else if(g.pauseTab==4)trophies_draw(); /* v2.42 (Claude) */
+ else if(g.pauseTab==2)settings_draw();
+ else if(g.pauseTab==3)trophies_draw();
  else{
-  rect(0,0,W,H,INK);rect(18,70,444,161,PANEL);
-  if(g.pauseTab==2){
-   text(34,84,"TU PARTIDA",TEAL,2);
-   snprintf(b,sizeof(b),"Historia %d/36   Dinero $%d",g.mission,g.cash);text(34,117,b,MUTED,1);
-   const char *actions[]={"GUARDAR PARTIDA","VOLVER AL JUEGO"};
-   for(int i=0;i<2;i++){if(g.menu==i)rect(28,143+i*34,424,29,RGB(43,62,64));text(39,151+i*34,actions[i],g.menu==i?LIME:WHITE,1);}
-  }else{
-   text(34,83,"MENU PRINCIPAL",TEAL,2);
-   textwrap(34,120,395,"Se guardara tu progreso antes de volver al titulo de Narcade. Podras continuar desde el ultimo objetivo guardado.",MUTED);
-   rect(28,179,424,32,RGB(43,62,64));text(40,189,"X  GUARDAR Y VOLVER AL TITULO",LIME,1);
-  }
+  rect(0,0,W,H,RGB(7,11,19));
+  for(int y=54;y<H;y+=4)rect(0,y,W,1,RGB(11,17,27)); /* textura de lineas sutil */
+  rect(18,66,444,166,RGB(13,21,32));rect(18,66,3,166,CORAL);
+  font_text(34,76,locale_text("SALIR AL MENU PRINCIPAL"),WHITE,2,1);
+  textwrap(34,108,410,"Guarda antes de salir para continuar desde aqui. Si sales sin guardar, volveras al ultimo punto guardado.",MUTED);
+  const char *actions[]={"GUARDAR Y SALIR","SALIR SIN GUARDAR"};
+  for(int i=0;i<2;i++){int y=150+i*36;int sel=g.menu==i;
+   rect(28,y,424,30,sel?RGB(33,52,58):RGB(17,27,38));if(sel){rect(28,y,3,30,i?CORAL:LIME);outline(28,y,424,30,i?RGB(150,70,60):RGB(90,140,90));}
+   font_text(42,y+9,locale_text(actions[i]),sel?(i?CORAL:LIME):WHITE,1,1);}
  }
- rect(0,0,W,54,INK);text(15,8,"NARCADE",WHITE,2);text(300,15,"JUEGO EN PAUSA",MUTED,1);
- for(int i=0;i<6;i++){int x=8+i*78;rect(x,34,74,19,i==g.pauseTab?LIME:PANEL);text(x+(74-(int)strlen(locale_text(tabs[i]))*7)/2,38,tabs[i],i==g.pauseTab?INK:MUTED,1);}
- if(g.noticeT>0&&g.pauseTab>=2&&g.pauseTab!=4){rect(12,231,456,18,INK);text(18,235,g.notice,g.saveOK?TEAL:CORAL,1);}
- footer(g.pauseTab==3?"L/R seccion  ARRIBA/ABAJO elegir  < > cambiar  O volver":g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":g.pauseTab==4?"L/R seccion  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
+ rect(0,0,W,56,RGB(6,9,16));rect(0,55,W,1,RGB(40,70,80));
+ logo_draw(10,2,0);
+ font_text(W-12-(int)strlen(locale_text("PAUSA"))*7,8,locale_text("PAUSA"),MUTED,1,1);
+ {char b[40];raw_snprintf(b,sizeof b,"$%d",g.cash);text_raw(W-12-(int)strlen(b)*7,22,b,GOLD,1);}
+ for(int i=0;i<5;i++){int x=132+i*69,sel=i==g.pauseTab;const char *t=locale_text(tabs[i]);int tw=(int)strlen(t)*7;
+  font_text(x+(66-tw)/2,38,t,sel?LIME:MUTED,1,1);if(sel)rect(x+(66-tw)/2-2,51,tw+4,2,LIME);}
+ if(g.noticeT>0&&g.pauseTab==4){rect(12,229,456,18,INK);text(18,233,g.notice,g.saveOK?TEAL:CORAL,1);}
+ if(pauseConfirm){
+  for(int y=0;y<H;y+=2)for(int x=(y>>1)&1;x<W;x+=2)px(x,y,RGB(0,0,0)); /* velo */
+  rect(80,82,320,112,RGB(12,18,28));outline(80,82,320,112,CORAL);rect(80,82,320,3,CORAL);
+  font_text(96,96,locale_text("SALIR SIN GUARDAR?"),WHITE,2,1);
+  textwrap(96,128,290,"Perderas el progreso desde tu ultimo guardado.",MUTED);
+  text(96,172,"X  SALIR",CORAL,1);text(220,172,"O  CANCELAR",WHITE,1);
+ }
+ footer(g.pauseTab==2?"L/R seccion  ARRIBA/ABAJO elegir  < > cambiar  O volver":g.pauseTab==0?"L/R seccion  ARRIBA/ABAJO lugar  START/O volver":g.pauseTab==1?"L/R seccion  ARRIBA/ABAJO pagina  START/O volver":g.pauseTab==3?"L/R seccion  START/O volver":"L/R seccion  ARRIBA/ABAJO elegir  X aceptar  O volver");
 }
 #include "settings.inc"
 #include "weapon_icons.h"

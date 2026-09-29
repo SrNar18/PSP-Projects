@@ -550,5 +550,14 @@
   "Sistema de trofeos en preparacion": "Trophy system in preparation",
   "UN PROYECTO ORIGINAL PARA PSP": "AN ORIGINAL PSP PROJECT",
   "VIDA DE BARRIO": "NEIGHBORHOOD LIFE",
-  "Version en desarrollo / gracias por jugar": "Work in progress / thanks for playing"
+  "Version en desarrollo / gracias por jugar": "Work in progress / thanks for playing",
+  "SALIR AL MENU PRINCIPAL": "EXIT TO MAIN MENU",
+  "Guarda antes de salir para continuar desde aqui. Si sales sin guardar, volveras al ultimo punto guardado.": "Save before leaving to continue from here. If you exit without saving, you will return to your last save.",
+  "GUARDAR Y SALIR": "SAVE AND EXIT",
+  "SALIR SIN GUARDAR": "EXIT WITHOUT SAVING",
+  "PAUSA": "PAUSED",
+  "SALIR SIN GUARDAR?": "EXIT WITHOUT SAVING?",
+  "Perderas el progreso desde tu ultimo guardado.": "You will lose progress since your last save.",
+  "X  SALIR": "X  EXIT",
+  "O  CANCELAR": "O  CANCEL"
 }
