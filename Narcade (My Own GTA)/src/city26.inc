@@ -582,7 +582,9 @@ static void metro(int bz,int far){
   /* A narrower stair no longer intersects the body/doors of a stopped train. */
   for(int k=0;k<20;k++)box(1470.5f,z+316.5f-k*3,0,8,3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214));
   for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
-  box(1470.5f,z+257,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
+  /* Leave half a unit between landing and final stair: their side planes used
+     to overlap at x=1466 and shimmer in the PSP depth buffer. */
+  box(1470.5f,z+255.5f,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
   if(!far){
    /* Ground entrance sign stands on its own posts, below the viaduct;
       no floating board or frame crosses the train/roof equipment envelope. */
@@ -798,6 +800,11 @@ static void replay_range(const unsigned char *p,const unsigned char *end){
 }
 static void cache_replay(const CellCache *c){
     float savedGround=fixedGround;int savedLit=litAlready,savedRigid=rigid;
+    float prevGain[3]={cacheGroundGain[0],cacheGroundGain[1],cacheGroundGain[2]};
+    uint32_t now=lit_color(COLOR(160,160,160),0,1,0);
+    cacheGroundGain[0]=(float)(now&255)/fmaxf(c->groundLight[0],1);
+    cacheGroundGain[1]=(float)((now>>8)&255)/fmaxf(c->groundLight[1],1);
+    cacheGroundGain[2]=(float)((now>>16)&255)/fmaxf(c->groundLight[2],1);
     fixedGround=-1000000;rigid=0;
     const unsigned char *base=cachePool+c->off;
     for(unsigned k=0;k<c->nchunks;k++){const CacheChunk *ch=&chunkPool[c->chunk0+k];
@@ -808,6 +815,7 @@ static void cache_replay(const CellCache *c){
         noClip=inside;replay_range(base+ch->off,base+ch->off+ch->len);noClip=0;
     }
     fixedGround=savedGround;litAlready=savedLit;rigid=savedRigid;
+    for(int i=0;i<3;i++)cacheGroundGain[i]=prevGain[i];
 }
 /* Divide lo grabado de una manzana en trozos de ~100 vertices con su esfera envolvente. */
 static int cache_chunks(CellCache *cc){
@@ -865,7 +873,9 @@ static void cached_piece(int slot,int lod,PieceFn fn,int bx,int bz,int far,uint3
     unsigned len=cacheUsed-start;
     if(cc->valid&&len<=cc->len&&cc->off+cc->len<=start){memmove(cachePool+cc->off,cachePool+start,len);cc->len=len;cacheUsed=start;} /* reutiliza su hueco */
     else{cc->off=start;cc->len=len;}
-    cc->day=dayT;cc->valid=1;
+    cc->day=dayT;uint32_t sample=lit_color(COLOR(160,160,160),0,1,0);
+    cc->groundLight[0]=(float)(sample&255);cc->groundLight[1]=(float)((sample>>8)&255);cc->groundLight[2]=(float)((sample>>16)&255);
+    cc->valid=1;
     if(!cache_chunks(cc)){cc->valid=0;if(!prefetchOnly)fn(bx,bz,far,white);return;}
     /* v2.36: reutilizar sus trozos antiguos si caben (antes cada reconstruccion llenaba la tabla) */
     if(oldValid&&cc->nchunks<=oldN&&oldC0+oldN<=cc->chunk0){memcpy(chunkPool+oldC0,chunkPool+cc->chunk0,cc->nchunks*sizeof(CacheChunk));chunkUsed=cc->chunk0;cc->chunk0=oldC0;}

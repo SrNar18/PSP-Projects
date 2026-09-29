@@ -18,10 +18,12 @@ for face,scale in [('Rajdhani-Medium.ttf',1),('Oxanium.ttf',1),('Oxanium.ttf',2)
         crop=im.crop((0,0,inkw,h*4)).resize((min(w-1,max(1,round(inkw/4))),h),Image.Resampling.LANCZOS)
         cell=Image.new('L',(w,h),0);cell.paste(crop,(0,0));data.extend(cell.tobytes())
     records.append((off,w,h))
-header=['/* Generated from Oxanium / Rajdhani; SIL OFL, see tools/fonts. */','#ifndef NARCADE_UI_FONT_H','#define NARCADE_UI_FONT_H',
+packed=bytearray((len(data)+1)//2)
+for i,alpha in enumerate(data): packed[i//2]|=((alpha+8)//17 if alpha<248 else 15) << (4*(i&1))
+header=['/* Generated from Oxanium / Rajdhani; SIL OFL, 4-bit alpha. */','#ifndef NARCADE_UI_FONT_H','#define NARCADE_UI_FONT_H',
         'typedef struct {unsigned offset; unsigned char w,h;} UiFont;',
         'static const UiFont uiFonts[] = {'+','.join('{%du,%d,%d}'%r for r in records)+'};',
         'static const unsigned char uiGlyphs[] = {']
-for i in range(0,len(data),40):header.append(','.join(map(str,data[i:i+40]))+',')
+for i in range(0,len(packed),40):header.append(','.join(map(str,packed[i:i+40]))+',')
 header+=['};','#endif'];(ROOT/'src/ui_font.h').write_text('\n'.join(header)+'\n',encoding='ascii')
-print('UI font bytes:',len(data))
+print('UI font bytes:',len(packed),'(from',len(data),'8-bit bytes)')

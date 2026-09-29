@@ -75,5 +75,6 @@ static void trophy_popup_draw(void){
  const char *name=locale_text(trophyDefs[tro.popup].name);int w=(int)strlen(name)*7+76;if(w<230)w=230;int x=W/2-w/2;
  rect(x,y,w,38,INK);rect(x,y,4,38,GOLD);outline(x,y,w,38,RGB(120,98,40));
  circle(x+22,y+19,11,GOLD);circle(x+22,y+19,7,INK);circle(x+22,y+19,4,GOLD);
- text(x+40,y+6,"TROFEO DESBLOQUEADO",GOLD,1);text(x+40,y+21,trophyDefs[tro.popup].name,WHITE,1);
+ font_text(x+40,y+6,locale_text("TROFEO DESBLOQUEADO"),GOLD,1,1);
+ text(x+40,y+21,trophyDefs[tro.popup].name,WHITE,1);
 }

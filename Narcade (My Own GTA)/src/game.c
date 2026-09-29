@@ -34,7 +34,6 @@ typedef struct {const char *title,*who,*intro,*outro;int count,reward;Step steps
 #include "assets.h"
 #include "title_ui.h"
 #include "ui_font.h"
-#include "logo_narcade.h" /* v2.44 (Claude): logo de la portada, tools/build_logo.py */
 enum {TITLE,WORLD,DIALOG,MINI,MAP,PAUSE,JOURNAL,CHOICE,SETTINGS,CREDITS,TROPHIES};
 typedef struct {float x,y,a,speed,hp;int type,parked,police;} Car;
 typedef struct {float x,y,v,phase;int vertical;} Ped;
@@ -122,7 +121,8 @@ static void font_text(int x,int y,const char *s,uint32_t c,int scale,int heading
  for(;*s;s++){unsigned char ch=*s;if(ch=='\n'){y+=12*scale;x=start;continue;}if(ch<32||ch>126)ch='?';
   unsigned off=f->offset+(ch-32)*f->w*f->h;
   for(int yy=0;yy<f->h;yy++){int py=y+yy;if((unsigned)py>=H)continue;
-   for(int xx=0;xx<f->w;xx++){int sx=x+xx;if((unsigned)sx>=W)continue;unsigned a=uiGlyphs[off+yy*f->w+xx];if(a<8)continue;
+   for(int xx=0;xx<f->w;xx++){int sx=x+xx;if((unsigned)sx>=W)continue;
+    unsigned p=off+yy*f->w+xx;unsigned a=((uiGlyphs[p>>1]>>(4*(p&1)))&15)*17;if(a<8)continue;
     uint32_t old=fb[py*pitch+sx];
     px(sx,py,RGB(((old&255)*(255-a)+(c&255)*a+127)/255,
       (((old>>8)&255)*(255-a)+((c>>8)&255)*a+127)/255,
@@ -132,11 +132,13 @@ static void font_text(int x,int y,const char *s,uint32_t c,int scale,int heading
  }
 }
 static void text_raw(int x,int y,const char *s,uint32_t c,int scale){font_text(x,y,s,c,scale,0);}
-/* logo NARCADE (ARGB4444) mezclado con alfa sobre lo que haya debajo */
-static void logo_draw(int x,int y,int large){const unsigned short *img=large?logoLarge:logoSmall;int w=large?LOGOLARGE_W:LOGOSMALL_W,h=large?LOGOLARGE_H:LOGOSMALL_H;
- for(int yy=0;yy<h;yy++){int py=y+yy;if((unsigned)py>=H)continue;for(int xx=0;xx<w;xx++){int sx=x+xx;if((unsigned)sx>=W)continue;unsigned v=img[yy*w+xx],a=(v>>12)*17;if(a<10)continue;
-  unsigned r=(v&15)*17,gg=((v>>4)&15)*17,b=((v>>8)&15)*17;uint32_t o=fb[py*pitch+sx];
-  px(sx,py,RGB(((o&255)*(255-a)+r*a)/255,(((o>>8)&255)*(255-a)+gg*a)/255,(((o>>16)&255)*(255-a)+b*a)/255));}}}
+/* Shared original PSP-cover mark: both Claude's load/pause screens and the
+   title panels use the same RGBA4444 resource after branch integration. */
+static void title_logo(const unsigned short *src,int sw,int sh,int dx,int dy);
+static void logo_draw(int x,int y,int large){
+ if(large)title_logo(narcade_logo_cover_v244,420,143,x,y);
+ else title_logo(narcade_logo_small_v244,115,39,x,y);
+}
 static void text(int x,int y,const char *s,uint32_t c,int scale){text_raw(x,y,locale_text(s),c,scale);}
 static int textwrap_raw(int x,int y,int width,const char *s,uint32_t c){int limit=width/7,lines=0;while(*s){while(*s==' ')s++;if(!*s)break;int n=0,last=-1;while(s[n]&&s[n]!='\n'&&n<limit){if(s[n]==' ')last=n;n++;}if(s[n]&&s[n]!='\n'&&last>0)n=last;char b[100];int k=n<99?n:99;memcpy(b,s,k);b[k]=0;text_raw(x,y+lines*13,b,c,1);s+=n;if(*s=='\n'||*s==' ')s++;lines++;}return lines*13;}
 static int textwrap(int x,int y,int width,const char *s,uint32_t c){return textwrap_raw(x,y,width,locale_text(s),c);}
@@ -154,7 +156,7 @@ static int world_solid(float x,float y){
   if(!bridge)return 1;
  }
  /* v2.6: manzanas irregulares (fusionadas, partidas, triangulares): la huella la define citymap.h */
- return cm_solid(x,y)||cm_obstacle(x,y);
+ return cm_solid(x,y)||cm_obstacle(x,y)||(g.lift<CM_PLAT_H-5.f&&cm_metro_support(x,y));
 }
 static int solid(float x,float y){return world_solid(x,y)||combat_wall_at(x,y,0);}
 static int free_at(float x,float y,int radius){
@@ -325,7 +327,7 @@ static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *dept
    del peaton y el coche se quedaba parado para siempre. */
 static int car_solid(float x,float y){
  if(x<-40||y<-40||x>WORLD_W+40||y>WORLD_H+40)return 1;
- if(x>=8&&y>=8&&x<=WORLD_W-8&&y<=WORLD_H-8)return solid(x,y);
+ if(x>=8&&y>=8&&x<=WORLD_W-8&&y<=WORLD_H-8)return solid(x,y)||cm_metro_support(x,y);
  return cm_solid(x,y)||cm_obstacle(x,y);
 }
 static int car_free_at(const Car *c,float x,float y){
@@ -547,8 +549,8 @@ static void load_present(uint32_t *pixels,int stride,int stage,int finished){
  loadBar+=(target-loadBar)*.18f;if(finished)loadBar=1;
  rect(0,H-58,W,58,RGB(7,13,23));rect(0,H-58,W,2,LIME);
  logo_draw(10,H-54,0);
- text(126,H-40,loadEs[caption],WHITE,1); /* text() traduce con el catalogo (localization_en.json) */
- int bw=W-138;rect(126,H-14,bw,4,PANEL);rect(126,H-14,(int)(bw*loadBar),4,LIME);
+ text(138,H-40,loadEs[caption],WHITE,1); /* text() traduce con el catalogo (localization_en.json) */
+ int bw=W-150;rect(138,H-14,bw,4,PANEL);rect(138,H-14,(int)(bw*loadBar),4,LIME);
  char b[16];raw_snprintf(b,sizeof b,"%d%%",(int)(loadBar*100+.5f));text_raw(W-12-(int)strlen(b)*7,H-52,b,MUTED,1);
 }
 void game_load_present(uint32_t *pixels,int stride,int stage,int finished){load_present(pixels,stride,stage,finished);}
@@ -1275,17 +1277,37 @@ static void map_point(float x,float y,float sc,int ox,int oy,int *mx,int *my){fl
 static void minimap(int cx,int cy,int r){
  const float scale=6.0f; /* unidades de mundo por pixel */
  float gx,gz;geo_project(g.x,g.y,&gx,&gz);
- circle(cx,cy,r+2,RGB(20,30,34));
+ circle(cx,cy,r+4,RGB(7,14,23));
  for(int dy=-r;dy<=r;dy+=2)for(int dx=-r;dx<=r;dx+=2){ /* v2.6: bloques 2x2 (4x menos muestras; costaba 5 ms) */
   if(dx*dx+dy*dy>r*r)continue;
   uint32_t c=map_ground(gx+dx*scale,gz+dy*scale);
-  px(cx+dx,cy+dy,c);px(cx+dx+1,cy+dy,c);px(cx+dx,cy+dy+1,c);px(cx+dx+1,cy+dy+1,c);
+  px(cx+dx,cy+dy,c);
+  if((dx+1)*(dx+1)+dy*dy<=r*r)px(cx+dx+1,cy+dy,c);
+  if(dx*dx+(dy+1)*(dy+1)<=r*r)px(cx+dx,cy+dy+1,c);
+  if((dx+1)*(dx+1)+(dy+1)*(dy+1)<=r*r)px(cx+dx+1,cy+dy+1,c);
  }
  for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||wanted_stars()<1)continue;float pxp,pyp;geo_project(g.cars[i].x,g.cars[i].y,&pxp,&pyp);int dx=(int)((pxp-gx)/scale),dy=(int)((pyp-gz)/scale);if(dx*dx+dy*dy<(r-2)*(r-2))rect(cx+dx-1,cy+dy-1,3,3,CORAL);}
  if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float pxp,pyp;geo_project(locations[t].x,locations[t].y,&pxp,&pyp);float dx=(pxp-gx)/scale,dy=(pyp-gz)/scale;float d=sqrtf(dx*dx+dy*dy);
-  if(d>r-4){dx=dx/d*(r-4);dy=dy/d*(r-4);}circle(cx+(int)dx,cy+(int)dy,3,INK);circle(cx+(int)dx,cy+(int)dy,2,LIME);}
- float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(cx,cy,3,INK);circle(cx,cy,2,WHITE);line(cx,cy,cx+(int)(cosf(a)*6),cy+(int)(sinf(a)*6),WHITE);
- for(int k=0;k<48;k++){float t=k*PI*2/48;px(cx+(int)(cosf(t)*(r+2)),cy+(int)(sinf(t)*(r+2)),MUTED);}
+  if(d>r-6){dx=dx/d*(r-6);dy=dy/d*(r-6);}circle(cx+(int)dx,cy+(int)dy,4,INK);circle(cx+(int)dx,cy+(int)dy,2,GOLD);}
+ /* Crisp pointer: a filled chevron with dark keyline remains readable on roads. */
+ float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a),co=cosf(a),si=sinf(a);
+ int tx=cx+(int)(co*8),ty=cy+(int)(si*8);
+ int lx=cx+(int)(-co*5-si*4),ly=cy+(int)(-si*5+co*4);
+ int rx=cx+(int)(-co*5+si*4),ry=cy+(int)(-si*5-co*4);
+ for(int yy=cy-8;yy<=cy+8;yy++)for(int xx=cx-8;xx<=cx+8;xx++){
+  int e0=(xx-tx)*(ly-ty)-(yy-ty)*(lx-tx);
+  int e1=(xx-lx)*(ry-ly)-(yy-ly)*(rx-lx);
+  int e2=(xx-rx)*(ty-ry)-(yy-ry)*(tx-rx);
+  if((e0>=0&&e1>=0&&e2>=0)||(e0<=0&&e1<=0&&e2<=0))px(xx,yy,WHITE);
+ }
+ line(tx,ty,lx,ly,INK);line(lx,ly,rx,ry,INK);line(rx,ry,tx,ty,INK);
+ /* Double bezel and north tick, inspired by the legibility of classic GTA HUDs. */
+ for(int k=0;k<128;k++){float t=k*PI*2/128;
+  int dx=(int)(cosf(t)*(r+2)),dy=(int)(sinf(t)*(r+2));
+  px(cx+dx,cy+dy,k%16<2?RGB(90,218,225):RGB(90,118,132));
+  dx=(int)(cosf(t)*(r+4));dy=(int)(sinf(t)*(r+4));px(cx+dx,cy+dy,RGB(8,15,26));
+ }
+ line(cx,cy-r-5,cx,cy-r-1,LIME);
 }
 #ifdef NARCADE_PROFILE
 static float profileMs=0,profileMax=0;void game_set_profile(float ms){profileMs=ms;if(ms>profileMax)profileMax=ms;if(g.clock<.5f)profileMax=0;}
@@ -1335,6 +1357,18 @@ static void title_image(const unsigned short *src,int sw,int sh,int dx,int dy){
  for(int y=0;y<sh;y++){int sy=dy+y;if((unsigned)sy>=H)continue;
   for(int x=0;x<sw;x++){int sx=dx+x;if((unsigned)sx<W)fb[sy*pitch+sx]=title_color(src[y*sw+x]);}}
 }
+/* One brand mark from the PSP icon, composited over both title screens. */
+static void title_logo(const unsigned short *src,int sw,int sh,int dx,int dy){
+ for(int y=0;y<sh;y++){int py=dy+y;if((unsigned)py>=H)continue;
+  for(int x=0;x<sw;x++){int px0=dx+x;if((unsigned)px0>=W)continue;
+   unsigned p=src[y*sw+x],a=p>>12;if(!a)continue;
+   unsigned rr=(p&15)*17,gg=((p>>4)&15)*17,bb=((p>>8)&15)*17;
+   uint32_t *dst=&fb[py*pitch+px0],old=*dst;
+   *dst=RGB((((old&255)*(15-a)+rr*a)+7)/15,
+            (((((old>>8)&255)*(15-a)+gg*a)+7)/15),
+            (((((old>>16)&255)*(15-a)+bb*a)+7)/15));
+  }}
+}
 /* UI letterforms are rendered by Pillow from Oxanium/Rajdhani/Allura at
    native PSP resolution. Alpha compositing preserves antialiased edges. */
 static void title_label(int id,int x,int y,uint32_t color){
@@ -1371,9 +1405,8 @@ static void title_draw(void){
  if(!g.titleStage){
   title_image(title_cover_v213,W,H,0,0);
   rect(0,0,W,3,RGB(31,191,205));
-  title_label(TL_LOGO,22,34,WHITE);
-  rect(28,79,160,2,RGB(91,220,232));
-  title_label(TL_COVER_SUB,26,88,RGB(188,220,230));
+  title_logo(narcade_logo_cover_v244,420,143,18,15);
+  title_label(TL_COVER_SUB,26,157,RGB(188,220,230));
   rect(0,174,275,98,RGB(7,14,25));
   rect(20,190,4,48,RGB(84,218,230));
   uint32_t prompt=sinf(g.clock*3.2f)>-.45f?WHITE:RGB(116,165,176);
@@ -1385,7 +1418,7 @@ static void title_draw(void){
   title_image(title_menu_v213,W,H,0,0);
   rect(0,0,W,4,RGB(68,204,218));
   rect(0,0,W,65,RGB(7,13,23));
-  title_label(TL_LOGO_SMALL,14,13,WHITE);
+  title_logo(narcade_logo_small_v244,115,39,14,5);
   title_label(TL_STORY,185,13,WHITE);
   title_label(TL_STORY_KICKER,14,43,RGB(153,186,196));
   for(int i=0;i<5;i++)title_card(i);
@@ -1395,7 +1428,7 @@ static void title_draw(void){
  if(g.noticeT>0){rect(0,246,W,26,INK);textwrap(12,247,W-24,g.notice,CORAL);}
 }
 static void credits_draw(void){
- title_image(title_menu_v213,W,H,0,0);header("NARCADE / CREDITOS","UN PROYECTO ORIGINAL PARA PSP");
+ title_image(title_menu_v213,W,H,0,0);header("CREDITOS","UN PROYECTO ORIGINAL PARA PSP");title_logo(narcade_logo_small_v244,115,39,344,4);
  font_text(24,61,locale_text("CREADO POR NARESZ"),LIME,2,1);
  text(24,97,"Idea, direccion creativa y universo: Naresz",WHITE,1);
  text(24,122,"ASISTENCIA DE DESARROLLO",TEAL,1);
@@ -1407,7 +1440,7 @@ static void credits_draw(void){
  footer("O VOLVER");
 }
 static void trophies_draw(void){
- title_image(title_menu_v213,W,H,0,0);header("NARCADE / TROFEOS","CADA HISTORIA DEJA SU HUELLA");
+ title_image(title_menu_v213,W,H,0,0);header("TROFEOS","CADA HISTORIA DEJA SU HUELLA");title_logo(narcade_logo_small_v244,115,39,344,4);
  for(int i=0;i<GAME_TROPHY_COUNT;i++){
   GameTrophyInfo info={trophyDefs[i].name,trophyDefs[i].desc,(int)trophy_progress(i),(int)trophyDefs[i].goal,(tro.unlocked>>i)&1};
   int valid=1;if(trophyProvider)valid=trophyProvider(i,&info);

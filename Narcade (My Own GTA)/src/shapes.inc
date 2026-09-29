@@ -172,7 +172,19 @@ static void hull(float cx,float cz,float angle,const HullSec *s,int n,const unsi
             Point g1=local(b->x-inset,b->y-.48f,side*(b->w*.86f+.22f),cx,cz,angle);
             Point g2=local(b->x-inset,yb+.22f,side*(wb+.10f),cx,cz,angle);
             Point g3=local(a->x+inset,ya+.22f,side*(wa+.10f),cx,cz,angle);
-            quad(GLASS,g0,g1,g2,g3,lit_color(COLOR(139,190,209),side*-sa,.2f,side*ca),1,1);
+            quad(GLASS,g0,g1,g2,g3,lit_color(COLOR(87,120,139),side*-sa,.2f,side*ca),1,1);
+            /* Slim B-pillar on the long cabin panels, following the taper of
+               this actual body instead of a painted line across the texture. */
+            if(dx>7&&a->y>13&&b->y>13){
+                float mx=a->x+dx*.53f,top=a->y+(b->y-a->y)*.53f;
+                float mw=a->w+(b->w-a->w)*.53f;
+                float low=fminf(top-.35f,11.55f);
+                Point pa=local(mx-.35f,top-.43f,side*(mw*.86f+.39f),cx,cz,angle);
+                Point pb=local(mx+.35f,top-.43f,side*(mw*.86f+.39f),cx,cz,angle);
+                Point pc=local(mx+.35f,low,side*(car_width_at(mw,top,floor,low)+.46f),cx,cz,angle);
+                Point pd=local(mx-.35f,low,side*(car_width_at(mw,top,floor,low)+.46f),cx,cz,angle);
+                quad(METAL,pa,pb,pc,pd,lit_color(COLOR(29,36,40),side*-sa,.2f,side*ca),1,1);
+            }
         }
     }
     /* tapas delantera y trasera */
@@ -215,20 +227,22 @@ static void foliage_lobe(float x,float z,float bottom,float radius,float height,
 
 static void tree_shape(float x,float z,int kind,int simple){
     unsigned h=(unsigned)(x*7.3f)*2654435761u^(unsigned)(z*3.1f)*40503u;float rot=(h&255)/255.f*6.28f;float s=.85f+((h>>8)&127)/127.f*.4f;
-    if(kind==1){ /* palma: tronco en dos tramos ligeramente inclinado, frondas colgantes */
+    if(kind==1){ /* palma esbelta: copa abierta incluso en el LOD lejano */
         float lean=((h>>3)&7)*.5f-1.75f;
-        cylinder(x,z,0,1.3f*s,12*s,5,rot,BARK,BARK,COLOR(170,150,120));
-        cylinder(x+lean,z+lean*.5f,12*s,1.1f*s,12*s,5,rot,BARK,BARK,COLOR(180,160,130));
-        if(simple){frustum(x+lean,z+lean*.5f,24*s,7*s,0,4*s,6,rot,LEAVES,COLOR(120,190,90));return;}
+        cylinder(x,z,0,.70f*s,10*s,5,rot,BARK,BARK,COLOR(139,114,83));
+        cylinder(x+lean*.45f,z+lean*.22f,10*s,.59f*s,9*s,5,rot,BARK,BARK,COLOR(150,124,88));
+        cylinder(x+lean,z+lean*.5f,19*s,.44f*s,5*s,5,rot,BARK,BARK,COLOR(158,132,96));
         float top=24*s;Point c=point(x+lean,top,z+lean*.5f);
         litAlready=1;uint32_t lc=lit_color(COLOR(110,190,90),0,1,0);
-        for(int k=0;k<7;k++){float a=rot+k*2*PI/7;float ex=cosf(a),ez=sinf(a);
-            Point tip=point(c.x+ex*11*s,top-4*s,c.z+ez*11*s),mid=point(c.x+ex*5*s,top+2.2f*s,c.z+ez*5*s);
-            Point l=point(mid.x-ez*2.4f*s,mid.y,mid.z+ex*2.4f*s),r=point(mid.x+ez*2.4f*s,mid.y,mid.z-ex*2.4f*s);
+        int fronds=simple?6:9;
+        for(int k=0;k<fronds;k++){float a=rot+k*2*PI/fronds;float ex=cosf(a),ez=sinf(a);
+            float length=(k&1?9.5f:11.5f)*s;
+            Point tip=point(c.x+ex*length,top-(simple?3:5)*s,c.z+ez*length),mid=point(c.x+ex*length*.52f,top+1.8f*s,c.z+ez*length*.52f);
+            Point l=point(mid.x-ez*1.9f*s,mid.y,mid.z+ex*1.9f*s),r=point(mid.x+ez*1.9f*s,mid.y,mid.z-ex*1.9f*s);
             Vertex f1[3]={{.5f,0,lc,c.x,c.y+1,c.z},{0,.5f,lc,l.x,l.y,l.z},{.5f,1,lc,tip.x,tip.y,tip.z}};polygon(LEAVES,f1,3);
             Vertex f2[3]={{.5f,0,lc,c.x,c.y+1,c.z},{.5f,1,lc,tip.x,tip.y,tip.z},{1,.5f,lc,r.x,r.y,r.z}};polygon(LEAVES,f2,3);}
         litAlready=0;
-        box(c.x,c.z,top-2*s,2.5f*s,2.5f*s,2*s,rot,ROOF,ROOF,COLOR(150,110,60)); /* cocos */
+          if(!simple)box(c.x,c.z,top-1.4f*s,1.15f*s,1.15f*s,1.1f*s,rot,ROOF,ROOF,COLOR(123,96,50));
         return;
     }
     if(kind==2){ /* cipres / pino */
