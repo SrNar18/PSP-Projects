@@ -19,7 +19,7 @@ typedef struct {
     float eyeHeight; /* v2.6.2: altura de la camara sobre el jugador (zoom con SELECT) */ /* v2.6: altura peatonal (anden) y tren del Metro */
     float shotX,shotZ,shotHeight,shotTime;
     int wallCount;float walls[3][3];
-    int aiming,combo;float aimPitch,cameraPitch,recoil,punch,jump,climb;
+    int aiming,combo,aimPerson;float aimPitch,cameraPitch,recoil,punch,jump,climb;
     int weapon; /* 0 fists; 1..7 handheld models */
 } R3Scene;
 int r3_target_screen(float x,float z,float height,float *sx,float *sy);

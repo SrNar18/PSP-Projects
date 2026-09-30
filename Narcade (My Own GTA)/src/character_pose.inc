@@ -42,15 +42,28 @@ static Point pose_arm(Point p,int bone){
  Point direction=point(t1.x-t0.x,t1.y-t0.y,t1.z-t0.z);
  float len=sqrtf(direction.x*direction.x+direction.y*direction.y+direction.z*direction.z);
  float rx=-direction.y/len,ry=direction.x/len;
- return point(t0.x+(t1.x-t0.x)*t+(p.x-cx)*rx,t0.y+(t1.y-t0.y)*t+(p.x-cx)*ry,t0.z+(t1.z-t0.z)*t+(p.z-cz));
+ Point result=point(t0.x+(t1.x-t0.x)*t+(p.x-cx)*rx,t0.y+(t1.y-t0.y)*t+(p.x-cx)*ry,t0.z+(t1.z-t0.z)*t+(p.z-cz));
+ /* Keep the sleeve sewn to the shoulder while the elbow and hand reach for
+    the weapon. A fully rotated upper seam used to cut through the shirt. */
+ if(p.y>19.5f){float w=geo_clamp((22-p.y)/2.5f,0,1);result.x=p.x+(result.x-p.x)*w;result.y=p.y+(result.y-p.y)*w;result.z=p.z+(result.z-p.z)*w;}
+ return result;
 }
 static Point player_surface(const PlayerVertex *a){
  Point p=point(a->x,a->y,a->z);
  /* A closed hair shell covers the scalp, including during head turns. */
  if(a->mat==HAIR){p.x*=1.14f;p.z*=1.14f;p.y=25.2f+(p.y-25.2f)*1.09f+.22f;}
  if((a->mat==SKIN||a->mat==FACE)&&a->bone==0&&p.y>27.1f){p.x*=.94f;p.z*=.94f;}
+ if(a->mat==FACE&&a->bone==0){
+  /* Sculpt the painted face into the existing 3D head: bridge and tip of
+     the nose, cheekbones and chin. The texture is no longer a flat photo. */
+  float centre=geo_clamp(1-fabsf(p.z)/1.25f,0,1);
+  float bridge=geo_clamp(1-fabsf(p.y-25.4f)/1.8f,0,1);
+  float cheek=geo_clamp(1-fabsf(p.y-24.3f)/1.5f,0,1)*geo_clamp(1-fabsf(fabsf(p.z)-1.25f)/.8f,0,1);
+  p.x+=.54f*centre*bridge+.19f*cheek;
+  if(p.y<23.8f)p.z*=.91f;
+ }
  /* Hide the skin underneath the sleeve; don't enlarge exposed forearms. */
- if(a->mat==SKIN&&a->bone>=3&&p.y>18.6f){float c=(a->bone==3?-1:1)*4.8f;p.x*=.80f;p.z=c+(p.z-c)*.80f;}
- if(a->mat==SLEEVE){float c=(a->bone==3?-1:1)*4.8f;p.x*=1.14f;p.z=c+(p.z-c)*1.14f;}
+ if(a->mat==SKIN&&a->bone>=3&&p.y>18.2f){float c=(a->bone==3?-1:1)*4.8f;p.x*=.74f;p.z=c+(p.z-c)*.74f;}
+ if(a->mat==SLEEVE){float c=(a->bone==3?-1:1)*4.8f;float grow=p.y>18?1.25f:1.15f;p.x*=grow;p.z=c+(p.z-c)*grow;}
  return p;
 }

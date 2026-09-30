@@ -48,6 +48,8 @@ def main():
             tile=refreshed.crop((round(x*w/4)+2,round(y*h/2)+2,round((x+1)*w/4)-2,round((y+1)*h/2)-2))
         if name in SURFACE_NAMES:
             tile=create_surface(name)
+        if name == 'face':
+            tile=Image.open(ROOT/'assets/face-painted-v247.png').convert('RGB')
         if name in ('asphalt','sidewalk'):
             tile=create_road(name)
         if name in ('car-side','car-paint'):

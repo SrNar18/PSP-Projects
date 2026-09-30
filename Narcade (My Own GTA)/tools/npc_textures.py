@@ -1,11 +1,21 @@
 """Original, deterministic 64px fabric and face materials for PSP pedestrians."""
 from PIL import Image, ImageDraw
 import math
+from pathlib import Path
 
 NAMES = ['npc-tee', 'npc-knit', 'npc-denim', 'npc-floral',
          'npc-sport', 'npc-plaid', 'npc-face-woman', 'npc-face-man']
 
 def create(index):
+    if index >= 6:
+        source = 'npc-face-woman-painted-v247.png' if index == 6 else 'npc-face-man-painted-v247.png'
+        art = Image.open(Path(__file__).resolve().parents[1] / 'assets' / source).convert('RGB').resize((64,64),Image.Resampling.LANCZOS)
+        # The renderer tints one face material across several complexions.
+        # Preserve painted features while normalizing each source's albedo.
+        pixels = list(art.get_flattened_data())
+        mean = [sum(p[c] for p in pixels)/len(pixels) for c in range(3)]
+        art.putdata([tuple(max(0,min(255,round(175+(p[c]-mean[c])*.70))) for c in range(3)) for p in pixels])
+        return art
     bases = [(192,102,62),(197,175,134),(78,116,144),(119,65,110),
              (70,134,129),(160,164,174),(239,225,211),(239,225,211)]
     im=Image.new('RGB',(64,64));pixels=im.load()

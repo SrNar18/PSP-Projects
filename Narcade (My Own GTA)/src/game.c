@@ -1488,13 +1488,15 @@ static void trophies_draw(void){
   GameTrophyInfo info={trophyDefs[i].name,trophyDefs[i].desc,(int)trophy_progress(i),(int)trophyDefs[i].goal,(tro.unlocked>>i)&1};
   int valid=1;if(trophyProvider)valid=trophyProvider(i,&info);
   if(!valid)info=(GameTrophyInfo){trophyDefs[i].name,"Sistema de trofeos en preparacion",0,1,0};
-  int y=57+i*35;uint32_t accent=info.unlocked?GOLD:TEAL;
-  rect(14,y,452,32,PANEL);
-  if(i==trophySelection)outline(14,y,452,32,accent);
-  circle(30,y+16,7,info.unlocked?GOLD:MUTED);text(45,y+3,info.title?info.title:trophyDefs[i].name,WHITE,1);
-  text(45,y+17,info.unlocked?"DESBLOQUEADO":(valid?"EN PROGRESO":"PROXIMAMENTE"),info.unlocked?GOLD:MUTED,1);
+  int y=57+i*35;uint32_t accent=info.unlocked?GOLD:RGB(148,151,156);
+  rect(14,y,452,32,i==trophySelection?RGB(48,43,39):RGB(24,28,37));
+  rect(14,y,3,32,accent);if(i==trophySelection)outline(14,y,452,32,accent);
+  circle(32,y+16,11,RGB(57,54,50));circle(32,y+16,8,info.unlocked?GOLD:RGB(95,103,111));
+  text(29,y+10,info.unlocked?"+":"*",RGB(18,22,28),1);
+  text(51,y+3,info.title?info.title:trophyDefs[i].name,WHITE,1);
+  text(51,y+17,info.unlocked?"DESBLOQUEADO":(valid?"EN PROGRESO":"PROXIMAMENTE"),info.unlocked?GOLD:MUTED,1);
   float amount=info.unlocked?1:!trophyProvider?clampf(trophy_progress(i)/trophyDefs[i].goal,0,1):info.target>0?clampf((float)info.current/info.target,0,1):0;
-  rect(339,y+21,114,3,INK);rect(339,y+21,(int)(114*amount),3,accent);
+  rect(339,y+21,114,4,INK);rect(339,y+21,(int)(114*amount),4,accent);
   if(valid){char b[40];snprintf(b,sizeof b,"%d/%d",info.current,info.target);text(339,y+4,b,MUTED,1);}
   if(i==trophySelection&&info.detail){char detail[64];raw_snprintf(detail,sizeof detail,"%s",locale_text(info.detail));text_raw(17,237,detail,MUTED,1);}
  }
@@ -1540,32 +1542,54 @@ static void mini_draw(void){
  if(g.noticeT>0){rect(10,234,460,16,INK);text(15,236,g.notice,MUTED,1);}
 }
 static void map_draw(void){
- char b[180];rect(0,0,W,H,INK);header("MEDELLIN / VALLE Y LADERAS","Contorno urbano real; calles y relieve simplificados");
- float sc=.055f;int ox=42,oy=59;
- for(int py=0;py<185;py++)for(int pxp=0;pxp<180;pxp++)px(ox+pxp,oy+py,map_ground(pxp/sc,py/sc));
- text(23,61,"N",WHITE,1);line(26,91,26,77,WHITE);line(26,77,23,82,WHITE);line(26,77,29,82,WHITE);
+ char b[180];rect(0,0,W,H,RGB(8,11,18));header("MEDELLIN / VALLE Y LADERAS","Mapa de la ciudad");
+ rect(14,59,210,181,RGB(24,30,39));outline(14,59,210,181,RGB(91,104,106));
+ float sc=.0715f;int ox=27,oy=68;
+ for(int py=0;py<161;py++)for(int pxp=0;pxp<184;pxp++)px(ox+pxp,oy+py,map_ground(pxp/sc,py/sc));
+ rect(24,67,1,162,RGB(211,174,110));rect(24,229,189,1,RGB(211,174,110));
+ text(29,74,"N",WHITE,1);line(32,101,32,87,WHITE);line(32,87,29,92,WHITE);line(32,87,35,92,WHITE);
  for(int i=0;i<30;i++){int x,y;map_point(locations[i].x,locations[i].y,sc,ox,oy,&x,&y);circle(x,y,2,MUTED);if(i==g.mapSel)outline(x-4,y-4,9,9,WHITE);}
  if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;int mx,my;map_point(locations[l].x,locations[l].y,sc,ox,oy,&mx,&my);
   /* Icono de objetivo: chincheta amarilla con "!" sobre el punto. */
   circle(mx,my-9,6,INK);circle(mx,my-9,5,LIME);line(mx-3,my-5,mx,my,INK);line(mx+3,my-5,mx,my,INK);line(mx-2,my-5,mx,my-1,LIME);line(mx+2,my-5,mx,my-1,LIME);rect(mx,my-12,1,4,INK);rect(mx,my-7,1,1,INK);}
  /* Jugador: flecha coral con su orientacion. */
  {int pxp,pyp;map_point(g.x,g.y,sc,ox,oy,&pxp,&pyp);float a=geo_heading(g.x,g.y,g.car>=0?g.cars[g.car].a:g.a);circle(pxp,pyp,3,INK);circle(pxp,pyp,2,CORAL);line(pxp,pyp,pxp+(int)(cosf(a)*6),pyp+(int)(sinf(a)*6),CORAL);}
- text(245,61,"LUGAR SELECCIONADO",TEAL,1);textwrap(245,83,222,locations[g.mapSel].name,WHITE);
- snprintf(b,sizeof(b),"Distancia: %d m",(int)dist(g.x,g.y,locations[g.mapSel].x,locations[g.mapSel].y));text(245,111,b,MUTED,1);
- text(245,134,"CHINCHETA: objetivo actual",LIME,1);text(245,150,"CORAL: tu posicion",CORAL,1);
- textwrap(245,170,220,districts[district(locations[g.mapSel].x,locations[g.mapSel].y)],TEAL);
- snprintf(b,sizeof(b),"Relieve: +%d unidades",(int)geo_height(locations[g.mapSel].x,locations[g.mapSel].y));text(245,204,b,MUTED,1);
- text(245,222,"Claro: ladera / azul: rio",MUTED,1);
+ rect(233,59,233,181,RGB(17,22,31));rect(233,59,3,181,RGB(204,165,105));
+ text(246,70,"DESTINO",GOLD,1);textwrap(246,89,205,locations[g.mapSel].name,WHITE);
+ rect(246,113,206,1,RGB(70,76,80));
+ snprintf(b,sizeof(b),"%d m desde tu posicion",(int)dist(g.x,g.y,locations[g.mapSel].x,locations[g.mapSel].y));text(246,121,b,WHITE,1);
+ textwrap(246,141,205,districts[district(locations[g.mapSel].x,locations[g.mapSel].y)],MUTED);
+ snprintf(b,sizeof(b),"Altura +%d",(int)geo_height(locations[g.mapSel].x,locations[g.mapSel].y));text(246,162,b,MUTED,1);
+ rect(246,183,206,1,RGB(70,76,80));
+ circle(251,198,4,LIME);text(263,192,"Objetivo activo",WHITE,1);
+ circle(251,217,4,CORAL);text(263,211,"Tu posicion",WHITE,1);
  footer("CRUCETA recorrer lugares  SELECT u O volver");
 }
 static void journal_draw(void){
- char b[180];rect(0,0,W,H,INK);header("CUADERNO DE NICO",g.journalPage==0?"La pista actual":g.journalPage==1?"Personas y progreso":"Controles y servicios");
- if(g.journalPage==0){if(g.mission<36){text(21,59,chapters[g.mission/6],TEAL,1);text(21,81,missions[g.mission].title,WHITE,1);textwrap(21,107,435,step_now()->text,LIME);textwrap(21,156,435,missions[g.mission].intro,MUTED);}else textwrap(22,72,430,"La historia termino. La ciudad sigue abierta. Puedes conducir, coleccionar los 24 vinilos y aceptar entregas en el mercado de Belen.",LIME);}
- else if(g.journalPage==1){
-  snprintf(b,sizeof(b),"HISTORIA %d/36   VINILOS %d/24",g.mission,cachecount());text(21,62,b,LIME,1);snprintf(b,sizeof(b),"REPUTACION %d   ENCARGOS %d   TIEMPO %dh %02dm",g.reputation,g.jobs,(int)g.playtime/3600,((int)g.playtime/60)%60);text(21,82,b,MUTED,1);
-  const char *lines[]={"Nico / Mensajero. Una firma falsa cambio su vida.","Sara / Hermana de Nico. Investiga a Prisma.","Vera / Periodista. Sigue los documentos.","Luna / Mecanica. Conoce cada ruta de la ciudad.","Mara / DJ de Radio Ladera. Escucha lo oculto.","Tiza / Artista. Las paredes guardan sus pistas."};for(int i=0;i<6;i++)text(21,115+i*20,lines[i],WHITE,1);
+ char b[180];rect(0,0,W,H,RGB(8,11,18));header("MENSAJES",g.journalPage==0?"Conversacion actual":g.journalPage==1?"Contactos y progreso":"Ayuda y servicios");
+ /* Tablet shell, sender rail and chat cards share the pause-menu language. */
+ rect(16,59,448,181,RGB(34,38,45));outline(16,59,448,181,RGB(91,99,105));
+ rect(22,65,436,169,RGB(14,19,28));rect(22,65,436,21,RGB(29,34,43));
+ circle(34,75,3,LIME);text(44,69,"NARCADE / MENSAJES",WHITE,1);
+ snprintf(b,sizeof(b),"%d/3",g.journalPage+1);text(418,69,b,GOLD,1);
+ if(g.journalPage==0){
+  if(g.mission<36){
+   rect(32,94,408,59,RGB(31,42,50));rect(32,94,3,59,RGB(196,165,114));
+   text(43,99,chapters[g.mission/6],GOLD,1);text(43,116,missions[g.mission].title,WHITE,1);
+   rect(49,162,391,55,RGB(36,45,44));rect(437,162,3,55,LIME);
+   textwrap(59,169,364,step_now()->text,WHITE);
+  }else textwrap(40,111,393,"La historia termino. La ciudad sigue abierta. Puedes conducir, coleccionar los 24 vinilos y aceptar entregas en el mercado de Belen.",WHITE);
+ }else if(g.journalPage==1){
+  snprintf(b,sizeof(b),"HISTORIA %d/36   VINILOS %d/24   ENCARGOS %d",g.mission,cachecount(),g.jobs);
+  text(34,94,b,GOLD,1);
+  const char *lines[]={"Nico / Mensajero","Sara / Investiga a Prisma","Vera / Periodista","Luna / Mecanica","Mara / Radio Ladera","Tiza / Artista"};
+  for(int i=0;i<6;i++){int x=34+(i%2)*207,y=117+(i/2)*35;
+   rect(x,y,197,29,i%2?RGB(39,45,48):RGB(30,39,48));rect(x,y,3,29,i%2?LIME:GOLD);
+   text(x+11,y+8,lines[i],WHITE,1);}
  }else{
-  const char *lines[]={"A PIE: mover. X trotar; pulsar X correr.","TRIANGULO: entrar o salir de un carro cercano.","[] saltar. R+[] interactuar. ARRIBA en carro.","EN CARRO: X gas, [] freno/reversa, < > girar.","R apuntar + O atacar. L rueda de armas.","O: mensajes. SELECT: camara. START: menu.","TALLER: reparacion $100. REFUGIO: curar/guardar.","MERCADO: encargos en carro. VINILOS: R+[] recoger.","Guardado por objetivo. Menu permite guardar.","Busqueda: alejate. Los minijuegos se reintentan."};for(int i=0;i<10;i++)text(21,58+i*18,lines[i],i%2?MUTED:WHITE,1);
+  const char *lines[]={"X trotar / pulsar X correr","TRIANGULO entrar o salir","[] saltar / R+[] interactuar","X gas / [] freno en carro","R apuntar + O atacar","L rueda de armas","SELECT camara / START menu","Refugio: curar y guardar"};
+  for(int i=0;i<8;i++){int x=34+(i%2)*207,y=96+(i/2)*32;
+   rect(x,y,197,27,RGB(30,38,46));text(x+8,y+7,lines[i],i%2?WHITE:GOLD,1);}
  }
  footer("L/R paginas  O volver");
 }
@@ -1579,13 +1603,18 @@ static void pause_draw(void){
  else{
   rect(0,0,W,H,RGB(7,11,19));
   for(int y=54;y<H;y+=4)rect(0,y,W,1,RGB(11,17,27)); /* textura de lineas sutil */
-  rect(18,66,444,166,RGB(13,21,32));rect(18,66,3,166,CORAL);
-  font_text(34,76,locale_text("SALIR AL MENU PRINCIPAL"),WHITE,2,1);
-  textwrap(34,108,410,"Guarda antes de salir para continuar desde aqui. Si sales sin guardar, volveras al ultimo punto guardado.",MUTED);
+  rect(18,66,444,166,RGB(20,25,34));outline(18,66,444,166,RGB(77,73,73));rect(18,66,3,166,GOLD);
+  font_text(34,75,locale_text("SALIR AL MENU PRINCIPAL"),WHITE,2,1);
+  textwrap(34,105,410,"Guarda antes de salir para continuar desde aqui. Si sales sin guardar, volveras al ultimo punto guardado.",MUTED);
   const char *actions[]={"GUARDAR Y SALIR","SALIR SIN GUARDAR"};
   for(int i=0;i<2;i++){int y=150+i*36;int sel=g.menu==i;
-   rect(28,y,424,30,sel?RGB(33,52,58):RGB(17,27,38));if(sel){rect(28,y,3,30,i?CORAL:LIME);outline(28,y,424,30,i?RGB(150,70,60):RGB(90,140,90));}
-   font_text(42,y+9,locale_text(actions[i]),sel?(i?CORAL:LIME):WHITE,1,1);}
+   uint32_t accent=i?CORAL:GOLD;
+   rect(28,y,424,30,sel?RGB(54,45,40):RGB(30,35,43));rect(28,y,3,30,accent);
+   if(sel)outline(28,y,424,30,accent);
+   circle(48,y+15,8,i?RGB(89,58,54):RGB(91,74,52));
+   text(45,y+9,i?"X":"+",WHITE,1);
+   font_text(67,y+9,locale_text(actions[i]),sel?accent:WHITE,1,1);
+   text(398,y+9,sel?"< X":"X",sel?accent:MUTED,1);}
  }
  rect(0,0,W,56,RGB(6,9,16));rect(0,55,W,1,RGB(40,70,80));
  logo_draw(10,2,0);
@@ -1613,20 +1642,25 @@ static void weapon_icon(int x,int y,int id,uint32_t color){
  }
 }
 static void weapon_wheel_draw(void){
- /* Solid, high-contrast sectors remain legible on the 480x272 display. */
+ /* Graphite and warm-metal radial selector, matching the painted inventory
+    art and avoiding the old solid blue wheel. */
  for(int y=-105;y<=105;y++)for(int x=-105;x<=105;x++){
   int r=x*x+y*y;if(r<42*42||r>105*105)continue;
   int slot=wrapi((int)floorf(atan2f((float)x,(float)-y)/(PI/4)+.5f),8);
-  px(240+x,133+y,slot==g.weaponChoice?RGB(51,94,92):RGB(16,28,36));
+  int active=slot==g.weaponChoice;
+  uint32_t fill=r>101*101?RGB(138,110,79):r<45*45?RGB(65,54,47):active?RGB(88,68,49):RGB(22,23,29);
+  px(240+x,133+y,fill);
  }
  for(int i=0;i<8;i++){
   float a=i*PI/4;int x=240+(int)(sinf(a)*77),y=133-(int)(cosf(a)*77);
-  weapon_icon(x,y,i,i==g.weaponChoice?LIME:WHITE);
+  if(i==g.weaponChoice)circle(x,y,29,RGB(105,76,48));
+  weapon_icon(x,y,i,i==g.weaponChoice?GOLD:WHITE);
   float edge=a+PI/8;line(240+(int)(sinf(edge)*43),133-(int)(cosf(edge)*43),240+(int)(sinf(edge)*105),133-(int)(cosf(edge)*105),MUTED);
  }
- circle(240,133,40,INK);text_center(240,125,weaponNames[g.weaponChoice],LIME,1);
- text_center(240,142,"L",TEAL,1);
- label(153,8,"SELECCIONAR ARMA",WHITE);
+ circle(240,133,40,RGB(9,10,15));circle(240,133,37,RGB(28,27,29));
+ text_center(240,124,weaponNames[g.weaponChoice],GOLD,1);
+ text_center(240,143,"L  SOLTAR",RGB(207,177,134),1);
+ label(149,8,"EQUIPAMIENTO",WHITE);
  footer("MANTEN L + JOYSTICK elegir / SUELTA L equipar");
 }
 static void hud_clear_bands(uint32_t *layer){ /* limpia lo dibujado el fotograma anterior y empieza el registro */
@@ -1640,7 +1674,7 @@ static void build_scene(R3Scene *sp){
  sp->driving=g.car>=0;sp->moving=g.walking&&g.screen==WORLD;sp->cameraDistance=g.cameraDistance>0?g.cameraDistance:cam_distance();sp->eyeHeight=cam_eye();
  sp->wallCount=climbWallCount;for(int i=0;i<climbWallCount;i++){sp->walls[i][0]=climbWall[i][0];sp->walls[i][1]=climbWall[i][1];sp->walls[i][2]=logical_heading_from_projected(climbWall[i][0],climbWall[i][1],0);}
  sp->shotX=combat.shotX;sp->shotZ=combat.shotY;sp->shotHeight=combat.shotHeight;sp->shotTime=combat.shotTime;
- sp->weapon=g.weapon;sp->aiming=combat.aiming;sp->cameraPitch=combat.pitch;sp->aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);sp->aimPitch=atanf(slope);}sp->recoil=combat.recoil;sp->punch=combat.punch;sp->combo=combat.combo;sp->jump=combat.jump;sp->climb=combat.vault;
+ sp->weapon=g.weapon;sp->aiming=combat.aiming;sp->aimPerson=combat.aiming?combat.target:-1;sp->cameraPitch=combat.pitch;sp->aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);sp->aimPitch=atanf(slope);}sp->recoil=combat.recoil;sp->punch=combat.punch;sp->combo=combat.combo;sp->jump=combat.jump;sp->climb=combat.vault;
  sp->motion=g.motion;sp->gaitPhase=g.gaitPhase;sp->lift=g.lift+combat.jump;sp->metroZ=g.metroZ;sp->metroDir=g.metroDir;sp->inMetro=g.inMetro;
  sp->metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */

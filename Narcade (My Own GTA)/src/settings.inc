@@ -44,16 +44,20 @@ static void settings_tick(void){
     if(changed){prefsDirty=1;settings_apply();}if(old!=g.menu||changed)menu_click();
 }
 static void settings_draw(void){
-    rect(0,0,W,H,INK);header("AJUSTES","Idioma, imagen y sonido");
+    rect(0,0,W,H,RGB(8,11,18));header("AJUSTES","Idioma, imagen y sonido");
     const char *labels[]={"IDIOMA","BRILLO","MUSICA","EFECTOS","NIEBLA LEJANA","RESTAURAR AJUSTES"};
-    for(int row=0;row<6;row++){int y=66+row*28;uint32_t col=g.menu==row?LIME:WHITE;
-        rect(18,y-5,444,25,g.menu==row?RGB(40,59,67):PANEL);text(30,y,labels[row],col,1);
-        if(row==0)text(287,y,prefsLanguage?"English":"Espanol",col,1);
+    rect(15,60,450,176,RGB(19,25,34));outline(15,60,450,176,RGB(65,73,81));
+    for(int row=0;row<6;row++){int y=68+row*27;int active=g.menu==row;uint32_t col=active?GOLD:WHITE;
+        rect(24,y-4,432,25,active?RGB(55,47,40):RGB(27,33,42));
+        if(active){rect(24,y-4,3,25,GOLD);outline(24,y-4,432,25,RGB(107,84,55));}
+        char number[8];snprintf(number,sizeof number,"%02d",row+1);text(34,y,number,active?GOLD:MUTED,1);
+        text(61,y,labels[row],col,1);
+        if(row==0)text(310,y,prefsLanguage?"English":"Espanol",col,1);
         else if(row<4){int value=row==1?prefsBrightness:row==2?prefsMusic:prefsEffects;
-            rect(267,y+4,124,5,RGB(68,83,87));rect(267,y+4,value*124/10,5,col);char b[16];snprintf(b,sizeof b,"%d%%",value*10);text(400,y,b,col,1);}
-        else if(row==4)text(287,y,prefsFog?"ACTIVADA":"DESACTIVADA",col,1);
-        else text(389,y,"X",col,1);
+            rect(302,y+7,104,4,RGB(72,70,68));rect(302,y+7,value*104/10,4,active?GOLD:RGB(152,168,170));char b[16];snprintf(b,sizeof b,"%d%%",value*10);text(414,y,b,col,1);}
+        else if(row==4)text(310,y,prefsFog?"ACTIVADA":"DESACTIVADA",col,1);
+        else text(410,y,"X",col,1);
     }
-    text(26,233,g.noticeT>0?g.notice:"Los ajustes se conservan entre partidas.",g.noticeT>0?CORAL:MUTED,1);
+    text(26,235,g.noticeT>0?g.notice:"Los ajustes se conservan entre partidas.",g.noticeT>0?CORAL:MUTED,1);
     footer("ARRIBA/ABAJO elegir  < > cambiar  O volver");
 }
