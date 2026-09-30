@@ -226,7 +226,9 @@ static void clouds(float time){
     for(int i=0;i<9;i++){
         unsigned h=city_hash(i*7,13,3);
         float angle=(i+wind*(1+(h>>10&3)*.15f))*2*PI/9;
-        float distance=440+(h&63),y=eye.y+115+(h>>22&47);
+        /* Third-person camera tilts toward the street: cloud centres only a
+           few degrees above eye level stay inside its narrow visible sky. */
+        float distance=500+(h&63),y=eye.y+25+(h>>22&31);
         float w=43+(h>>5&31),d=21+(h>>9&15);
         float cx=eye.x+cosf(angle)*distance,cz=eye.z+sinf(angle)*distance;
         float bright=lerpf(1,.55f,night);int a=(int)(lerpf(170,75,night));
