@@ -852,9 +852,13 @@ static void civilian_traffic_tick(int i,float dt){
     mirando solo el eje por el que circula (los carriles junto al borde no deben reaparecer). */
  int horiz=fabsf(cosf(c->a))>.7f;
  if(horiz?(c->x<32||c->x>2528):(c->y<32||c->y>2208)){
-  Car next=*c;if(cosf(c->a)>.7f)next.x=70;else if(cosf(c->a)<-.7f)next.x=2490;
-  else if(sinf(c->a)>.7f)next.y=70;else next.y=2170;
-  if(car_free_at(&next,next.x,next.y)&&!traffic_ahead(i,55)){c->x=next.x;c->y=next.y;c->speed=0;}
+  /* v2.50 (Claude): antes se teletransportaba al borde opuesto y el jugador veia desaparecer los coches
+     en las calles del borde. Ahora da la vuelta en U al carril contrario (28 a un lado). */
+  Car next=*c;next.a=fmodf(c->a+PI,2*PI);
+  if(cosf(c->a)>.7f){next.x=fminf(c->x,2524);next.y-=28;}else if(cosf(c->a)<-.7f){next.x=fmaxf(c->x,36);next.y+=28;}
+  else if(sinf(c->a)>.7f){next.y=fminf(c->y,2204);next.x+=28;}else{next.y=fmaxf(c->y,36);next.x-=28;}
+  if(car_free_at(&next,next.x,next.y)){*c=next;c->speed=0;}
+  else{c->speed=0;g.wallTime[i]+=dt;if(g.wallTime[i]>3&&!in_view(c->x,c->y))respawn_civilian(i);}
  }
 }
 #include "combat.inc"
@@ -1432,6 +1436,7 @@ static void title_logo(const unsigned short *src,int sw,int sh,int dx,int dy){
    unsigned p=src[y*sw+x],a=p>>12;if(!a)continue;
    unsigned rr=(p&15)*17,gg=((p>>4)&15)*17,bb=((p>>8)&15)*17;
    uint32_t *dst=&fb[py*pitch+px0],old=*dst;
+   if(!(old>>24)){*dst=((uint32_t)(a*17)<<24)|((uint32_t)bb<<16)|((uint32_t)gg<<8)|rr;hudBand[py>>4]=1;continue;} /* v2.50: sobre la capa transparente de la portada animada */
    *dst=RGB((((old&255)*(15-a)+rr*a)+7)/15,
             (((((old>>8)&255)*(15-a)+gg*a)+7)/15),
             (((((old>>16)&255)*(15-a)+bb*a)+7)/15));
@@ -1446,6 +1451,7 @@ static void title_label(int id,int x,int y,uint32_t color){
   for(int xx=0;xx<l->width;xx++){int px=x+xx;if((unsigned)px>=W)continue;
    unsigned a=title_labels_v213[l->offset+yy*l->width+xx];if(!a)continue;
    uint32_t *dst=&fb[py*pitch+px],old=*dst;
+   if(!(old>>24)){*dst=((uint32_t)a<<24)|(color&0x00ffffffu);hudBand[py>>4]=1;continue;} /* v2.50: capa transparente */
    unsigned r=(((old&255)*(255-a))+((color&255)*a)+127)/255;
    unsigned g0=((((old>>8)&255)*(255-a))+(((color>>8)&255)*a)+127)/255;
    unsigned b=((((old>>16)&255)*(255-a))+(((color>>16)&255)*a)+127)/255;
@@ -1469,9 +1475,39 @@ static void title_card(int id){
  outline(p->x-2,p->y-2,p->w+4,p->h+4,selected?LIME:RGB(64,77,96));
  if(selected){outline(p->x-3,p->y-3,p->w+6,p->h+6,LIME);rect(p->x,p->y,22,2,LIME);}
 }
+/* v2.50 (Claude): portada animada. Hasta 3 ilustraciones (TITLE0..2.BIN: RGB565 PSP 512x288, en el ISO; la 0 es la
+   portada actual) que se leen al entrar en la portada a la memoria de mallas (r3_scratch; en la portada no se
+   dibuja el mundo). Cada una dura 7 s con zoom lento y paneo que alterna de un lado al otro, y se funde en 1,2 s
+   con la siguiente. La GPU dibuja la imagen (filtrado bilineal) y el logo y los textos van encima con alfa. */
+#define SLIDE_W 512
+#define SLIDE_H 288
+static uint16_t *titleSlide[3];static int titleSlides=-1;
+static void title_slides_load(void){
+ unsigned bytes;uint16_t *mem=(uint16_t*)r3_scratch(&bytes);titleSlides=0;
+ static const char *const dirs[]={"disc0:/PSP_GAME/USRDIR/","ms0:/PSP/GAME/NARCADE/","assets/title-slides/"};
+ for(int k=0;k<3&&(unsigned)(k+1)*SLIDE_W*SLIDE_H*2<=bytes;k++){uint16_t *dst=mem+(size_t)titleSlides*SLIDE_W*SLIDE_H;int ok=0;
+  for(int d=0;d<3&&!ok;d++){char path[96];raw_snprintf(path,sizeof path,d<2?"%sTITLE%d.BIN":"%sslide%d.rgb565",dirs[d],k);
+   FILE *f=fopen(path,"rb");if(!f)continue;ok=fread(dst,2,SLIDE_W*SLIDE_H,f)==SLIDE_W*SLIDE_H;fclose(f);}
+  if(ok)titleSlide[titleSlides++]=dst;}
+}
+/* dibuja la portada animada en target (PSP: framebuffer antes de la capa del HUD; PC: la misma capa) */
+static void title_slides_draw(uint32_t *target){
+ if(titleSlides<=0)return;
+ float per=7.f,fade=1.2f,t=g.clock;int cur=(int)(t/per)%titleSlides;float local=fmodf(t,per);
+ #define SLIDE_PAN(n,u) ((((n)&1)?1.f:-1.f)*(u*2-1)*.9f)
+ float u=local/per;int prev=(cur+titleSlides-1)%titleSlides;
+ if(titleSlides>1&&local<fade&&t>=per){float up=(local+per)/per;r3_slide_image(target,titleSlide[prev],1.07f,SLIDE_PAN((int)(t/per)-1,up>1?1:up),230,255);
+  r3_slide_image(target,titleSlide[cur],1.07f,SLIDE_PAN((int)(t/per),u),230,(int)(255*local/fade));}
+ else r3_slide_image(target,titleSlide[cur],1.07f,SLIDE_PAN((int)(t/per),u),230,255);
+ #undef SLIDE_PAN
+}
 static void title_draw(void){
  if(!g.titleStage){
-  title_image(title_cover_v213,W,H,0,0);
+  if(titleSlides<0)title_slides_load();
+#ifdef R3_HOST
+  title_slides_draw(fb);
+#endif
+  if(titleSlides<=0)title_image(title_cover_v213,W,H,0,0); /* sin ilustraciones en disco: la portada fija */
   /* Illustration and transparent mark share the sky; no opaque UI panel
      obscures the valley or the character. */
   title_logo(narcade_logo_small_v244,115,39,27,23);
@@ -1726,12 +1762,14 @@ static void draw_frame(uint32_t *pixels,int stride){fb=pixels;pitch=stride;
  if(g.screen==CHOICE){rect(16,62,448,173,INK);text(30,76,"TU DECISION / EL FUTURO DEL EXPEDIENTE",TEAL,1);textwrap(30,98,412,"Las dos opciones protegen los datos privados. Elige quien llevara las pruebas a la ciudad.",MUTED);const char *items[]={"VERA: entregar el expediente a la justicia","MARA: publicar tambien una memoria vecinal"};for(int i=0;i<2;i++){rect(25,146+i*35,429,28,i==g.menu?PANEL:INK);text(31,154+i*35,items[i],i==g.menu?LIME:WHITE,1);}text(31,219,"ARRIBA/ABAJO elegir  X confirmar",MUTED,1);}
 }
 void game_draw(uint32_t *pixels,int stride){
+ {static int lastTitle=1;int nowTitle=g.screen==TITLE;if(nowTitle&&!lastTitle)titleSlides=-1;lastTitle=nowTitle;} /* al volver a la portada se releen */
 #ifdef NARCADE_3D
  renderTarget=pixels;
 #ifndef R3_HOST
  uint32_t *overlay=hudLayer;
  int world=!(g.screen==TITLE||g.screen==MINI||g.screen==MAP||g.screen==JOURNAL||g.screen==PAUSE||g.screen==SETTINGS||g.screen==CREDITS||g.screen==TROPHIES);
  if(!world){memset(overlay,0,512*272*sizeof(uint32_t));memset(hudPrev,1,sizeof hudPrev);}
+ if(g.screen==TITLE&&!g.titleStage){if(titleSlides<0)title_slides_load();title_slides_draw(pixels);} /* v2.50: portada animada bajo la capa */
  draw_frame(overlay,512);
  if(!world)memset(hudBand,1,sizeof hudBand);
  r3_overlay_bands(pixels,overlay,hudBand);memcpy(hudPrev,hudBand,sizeof hudPrev);

@@ -177,7 +177,6 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
     uint32_t trim=(mat==EATERY)?COLOR(181,68,55):(mat==WORKSHOP_FRONT)?COLOR(51,113,165):
                   (mat==OFFICE_FRONT)?COLOR(66,145,173):COLOR(36,161,150);
     box(cx,z0+3,6,w-4,4,18,0,CONCRETE,CONCRETE,COLOR(215,209,193));
-    if(cityMid)return;
     /* Four distinct storefronts per material. Explicit front-face UV order
        makes the names readable from the street, without mirrored box faces. */
     float u=(h&1)?.5f:0,v=(h&2)?.5f:0,eps=.007f;
@@ -189,6 +188,7 @@ static void street_front(float cx,float z0,float w,int mat,unsigned h,int far){
         {u+eps,v+.5f-eps,tint,cx+w*.5f-2,6.2f,z0+.35f},
         {u+.5f-eps,v+.5f-eps,tint,cx-w*.5f+2,6.2f,z0+.35f}};
     litAlready=1;polygon(mat,sign,4);litAlready=0;
+    if(cityMid)return; /* v2.50 (Claude): el escaparate con su nombre ya se ve a media distancia; toldo y detalles solo de cerca */
     box(cx,z0-.4f,17.4f,w-3,5,1.2f,0,AWNING,AWNING,trim); /* v2.41: toldo saliente (z0-2,9..z0+2,1); letrero a 0,65 de la fachada (antes 0,15: parpadeaba) */ /* v2.33 (Claude): sin caras coplanares (parpadeo): tools/qa_zfight_v233.c */
     if(w>42){
         float xx=cx+w*.23f-5;
@@ -226,7 +226,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
             if(floors>1)box(xx,zz,26,ww,d-4,(floors-1)*22,0,STUCCO,ROOF,cityPastel[(hk>>9)&7]);
             box(xx,zz,6+20+(floors-1)*22,ww+1,d-15,2.2f,0,ROOF,ROOF,COLOR(119,99,88));
             street_front(xx,z0,ww,mat,hk,far);
-            if(!far&&!cityMid)box(xx,z1-7,10,ww*.65f,2,12,0,GLASS,GLASS,COLOR(112,171,186));
+            if(!far)box(xx,z1-7,10,ww*.65f,2,12,0,GLASS,GLASS,COLOR(112,171,186)); /* v2.50: tambien a media distancia */
         }
         break;}
     case CB_RESTAURANT:{
@@ -338,7 +338,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
             int frontMat=((hk>>13)%5==0)?EATERY:((hk>>13)%5==1)?OFFICE_FRONT:RETAIL;
             box(xx,zz,6,L,Wd,20,0,CONCRETE,CONCRETE,COLOR(221,213,194));
             box(xx,zz,26,L,Wd,floors*24-20,0,mat,ROOF,tint);
-            if(!far){ /* v2.48: tambien en detalle medio (cristal simple) */
+            { /* v2.48/v2.50: tambien en detalle medio y lejano (cristal simple) */
                 residential_facade(xx,zz-Wd*.5f,L,26,floors-1,24,0,0);
                 if(c==0||c==cols-1)residential_facade(c==0?x0:x1,zz,Wd,26,floors-1,24,c==0?-PI*.5f:PI*.5f,0);
             }

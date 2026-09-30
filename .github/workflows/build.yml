@@ -25,6 +25,7 @@ jobs:
           mkdir -p out/PSP/GAME/NARCADE
           cp EBOOT.PBP out/PSP/GAME/NARCADE/
           cp assets/loading-v241/valley.rgb565 out/PSP/GAME/NARCADE/LOAD0.BIN
+          for k in 0 1 2; do [ -f assets/title-slides/slide$k.rgb565 ] && cp assets/title-slides/slide$k.rgb565 out/PSP/GAME/NARCADE/TITLE$k.BIN; done
           cp assets/loading-v241/street.rgb565 out/PSP/GAME/NARCADE/LOAD1.BIN
           cp assets/loading-v241/rooftop.rgb565 out/PSP/GAME/NARCADE/LOAD2.BIN
           cp Narcade.iso out/
