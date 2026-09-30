@@ -83,7 +83,7 @@ static int clipEnabled=1;
 static int geographic=0,rigid=0;
 static float objectX,objectZ,objectYaw;
 static float fixedGround=-1000000;
-static float npcFall=0,npcPhase=0,npcFlee=0;
+static float npcFall=0,npcPhase=0,npcFlee=0,npcHit=0,npcThreat=0;
 
 static Point point(float x,float y,float z){Point p={x,y,z};return p;}
 static uint32_t shade(uint32_t c,float f){return COLOR((int)((c&255)*f),(int)(((c>>8)&255)*f),(int)(((c>>16)&255)*f));}
@@ -517,6 +517,8 @@ static void limb(Point a,Point b,float r0,float r1,int mat,uint32_t tint,float x
     }
 }
 static void simple_person_body(float x,float z,float angle,int style,int walking);
+static const float npcC[13]={1,.8660254f,.5f,0,-.5f,-.8660254f,-1,-.8660254f,-.5f,0,.5f,.8660254f,1};
+static const float npcS[13]={0,.5f,.8660254f,1,.8660254f,.5f,0,-.5f,-.8660254f,-1,-.8660254f,-.5f,0};
 static void simple_person(float x,float z,float angle,int style,int walking){
     if(!nearby(x,z,270))return;
     if(!sphere_visible(x,z,22))return;
@@ -535,7 +537,7 @@ static void simple_person_body(float x,float z,float angle,int style,int walking
     uint32_t pants=variant%3==0?COLOR(150,168,170):variant%3==1?COLOR(90,101,117):COLOR(212,209,183);
     float shoulderWidth=woman?4.1f:variant==6?5.9f:5.1f;
     float hipWidth=woman?2.45f:2.2f,legWidth=variant==2||variant==5?2.15f:1.65f;
-    float phase=npcPhase,swing=walking?sinf(phase)*(npcFlee>0?1.5f:1):0,bob=walking?fabsf(cosf(phase))*.3f:0;
+    float phase=npcPhase,swing=walking?sinf(phase)*(npcFlee>0?1.45f:1):0,bob=walking?(1-cosf(phase*2))*.12f:0;
     for(int s=-1;s<=1;s+=2){
         float stride=s*swing*3.4f,lift=walking?fmaxf(0,s*swing)*1.7f:0;
         Point hip=point(0,12+bob,s*hipWidth),knee=point(stride*.55f+.6f,7+lift,s*hipWidth),ankle=point(stride,2+lift,s*hipWidth);
@@ -544,7 +546,8 @@ static void simple_person_body(float x,float z,float angle,int style,int walking
         Point shoe=local(stride+1,0,s*2.3f,x,z,angle);
         box(shoe.x,shoe.z,.45f+lift,5.3f,3.3f,1.4f,angle,CAR_PAINT,CAR_PAINT,COLOR(47,48,46));
         box(shoe.x,shoe.z,.15f+lift,5.5f,3.4f,.45f,angle,CAR_PAINT,CAR_PAINT,COLOR(196,193,175));
-        Point shoulder=point(0,20+bob,s*shoulderWidth),elbow=point(-stride*.5f,15.8f+bob,s*(shoulderWidth+.3f)),wrist=point(1-stride,12.7f+bob,s*shoulderWidth);
+        float guard=geo_clamp(npcThreat*.75f+npcHit*2.6f,0,1);
+        Point shoulder=point(0,20+bob,s*shoulderWidth),elbow=point(-stride*.5f+guard*2.2f,15.8f+bob+guard*2.5f,s*(shoulderWidth+.3f)),wrist=point(1-stride+guard*3.1f,12.7f+bob+guard*6.3f,s*(shoulderWidth+guard*.6f));
         limb(shoulder,elbow,woman?1.45f:1.8f,1.25f,top,tint,x,z,angle);
         limb(elbow,wrist,1.25f,.9f,variant%2?top:SKIN,variant%2?tint:skin,x,z,angle);
         limb(wrist,point(wrist.x+.3f,wrist.y-1.8f,wrist.z),.95f,.7f,SKIN,skin,x,z,angle);
@@ -554,27 +557,30 @@ static void simple_person_body(float x,float z,float angle,int style,int walking
     if(woman){rx[0]=2.3f;rx[1]=2.1f;rx[2]=2.65f;rz[0]=4.5f;rz[1]=3.25f;rz[2]=4.0f;rz[3]=3.0f;}
     if(variant==6){for(int i=0;i<4;i++){rx[i]*=1.28f;rz[i]*=1.15f;}}
     if(variant==1||variant==3){heights[0]=8.5f;rx[0]=3.3f;rz[0]=5.0f;} /* tunic / long jacket */
-    for(int level=0;level<3;level++)for(int k=0;k<8;k++){
-        Point p=local(ringC[k]*rx[level+1],heights[level+1]+bob,ringS[k]*rz[level+1],x,z,angle);
-        Point q=local(ringC[k+1]*rx[level+1],heights[level+1]+bob,ringS[k+1]*rz[level+1],x,z,angle);
-        Point r=local(ringC[k+1]*rx[level],heights[level]+bob,ringS[k+1]*rz[level],x,z,angle);
-        Point s=local(ringC[k]*rx[level],heights[level]+bob,ringS[k]*rz[level],x,z,angle);
+    for(int level=0;level<3;level++)for(int k=0;k<12;k++){
+        Point p=local(npcC[k]*rx[level+1],heights[level+1]+bob,npcS[k]*rz[level+1],x,z,angle);
+        Point q=local(npcC[k+1]*rx[level+1],heights[level+1]+bob,npcS[k+1]*rz[level+1],x,z,angle);
+        Point r=local(npcC[k+1]*rx[level],heights[level]+bob,npcS[k+1]*rz[level],x,z,angle);
+        Point s=local(npcC[k]*rx[level],heights[level]+bob,npcS[k]*rz[level],x,z,angle);
         int mat=top;
-        Vertex v[4]={{.5f+ringS[k]*.5f,1-(heights[level+1]-11)/10,tint,p.x,p.y,p.z},{.5f+ringS[k+1]*.5f,1-(heights[level+1]-11)/10,tint,q.x,q.y,q.z},{.5f+ringS[k+1]*.5f,1-(heights[level]-11)/10,tint,r.x,r.y,r.z},{.5f+ringS[k]*.5f,1-(heights[level]-11)/10,tint,s.x,s.y,s.z}};
+        Vertex v[4]={{.5f+npcS[k]*.5f,1-(heights[level+1]-11)/10,tint,p.x,p.y,p.z},{.5f+npcS[k+1]*.5f,1-(heights[level+1]-11)/10,tint,q.x,q.y,q.z},{.5f+npcS[k+1]*.5f,1-(heights[level]-11)/10,tint,r.x,r.y,r.z},{.5f+npcS[k]*.5f,1-(heights[level]-11)/10,tint,s.x,s.y,s.z}};
         polygon(mat,v,4);
     }
     limb(point(0,20.5f+bob,0),point(0,23+bob,0),1.25f,1.2f,SKIN,skin,x,z,angle);
     /* Rounded jaw, cheeks, cranium. Face appears only on the forward surface. */
     float hy[6]={22.1f,23,25.2f,27.5f,28.6f,29},hr[6]={.4f,.78f,1,1,.75f,.05f};
-    for(int level=0;level<5;level++)for(int k=0;k<8;k++){
-        Point p=local(.2f+ringC[k]*2.6f*hr[level+1],hy[level+1]+bob,ringS[k]*2.35f*hr[level+1],x,z,angle);
-        Point q=local(.2f+ringC[k+1]*2.6f*hr[level+1],hy[level+1]+bob,ringS[k+1]*2.35f*hr[level+1],x,z,angle);
-        Point r=local(.2f+ringC[k+1]*2.6f*hr[level],hy[level]+bob,ringS[k+1]*2.35f*hr[level],x,z,angle);
-        Point s=local(.2f+ringC[k]*2.6f*hr[level],hy[level]+bob,ringS[k]*2.35f*hr[level],x,z,angle);
-        int mat=(k==0||k==7)?face:level>=2?HAIR:SKIN;
+    float faceWidth=woman?2.27f:variant==6?2.75f:2.46f,faceDepth=variant==6?2.62f:2.34f;
+    for(int level=0;level<5;level++)for(int k=0;k<12;k++){
+        float noseA=(fabsf(npcS[k])<.1f&&level>=1&&level<=3)?(.40f+variant*.04f):0;
+        float noseB=(fabsf(npcS[k+1])<.1f&&level>=1&&level<=3)?(.40f+variant*.04f):0;
+        Point p=local(.2f+npcC[k]*faceDepth*hr[level+1]+noseA,hy[level+1]+bob,npcS[k]*faceWidth*hr[level+1],x,z,angle);
+        Point q=local(.2f+npcC[k+1]*faceDepth*hr[level+1]+noseB,hy[level+1]+bob,npcS[k+1]*faceWidth*hr[level+1],x,z,angle);
+        Point r=local(.2f+npcC[k+1]*faceDepth*hr[level]+noseB,hy[level]+bob,npcS[k+1]*faceWidth*hr[level],x,z,angle);
+        Point s=local(.2f+npcC[k]*faceDepth*hr[level]+noseA,hy[level]+bob,npcS[k]*faceWidth*hr[level],x,z,angle);
+        int mat=(k<=1||k>=10)?face:level>=2?HAIR:SKIN;
         float vt=1-(hy[level+1]-22.1f)/6.9f,vb=1-(hy[level]-22.1f)/6.9f;
         uint32_t headTint=mat==HAIR?(variant%3==0?COLOR(116,77,47):COLOR(65,53,47)):skin;
-        Vertex v[4]={{.5f+ringS[k]*.68f,vt,headTint,p.x,p.y,p.z},{.5f+ringS[k+1]*.68f,vt,headTint,q.x,q.y,q.z},{.5f+ringS[k+1]*.68f,vb,headTint,r.x,r.y,r.z},{.5f+ringS[k]*.68f,vb,headTint,s.x,s.y,s.z}};
+        Vertex v[4]={{.5f+npcS[k]*.68f,vt,headTint,p.x,p.y,p.z},{.5f+npcS[k+1]*.68f,vt,headTint,q.x,q.y,q.z},{.5f+npcS[k+1]*.68f,vb,headTint,r.x,r.y,r.z},{.5f+npcS[k]*.68f,vb,headTint,s.x,s.y,s.z}};
         polygon(mat,v,4);
     }
     if(woman){
@@ -962,7 +968,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     playerLift=0;rigX=-1e9f;
 #ifndef AB_NOPEOPLE
     for(int i=0;i<s->personCount;i++){
-        const R3Person *p=&s->people[i];objectX=p->x;objectZ=p->z;objectYaw=p->angle;npcFall=p->fall;npcPhase=p->phase;npcFlee=p->flee;
+        const R3Person *p=&s->people[i];objectX=p->x;objectZ=p->z;objectYaw=p->angle;npcFall=p->fall;npcPhase=p->phase;npcFlee=p->flee;npcHit=p->hit;npcThreat=s->aiming&&s->aimPerson==i;
         playerLift=cm_surface(objectX,objectZ);rigX=-1e9f; /* v2.45: peatones sobre la acera, no hundidos 1,2 */
         person(objectX,objectZ,objectYaw,p->style,p->fall==0);
         playerLift=0;
