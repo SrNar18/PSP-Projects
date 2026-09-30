@@ -10,47 +10,27 @@ from PIL import Image, ImageFilter, ImageChops
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
 source = Image.open(ASSETS / "icon-source.png").convert("RGB")
-# The original mark occupies this rectangle; the surroundings are dark sky.
-crop = source.crop((265, 190, 1410, 580))
+# Include the full tapered N and a margin so its outline is never cut by the crop.
+crop = source.crop((245, 190, 1420, 580))
 alpha = Image.new("L", crop.size)
 ap = alpha.load()
 for y in range(crop.height):
     for x in range(crop.width):
         r, g, b = crop.getpixel((x, y))
         hi, lo = max(r, g, b), min(r, g, b)
-        # Saturated, bright neon only. Fade the faint glow at the edge.
-        strength = max(0, min(255, (hi - 44) * 3))
-        saturation = max(0, min(255, (hi - lo - 19) * 5))
+        # Keep the painted neon; reject the dark blue sky and hillside.
+        # The old low threshold turned the cropped sky into a cyan rectangle.
+        strength = max(0, min(255, (hi - 92) * 5))
+        saturation = max(0, min(255, (hi - lo - 35) * 5))
         ap[x, y] = min(strength, saturation)
-# The source mark has tiny pale cuts along the sharp blue N. A luminance/
-# saturation key alone drops those highlights. Close only subpixel-size gaps
-# in the extracted mark, keeping the interior letter counters transparent.
-closed = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.MinFilter(9))
-alpha = ImageChops.lighter(alpha, closed).filter(ImageFilter.GaussianBlur(.65))
+# Only close subpixel cracks at source resolution; never dilate the 115px logo.
+closed = alpha.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))
+alpha = ImageChops.lighter(alpha, closed).filter(ImageFilter.GaussianBlur(.45))
 mark = crop.convert("RGBA")
 mark.putalpha(alpha)
 
 for name, size in (("small", (115, 39)),):
     image = mark.resize(size, Image.Resampling.LANCZOS)
-    # The native-size reduction used to leave a black pinhole at the tapered
-    # end of the blue N. Close the N's own cyan silhouette and paint the
-    # recovered pixels opaquely. This retains the original sharp, hand-painted
-    # XMB lettering instead of replacing it with a typeset wordmark.
-    pix = image.load()
-    blue = Image.new("L", size)
-    bp = blue.load()
-    for y in range(size[1]):
-        for x in range(min(25, size[0])):
-            r, g, b, a = pix[x, y]
-            if a > 22 and b > r * 1.15 and b > g * .85:
-                bp[x, y] = 255
-    blue = blue.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
-    bp = blue.load()
-    for y in range(size[1]):
-        for x in range(min(24, size[0])):
-            r, g, b, a = pix[x, y]
-            if bp[x, y]:
-                pix[x, y] = (26, 179 + min(58, x * 2), 249, max(a, 225))
     image.save(ASSETS / f"narcade-logo-{name}-v244.png")
     # PSP-friendly RGBA4444, little endian (GU_PSM_4444 layout).
     raw = bytearray()

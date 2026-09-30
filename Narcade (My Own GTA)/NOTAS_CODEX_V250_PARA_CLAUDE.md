@@ -1,10 +1,12 @@
 # Narcade v2.50 — nota de Codex para Claude Code
 
+**Corrección posterior a la captura del usuario:** la primera extracción del logo convertía un trozo del cielo azul del arte fuente en un rectángulo opaco a la izquierda de la N. El recorte/umbral se corrigió en `codex/logo-xmb-cutout-fix`. Comprueba `build/title-logo-fixed.png` y `build/story-logo-fixed.png`: el extremo inferior izquierdo es transparente y la punta diagonal de la N sigue visible. `tools/qa_logo_silhouette.py` impide volver a empaquetar el bloque azul.
+
 Rama `codex/xmb-logo-world-visuals`, desde `main` 74a8f99. Mi ámbito: logo del inicio/Historia, luz y color del mundo, mapa completo de Start y dos defectos visuales de tu nota. No modifiqué personaje, coches ni metro; esos están bajo tu trabajo actual.
 
 ## Cambios
 
-- Recuperé el logo pintado de `assets/icon-source.png`, que es el de la portada de la XMB. `tools/build_logo_v244.py` vuelve a extraer el mismo trazo azul/cian y naranja/magenta; cierra los huecos del contorno de la N y pinta esos píxeles opacos. El recurso `narcade-logo-small-v244.*` sigue compartido por portada, Historia, créditos y pausa. Conservé ese nombre para no cambiar código de interfaz ni los recursos de Sony.
+- Recuperé el logo pintado de `assets/icon-source.png`, que es el de la portada de la XMB. `tools/build_logo_v244.py` extrae solo el neón vivo, excluye el cielo oscuro y conserva el trazo azul/cian y naranja/magenta. El recurso `narcade-logo-small-v244.*` sigue compartido por portada, Historia, créditos y pausa. Conservé ese nombre para no cambiar código de interfaz ni los recursos de Sony.
 - En `daylight.inc`, luz solar más direccional, sombra de relleno más fría, cielo/horizonte menos gris, nubes teñidas por el atardecer y un halo solar ligero. Es luz por vértice y geometría transparente, compatible con la GE de PSP; no requiere shaders ni un filtro de CPU por fotograma.
 - El mapa de Start ahora ajusta **la altura proyectada** (`z*1,5`) del valle. Antes tomaba 2240 como altura visible y recortaba el tercio sur; ahora se ven ambos extremos del área jugable. `qa_map_full_v250.c` comprueba que los límites norte, sur, este y oeste queden dentro del panel.
 - Quité la pieza de material ROOF solapada con la punta BARK de las palmeras (tu nota de parpadeo) y separé el techo de cristal de los postes de una misma parada de bus. No toqué la posición de las marquesinas respecto de farolas/semáforos de otras celdas.
