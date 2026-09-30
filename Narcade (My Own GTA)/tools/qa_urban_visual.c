@@ -23,7 +23,9 @@ int main(void){
         geographic=1;s.x=CM_METRO_X;s.z=1040;s.metroZ=1040;
         for(int door=0;door<2;door++){
             memset(used,0,sizeof used);s.metroDoors=door;metro_train();
-            if(!valid_mesh()||used[GLASS]<12||metroFlexible){puts("metro mesh invalid");return 3;}
+            /* The train now uses opaque tinted METAL panes: the older GLASS
+               texture's alpha made some carriage windows disappear. */
+            if(!valid_mesh()||used[METAL]<12||metroFlexible){puts("metro mesh invalid");return 3;}
         }
         geographic=0;
     }

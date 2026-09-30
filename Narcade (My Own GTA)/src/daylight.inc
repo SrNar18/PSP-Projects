@@ -35,14 +35,14 @@ static void day_update(float time){
     float n=sqrtf(sunX*sunX+sunY*sunY+sunZ*sunZ);sunX/=n;sunY/=n;sunZ/=n;
     night=1-smooth01((elev+.12f)/.30f);                          /* transicion en el crepusculo */
     float low=1-smooth01((elev-.05f)/.35f);                       /* sol bajo: luz calida y rasante */
-    sunR=lerpf(1.05f,1.15f,low);sunG=lerpf(1.0f,.72f,low);sunB=lerpf(.92f,.45f,low);
+    sunR=lerpf(1.05f,1.25f,low);sunG=lerpf(1.0f,.74f,low);sunB=lerpf(.96f,.52f,low);
     float dusk=low*(1-night);
-    ambR=lerpf(lerpf(.50f,.42f,dusk),.22f,night);ambG=lerpf(lerpf(.52f,.36f,dusk),.25f,night);ambB=lerpf(lerpf(.58f,.42f,dusk),.36f,night);
+    ambR=lerpf(lerpf(.53f,.48f,dusk),.22f,night);ambG=lerpf(lerpf(.55f,.39f,dusk),.25f,night);ambB=lerpf(lerpf(.61f,.49f,dusk),.36f,night);
     /* cielo: azul claro de dia, naranja/violeta al amanecer y atardecer, azul noche */
-    float r=lerpf(lerpf(155,236,dusk),14,night),g=lerpf(lerpf(189,140,dusk),18,night),b=lerpf(lerpf(192,110,dusk),40,night);
+    float r=lerpf(lerpf(105,205,dusk),14,night),g=lerpf(lerpf(161,112,dusk),18,night),b=lerpf(lerpf(208,156,dusk),40,night);
     skyColor=COLOR((int)r,(int)g,(int)b);
     /* horizonte: bruma clara de dia, naranja intenso al amanecer/atardecer, gris-azul apagado de noche */
-    float hr=lerpf(lerpf(128,239,dusk),22,night),hg=lerpf(lerpf(180,143,dusk),30,night),hb=lerpf(lerpf(218,104,dusk),58,night);
+    float hr=lerpf(lerpf(153,251,dusk),22,night),hg=lerpf(lerpf(198,150,dusk),30,night),hb=lerpf(lerpf(228,105,dusk),58,night);
     horizonColor=COLOR((int)hr,(int)hg,(int)hb);
 }
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){

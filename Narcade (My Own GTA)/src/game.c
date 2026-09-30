@@ -1451,14 +1451,13 @@ static void title_card(int id){
 static void title_draw(void){
  if(!g.titleStage){
   title_image(title_cover_v213,W,H,0,0);
-  /* Let the Medellin illustration occupy the screen. The repaired mark
-     sits just above the invitation inside one shaped glass panel. */
-  hud_plaque(150,157,274,107,RGB(63,202,234));
-  title_logo(narcade_logo_small_v244,115,39,28,164);
+  /* Illustration and transparent mark share the sky; no opaque UI panel
+     obscures the valley or the character. */
+  title_logo(narcade_logo_small_v244,115,39,27,23);
   uint32_t prompt=sinf(g.clock*3.2f)>-.45f?WHITE:RGB(116,165,176);
-  title_label(TL_PRESS,31,208,prompt);
-  title_label(TL_PRESS_SUB,32,232,RGB(146,184,195));
-  title_label(TL_MADE_BY,356,234,WHITE);title_label(TL_CREDIT,397,224,WHITE);
+  title_label(TL_PRESS,29,205,prompt);
+  title_label(TL_PRESS_SUB,30,230,RGB(189,216,223));
+  title_label(TL_MADE_BY,356,244,WHITE);title_label(TL_CREDIT,397,234,WHITE);
  }else{
   title_image(title_menu_v213,W,H,0,0);
   rect(0,0,W,4,RGB(68,204,218));
