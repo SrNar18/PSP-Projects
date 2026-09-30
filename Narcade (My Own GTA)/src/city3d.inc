@@ -73,6 +73,7 @@ static void colonial_house(float x,float z,float L,float W,int floors,uint32_t c
     box(x-L*.25f,z-W*.5f-4,17,L*.4f,8,.8f,-.25f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>3)&7]); /* toldo */
 }
 /* Casa de comuna: ladrillo, techo de zinc plano, escalera lateral. */
+static void cylinder(float x,float z,float bottom,float r,float height,int n,float rot,int side,int top,uint32_t color);
 static void comuna_house(float x,float z,float L,float W,float base,int floors,int far,unsigned h){
     uint32_t tint=cityBrick[h&3];
     if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);return;}
@@ -81,7 +82,10 @@ static void comuna_house(float x,float z,float L,float W,float base,int floors,i
     if(cityMid)return;
     residential_facade(x,z-W*.5f,L,base,floors,20,0,1);
     residential_facade(x,z+W*.5f,L,base,floors,20,PI,0);
-    if(h&32)box(x,z,base+floors*20+1.5f,6,6,6,0,CAR_PAINT,CAR_PAINT,COLOR(60,80,140)); /* tank supported by the roof */
+    /* v2.47 (Claude): tanque de agua cilindrico oscuro con tapa, como los de las azoteas de Medellin. Antes era un
+       cubo azul de 6x6x6 que ademas atravesaba el tejado a dos aguas (h&1): solo en tejado plano. */
+    if((h&32)&&!(h&1)){float t=base+floors*20+1.5f;cylinder(x+3,z-2,t,2.6f,4.2f,8,0,CAR_PAINT,CAR_PAINT,COLOR(46,52,58));
+        cylinder(x+3,z-2,t+4.2f,2.8f,.5f,8,0,CAR_PAINT,CAR_PAINT,COLOR(70,78,86));}
 }
 /* Zona verde: cesped, arbustos redondeados y matas de flores de colores (deterministas por hash). */
 static void garden(float x,float z,float w,float d,unsigned h,int far){
