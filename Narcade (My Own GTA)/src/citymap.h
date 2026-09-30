@@ -20,6 +20,7 @@
 #ifndef NARCADE_CITYMAP_H
 #define NARCADE_CITYMAP_H
 #include <math.h>
+#include "metro_loop.h" /* v2.49 (Claude) */
 #define CM_MERGE_E 1
 #define CM_MERGE_S 2
 #define CM_SPLIT_X 4
@@ -167,7 +168,7 @@ static inline int cm_parcel_at(float x,float z){
 #define CM_METRO_DECK 26.f
 #define CM_PLAT_H 30.2f
 #define CM_TRAIN_CAR 110.f
-static inline int cm_metro_station(int bz){return bz==1||bz==3||bz==5;}
+static inline int cm_metro_station(int bz){(void)bz;return 0;} /* v2.49: ya no hay estaciones en la orilla (Metro circular, metro_loop.h) */
 static inline float cm_station_z(int bz){return bz*320+160.f;}
 /* Concrete supports beneath the three elevated station platforms. Their
    walkable decks are above the tops of these supports, so callers decide
@@ -247,7 +248,7 @@ static inline int cm_obstacle(float x,float z){
         if(!cm_roundabout(bx[k],bz[k]))continue; /* v2.37: islas desactivadas */ float dx=x-(bx[k]*320+42),dz=z-(bz[k]*320+42);
         if(dx*dx+dz*dz<12.f*12.f)return 1;
     }
-    if(fabsf(x-CM_METRO_X)<5.f){float lz=fmodf(z,320.f);if(lz<0)lz+=320;for(int k=0;k<5;k++)if(fabsf(lz-(96+k*48))<5.f)return 1;}   /* pilares del viaducto, fuera de la interseccion */
+    if(ml_pillar_at(x,z,0))return 1; /* v2.49: pilares del Metro circular */
     int bx=(int)floorf(x/320),bzc=(int)floorf(z/320);
     for(int dz=-1;dz<=0;dz++)for(int dx=-1;dx<=0;dx++){
         const CmParcel *ps;int n=cm_parcels(bx+dx,bzc+dz,&ps);unsigned f=cm_flags(bx+dx,bzc+dz);

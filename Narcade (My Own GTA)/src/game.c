@@ -155,7 +155,7 @@ static int world_solid(float x,float y){
   if(!bridge)return 1;
  }
  /* v2.6: manzanas irregulares (fusionadas, partidas, triangulares): la huella la define citymap.h */
- return cm_solid(x,y)||cm_obstacle(x,y)||(g.lift<CM_PLAT_H-5.f&&cm_metro_support(x,y));
+ return cm_solid(x,y)||cm_obstacle(x,y); /* v2.49: los pilares del Metro circular van en cm_obstacle */
 }
 static int solid(float x,float y){return world_solid(x,y)||combat_wall_at(x,y,0);}
 static int free_at(float x,float y,int radius){
@@ -334,7 +334,7 @@ static int car_overlap(const Car *a,const Car *b,float *nx,float *ny,float *dept
    del peaton y el coche se quedaba parado para siempre. */
 static int car_solid(float x,float y){
  if(x<-40||y<-40||x>WORLD_W+40||y>WORLD_H+40)return 1;
- if(x>=8&&y>=8&&x<=WORLD_W-8&&y<=WORLD_H-8)return solid(x,y)||cm_metro_support(x,y);
+ if(x>=8&&y>=8&&x<=WORLD_W-8&&y<=WORLD_H-8)return solid(x,y);
  return cm_solid(x,y)||cm_obstacle(x,y);
 }
 static int car_free_at(const Car *c,float x,float y){
@@ -408,23 +408,39 @@ static void separate_cars(void){
  }
  if(g.car>=0){g.x=g.cars[g.car].x;g.y=g.cars[g.car].y;}
 }
-/* v2.6: tren del Metro (va y vuelve por x=CM_METRO_X, para 6 s en cada estacion) y viaje del jugador a bordo. */
-static float metroSpeed=0;
+/* v2.49 (Claude): Metro circular (metro_loop.h). El tren da vueltas al anillo en un solo sentido y para 7 s en cada
+   una de las seis estaciones. g.metroZ guarda su posicion s sobre el anillo. A bordo, el jugador va sentado dentro del
+   vagon (no se dibuja) y la camara lo sigue; en cada parada puede bajarse con TRIANGULO. */
+static float metroSpeed=0;static int metroStation=-1;
+static int metro_next_station(float s){int best=0;float bd=1e9f;for(int i=0;i<ML_STATIONS;i++){float d=ml_ahead(s,ml_station_s(i));if(d<1e-3f)d+=ml_length(); /* la estacion donde esta parado no cuenta */
+  if(d<bd){bd=d;best=i;}}return best;}
 static void metro_update(float dt){
- if(g.metroDir==0){g.metroDir=1;g.metroZ=cm_station_z(1);g.metroWait=6;metroSpeed=0;}
- if(g.metroWait>0){g.metroWait=fmaxf(0,g.metroWait-dt);metroSpeed=0;}
+ if(g.metroDir==0){g.metroDir=1;g.metroZ=ml_station_s(0);g.metroWait=7;metroSpeed=0;metroStation=0;}
+ if(g.metroWait>0){g.metroWait=fmaxf(0,g.metroWait-dt);metroSpeed=0;if(g.metroWait<=0)metroStation=-1;}
  else{
-  float remaining=g.metroDir>0?2180-g.metroZ:g.metroZ-60;
-  for(int bz=1;bz<=5;bz+=2){float d=(cm_station_z(bz)-g.metroZ)*g.metroDir;if(d>.01f&&d<remaining)remaining=d;}
-  float wanted=fminf(130,sqrtf(fmaxf(0,2*45*remaining)));
-  metroSpeed+=clampf(wanted-metroSpeed,-45*dt,35*dt);
-  float before=g.metroZ;g.metroZ+=g.metroDir*metroSpeed*dt;
-  for(int bz=1;bz<=5;bz+=2){float sz=cm_station_z(bz);if(before!=sz&&(before-sz)*(g.metroZ-sz)<=0){g.metroZ=sz;g.metroWait=6;metroSpeed=0;break;}}
-  if(g.metroZ<60){g.metroZ=60;g.metroDir=1;g.metroWait=2;}if(g.metroZ>2180){g.metroZ=2180;g.metroDir=-1;g.metroWait=2;}
+  int nx=metro_next_station(g.metroZ);float d=ml_ahead(g.metroZ,ml_station_s(nx));
+  float wanted=fminf(95,sqrtf(2*38*fmaxf(d,0))+4);            /* frena con suavidad al llegar */
+  metroSpeed+=clampf(wanted-metroSpeed,-60*dt,30*dt);
+  float step=metroSpeed*dt;
+  if(step>=d){g.metroZ=ml_wrap(ml_station_s(nx));g.metroWait=7;metroSpeed=0;metroStation=nx;}
+  else g.metroZ=ml_wrap(g.metroZ+step);
  }
- if(g.inMetro){g.x=CM_METRO_X;g.y=g.metroZ;g.lift=CM_PLAT_H+1;g.a=g.metroDir>0?PI*.5f:-PI*.5f;g.viewYaw=geo_heading(g.x,g.y,g.a);g.cameraVelocity=0;g.walking=0;}
+ if(g.inMetro){float x,z,tx,tz;ml_point(g.metroZ-ML_CAR*1.5f,&x,&z,&tx,&tz);g.x=x;g.y=z;g.lift=0;g.a=atan2f(tz,tx);g.viewYaw=geo_heading(g.x,g.y,g.a);g.cameraVelocity=0;g.walking=0;}
 }
-static int metro_boardable(void){return !g.inMetro&&g.car<0&&g.lift>15&&g.metroWait>0&&cm_station_near(g.metroZ,2)==(int)floorf(g.y/320)&&cm_on_platform(g.x,g.y);}
+/* estacion cuya entrada esta a menos de 18 del jugador (o -1) */
+static int metro_entrance_near(void){for(int i=0;i<ML_STATIONS;i++){float ex,ez;ml_entrance(i,&ex,&ez);if(dist(g.x,g.y,ex,ez)<18)return i;}return -1;}
+static int metro_boardable(void){int i=metro_entrance_near();return !g.inMetro&&g.car<0&&i>=0&&g.metroWait>.6f&&metroStation==i;}
+/* TRIANGULO (o R+[]): subir, o bajar en la estacion donde para el tren. Devuelve 1 si se uso. */
+static int metro_toggle(void){
+ if(g.inMetro){
+  if(g.metroWait>0&&metroStation>=0){float ex,ez;ml_entrance(metroStation,&ex,&ez);g.inMetro=0;g.x=ex;g.y=ez;g.lift=0;
+   float x,z,tx,tz;ml_point(ml_station_s(metroStation),&x,&z,&tx,&tz);g.a=atan2f(z-ez,x-ex)+PI;g.viewYaw=geo_heading(g.x,g.y,g.a);notice(mlStationNames[metroStation]);}
+  else notice("Espera a la siguiente estacion para bajar.");
+  return 1;}
+ if(metro_boardable()){g.inMetro=1;notice("METRO CIRCULAR: TRIANGULO para bajar en cualquier estacion.");return 1;}
+ if(metro_entrance_near()>=0&&g.car<0){notice("El Metro para 7 segundos en cada estacion. Espera aqui a que llegue.");return 1;}
+ return 0;
+}
 static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)return 8;if(x<640&&y<1500)return 0;if(x<1100&&y<1450)return 1;if(x<1250)return 2;if(y<650)return 3;if(x>1600&&y>1500)return 4;if(x>1800)return 5;return 6;}
 static const char *districts[]={"SAN JAVIER / COMUNA 13","LAURELES / ESTADIO","BELEN","ARANJUEZ / CASTILLA","EL POBLADO","VILLA HERMOSA / BUENOS AIRES","LA CANDELARIA / RIO","POPULAR / SANTO DOMINGO","ROBLEDO / DOCE DE OCTUBRE"};
 static uint32_t carcolors[]={RGB(62,169,154),RGB(230,188,69),RGB(167,80,73),RGB(179,191,183),RGB(79,121,160),RGB(116,91,147)};
@@ -691,9 +707,7 @@ static void race_start(int side){g.side=side;g.checkpoint=0;g.raceTime=side?140:
  int near[6]={13,22,4,21,17,1};for(int i=0;i<6;i++)g.route[i]=near[(i+origin)%6];(void)bx;(void)by;
  notice("RUTA INICIADA: cruza los seis aros amarillos en carro.");}
 static void interact(void){
- if(g.inMetro){if(g.metroWait>0){int bz=cm_station_near(g.metroZ,2);if(bz>=0){g.inMetro=0;g.x=CM_METRO_X-14;g.y=cm_station_z(bz);g.lift=CM_PLAT_H;g.a=PI;notice("Bajaste del Metro. Escalera al sur del anden.");}}return;}
- if(metro_boardable()){g.inMetro=1;notice("METRO: viaje en marcha. R+[] para bajar en la siguiente estacion.");return;}
- if(g.lift>15){if(g.metroWait<=0||cm_station_near(g.metroZ,2)!=(int)floorf(g.y/320))notice("Espera el Metro en el anden: para 6 segundos en cada estacion.");return;} /* en el anden no se toman carros de la calle */
+ if(metro_toggle())return; /* v2.49: Metro circular (tambien con TRIANGULO) */
  if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(near_hub(s->loc,58)){
   if(s->kind==K_DRIVE){if(g.car<0){notice("Este objetivo requiere llegar en un carro.");return;}advance();return;}
   if(s->kind==K_RACE){if(g.car<0){notice("Consigue un carro antes de iniciar el recorrido.");return;}if(g.raceTime<=0)race_start(0);return;}
@@ -712,6 +726,7 @@ static void interact(void){
 }
 
 static void enter_exit(void){
+ if(g.car<0&&metro_toggle())return; /* v2.49: TRIANGULO sube o baja del Metro circular */
  if(g.car>=0){Car *c=&g.cars[g.car];if(fabsf(c->speed)>45){notice("Frena antes de bajar del carro.");return;}float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}if(!free_at(xx,yy,5)){notice("No hay espacio para bajar. Mueve el carro.");return;}g.x=xx;g.y=yy;c->speed=0;c->parked=1;g.car=-1;return;}
  int best=-1;float d=43;for(int i=0;i<CAR_COUNT;i++){float dd=dist(g.x,g.y,g.cars[i].x,g.cars[i].y);if(dd<d&&g.cars[i].hp>0){best=i;d=dd;}}
  if(best>=0){g.car=best;g.steerSmooth=0;g.moveActive=0;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;
@@ -1336,6 +1351,11 @@ static void minimap(int cx,int cy,int r){
   circle(mx,my,5,RGB(8,13,21));text_raw(mx-3,my-6,"N",LIME,1);}
  /* objetos: offset proyectado -> coordenadas del minimapa girado */
  #define MM_POS(X,Y,OX,OY) do{float px_,pz_;geo_project((X),(Y),&px_,&pz_);float ox_=px_-gx,oz_=pz_-gz;OX=(ox_*rx+oz_*rz)/scale;OY=-(ox_*fx+oz_*fz)/scale;}while(0)
+ /* v2.49: Metro circular (linea verde) y sus estaciones (M) */
+ for(float ms=0;ms<ml_length();ms+=10){float mx_,mz_,tx_,tz_;ml_point(ms,&mx_,&mz_,&tx_,&tz_);float ox,oy;MM_POS(mx_,mz_,ox,oy);
+  if(ox*ox+oy*oy<(r-1)*(r-1))pxa(cx+(int)ox,cy+(int)oy,RGB(60,200,120),200);}
+ for(int i=0;i<ML_STATIONS;i++){float ex,ez;ml_entrance(i,&ex,&ez);float ox,oy;MM_POS(ex,ez,ox,oy);
+  if(ox*ox+oy*oy<(r-5)*(r-5)){rect(cx+(int)ox-3,cy+(int)oy-3,7,7,RGB(30,120,86));text_raw(cx+(int)ox-3,cy+(int)oy-6,"M",WHITE,1);}}
  for(int i=0;i<CAR_COUNT;i++){if(!g.cars[i].police||wanted_stars()<1)continue;float ox,oy;MM_POS(g.cars[i].x,g.cars[i].y,ox,oy);
   if(ox*ox+oy*oy<(r-3)*(r-3)){int blink=((int)(g.clock*6))&1;circle(cx+(int)ox,cy+(int)oy,2,blink?RGB(230,60,60):RGB(70,110,240));}}
  if(g.mission<36||g.raceTime>0){int t=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;float ox,oy;MM_POS(locations[t].x,locations[t].y,ox,oy);
@@ -1383,8 +1403,9 @@ static void hud(void){
  /* Abajo al centro: aviso > accion contextual > frase del objetivo. */
  const char *line=NULL;uint32_t col=WHITE;
  if(g.noticeT>0){line=g.notice;col=WHITE;}
- else if(g.inMetro){line=g.metroWait>0?"R+[] BAJAR DEL METRO":"METRO EN MARCHA";col=LIME;}
- else if(metro_boardable()){line="R+[] SUBIR AL METRO";col=LIME;}
+ else if(g.inMetro){if(g.metroWait>0&&metroStation>=0){snprintf(b,sizeof(b),"TRIANGULO BAJAR / %s",mlStationNames[metroStation]);line=b;}else{snprintf(b,sizeof(b),"PROXIMA: %s",mlStationNames[metro_next_station(g.metroZ)]);line=b;}col=LIME;}
+ else if(metro_boardable()){line="TRIANGULO SUBIR AL METRO";col=LIME;}
+ else if(metro_entrance_near()>=0&&g.car<0){line="METRO CIRCULAR: espera el tren aqui";col=LIME;}
  else if(g.mission<36){const Step *st=step_now();
   if(!g.side&&near_hub(st->loc,58)){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
@@ -1676,7 +1697,7 @@ static void build_scene(R3Scene *sp){
  sp->shotX=combat.shotX;sp->shotZ=combat.shotY;sp->shotHeight=combat.shotHeight;sp->shotTime=combat.shotTime;
  sp->weapon=g.weapon;sp->aiming=combat.aiming;sp->aimPerson=combat.aiming?combat.target:-1;sp->cameraPitch=combat.pitch;sp->aimPitch=combat.pitch;if(combat.aiming&&combat.target<0&&g.weapon>0&&g.weapon<7){float origin,slope;combat_camera_ray(&origin,&slope);sp->aimPitch=atanf(slope);}sp->recoil=combat.recoil;sp->punch=combat.punch;sp->combo=combat.combo;sp->jump=combat.jump;sp->climb=combat.vault;
  sp->motion=g.motion;sp->gaitPhase=g.gaitPhase;sp->lift=g.lift+combat.jump;sp->metroZ=g.metroZ;sp->metroDir=g.metroDir;sp->inMetro=g.inMetro;
- sp->metroDoors=cm_station_near(g.metroZ,2)>=0?clampf(fminf((6-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
+ sp->metroDoors=metroStation>=0&&g.metroWait>0?clampf(fminf((7-g.metroWait)/.7f,g.metroWait/.7f),0,1):0;
  /* Obstruction distance is maintained in projected space by camera_clearance. */
  sp->carCount=CAR_COUNT;sp->personCount=42;sp->collected=g.caches;
  for(int i=0;i<CAR_COUNT;i++)sp->cars[i]=(R3Car){g.cars[i].x,g.cars[i].y,g.cars[i].a,g.cars[i].speed,g.cars[i].type,g.cars[i].police,(i*7+g.cars[i].type*3)%12};

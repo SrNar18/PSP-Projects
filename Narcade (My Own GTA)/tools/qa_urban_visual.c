@@ -20,9 +20,10 @@ int main(void){
         }
         memset(used,0,sizeof used);tree_shape(0,0,0,0);tree_shape(40,0,1,0);tree_shape(80,0,2,0);
         if(!valid_mesh()||used[LEAVES]<60){puts("tree mesh invalid");return 2;}
-        geographic=1;s.x=CM_METRO_X;s.z=1040;s.metroZ=1040;
+        /* v2.49 (Claude): tren del Metro circular (metro_loop_train) junto a una estacion */
+        {float mx,mz,tx,tz;ml_point(ml_station_s(1),&mx,&mz,&tx,&tz);geographic=1;s.x=mx;s.z=mz;s.metroZ=ml_station_s(1);}
         for(int door=0;door<2;door++){
-            memset(used,0,sizeof used);s.metroDoors=door;metro_train();
+            memset(used,0,sizeof used);s.metroDoors=door;metro_loop_train(s.metroZ);
             /* The train now uses opaque tinted METAL panes: the older GLASS
                texture's alpha made some carriage windows disappear. */
             if(!valid_mesh()||used[METAL]<12||metroFlexible){puts("metro mesh invalid");return 3;}
