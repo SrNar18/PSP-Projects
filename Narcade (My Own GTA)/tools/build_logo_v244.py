@@ -32,6 +32,24 @@ mark.putalpha(alpha)
 
 for name, size in (("small", (115, 39)),):
     image = mark.resize(size, Image.Resampling.LANCZOS)
+    # The source art leaves a dark pinhole at the tapered end of the blue N.
+    # Repair that letter in the compact mark used on every screen. Work on
+    # its alpha silhouette so the bright edge and the other letters survive.
+    pix = image.load()
+    blue = Image.new("L", size)
+    bp = blue.load()
+    for y in range(size[1]):
+        for x in range(min(25, size[0])):
+            r, g, b, a = pix[x, y]
+            if a > 24 and b > r * 1.15 and b > g * .85:
+                bp[x, y] = 255
+    blue = blue.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))
+    bp = blue.load()
+    for y in range(size[1]):
+        for x in range(min(24, size[0])):
+            r, g, b, a = pix[x, y]
+            if bp[x, y] and a > 16:
+                pix[x, y] = (26, 179 + min(58, x * 2), 249, a)
     image.save(ASSETS / f"narcade-logo-{name}-v244.png")
     # PSP-friendly RGBA4444, little endian (GU_PSM_4444 layout).
     raw = bytearray()

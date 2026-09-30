@@ -530,14 +530,16 @@ static void metro_train(void){
         box(CM_METRO_X,zc,fl-.6f,16,CM_TRAIN_CAR-8,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
         for(int sd=-1;sd<=1;sd+=2){float x=CM_METRO_X+sd*9.6f;
             box(x,zc,fl+1.2f,.8f,CM_TRAIN_CAR,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));                  /* panel bajo */
-            box(x,zc,fl+5.4f,1.0f,CM_TRAIN_CAR-.4f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80));               /* franja verde (v2.33: sin testeros coplanares) */
+            /* Set the livery outside the shell. The previous 1.0-wide box
+               intersected the .8-wide lower panel and depth-fought in PSP. */
+            box(x+sd*.56f,zc,fl+5.4f,.10f,CM_TRAIN_CAR-.4f,1.6f,0,FLAT,FLAT,COLOR(50,150,80));
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
             for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
                 float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
                 box(x+sd*.25f,dz,fl+1.2f,.9f,4.7f,17,0,FLAT,FLAT,COLOR(218,229,222));
                 box(x+sd*.77f,dz+panel*2.23f,fl+1.3f,.08f,.16f,16.4f,0,FLAT,FLAT,COLOR(39,52,53)); /* rubber door seam */
                 box(x+sd*.80f,dz-panel*1.4f,fl+7.8f,.10f,.26f,1.1f,0,FLAT,FLAT,COLOR(78,99,96)); /* recessed grab handle */
-                if(!view->inMetro)box(x+sd*.8f,dz,fl+10,.12f,3.2f,5.4f,0,GLASS,GLASS,COLOR(101,143,147)); /* v2.33: por fuera de la puerta */
+                if(!view->inMetro)box(x+sd*.8f,dz,fl+10,.12f,3.2f,5.4f,0,METAL,METAL,COLOR(101,143,147)); /* opaque tinted pane */
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
         }
@@ -545,12 +547,12 @@ static void metro_train(void){
            spans are sliding doors, whose glass belongs to the moving panels
            above. The former four uninterrupted panes covered an open door. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
-            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*9.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*9.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,METAL,METAL,COLOR(112,151,165));
         /* Short fixed panes flank each 9.4-unit doorway. They fill the rest
            of its 20-unit bay without drawing glass across the actual opening. */
         if(!view->inMetro)for(int side=-1;side<=1;side+=2)
             for(int door=-1;door<=1;door+=2)for(int flank=-1;flank<=1;flank+=2)
-                box(CM_METRO_X+side*9.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,GLASS,GLASS,COLOR(112,151,165));
+                box(CM_METRO_X+side*9.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,METAL,METAL,COLOR(112,151,165));
         rail_canopy(CM_METRO_X,zc,21,CM_TRAIN_CAR+1,fl+20,2.8f);
         if(view_distance(CM_METRO_X,zc)<250){
             box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
@@ -560,7 +562,7 @@ static void metro_train(void){
             box(CM_METRO_X,ze,fl+1.2f,18.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,18.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
             box(CM_METRO_X-7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X+7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
             box(CM_METRO_X,ze,fl+18.2f,18.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            if(!view->inMetro)box(CM_METRO_X,ze+e*.65f,fl+10.1f,13.6f,.35f,6.4f,0,GLASS,GLASS,COLOR(105,150,168));}
+            if(!view->inMetro)box(CM_METRO_X,ze+e*.65f,fl+10.1f,13.6f,.35f,6.4f,0,METAL,METAL,COLOR(105,150,168));}
         if(view->inMetro||view_distance(CM_METRO_X,zc)<200){
             for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*6.5f,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
             for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */

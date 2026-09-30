@@ -5,7 +5,8 @@ import struct
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
-cover = Image.open(ASSETS / "title-cover-v213.png").convert("RGB")
+cover = Image.open(ASSETS / "title-cover-v246.png").convert("RGB")
+menu_cover = Image.open(ASSETS / "title-cover-v213.png").convert("RGB")
 cards = Image.open(ASSETS / "title-cards-v213.png").convert("RGB")
 
 
@@ -18,7 +19,7 @@ def rgb565(image, name):
 
 
 rgb565(ImageOps.fit(cover, (480, 272), method=Image.Resampling.LANCZOS), "title-cover-v213.565")
-background = ImageOps.fit(cover, (480, 272), method=Image.Resampling.LANCZOS).filter(
+background = ImageOps.fit(menu_cover, (480, 272), method=Image.Resampling.LANCZOS).filter(
     ImageFilter.GaussianBlur(7)
 )
 background = Image.blend(background, Image.new("RGB", background.size, (5, 9, 20)), .70)
@@ -34,7 +35,7 @@ for name,source,size in [
     ('new','loading-v241/street-source.jpg',(146,94)),
     ('settings','luna-menu-source.png',(132,164)),
     ('credits','loading-v241/rooftop-source.jpg',(146,56)),
-    ('trophies','loading-v241/street-source.jpg',(146,56))]:
+    ('trophies','trophies-menu-source-v246.png',(146,56))]:
     im=ImageOps.fit(Image.open(ASSETS/source).convert('RGB'),size,method=Image.Resampling.LANCZOS)
     # Keep detail, but provide strong contrast for captions on every panel.
     scrim=Image.new('RGB',size,(5,9,20))
