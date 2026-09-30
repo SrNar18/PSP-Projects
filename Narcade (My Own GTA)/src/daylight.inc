@@ -48,9 +48,12 @@ static void day_update(float time){
     horizonColor=COLOR((int)hr,(int)hg,(int)hb);
 }
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){
-    float d=nx*sunX+ny*sunY+nz*sunZ;if(d<0)d=0;
+    /* v2.50 (Claude): difusa con "wrap" suave (las caras de canto no pasan de golpe a ambiente) */
+    float d=(nx*sunX+ny*sunY+nz*sunZ+.15f)*(1/1.15f);if(d<0)d=0;
     float direct=d*(1-night)*(.95f);                              /* difusa */
     float fr=ambR+direct*sunR,fg=ambG+direct*sunG,fb=ambB+direct*sunB;
+    /* v2.50: rebote calido del suelo en las fachadas a la sombra (antes quedaban grises y planas) */
+    if(ny<.5f&&ny>-.5f){float bounce=(1-d)*.09f*(1-night);fr+=bounce*1.10f;fg+=bounce*.95f;fb+=bounce*.75f;}
     /* v2.39 (Claude): luz de luna de noche (fria, tenue, desde el noroeste alto). Antes de noche solo habia
        ambiente: todas las caras igual de oscuras y la ciudad se veia plana. */
     if(night>0){float m=nx*-.42f+ny*.78f+nz*-.46f;if(m>0){m*=night*.30f;fr+=m*.60f;fg+=m*.70f;fb+=m*.95f;}}
@@ -58,8 +61,13 @@ static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){
     if(ny<0){float k=1+ny*.18f;fr*=k;fg*=k;fb*=k;}
     /* el cielo ilumina un poco las caras que miran arriba */
     float sky=(ny>0?ny:0)*.12f*(1-night);fr+=sky;fg+=sky;fb+=sky*1.2f;
-    int R=(int)((c&255)*fr),G=(int)(((c>>8)&255)*fg),B=(int)(((c>>16)&255)*fb);
-    if(R>255)R=255;if(G>255)G=255;if(B>255)B=255;return COLOR(R,G,B);
+    float R=(c&255)*fr,G=((c>>8)&255)*fg,B=((c>>16)&255)*fb;
+    /* v2.50: hombro suave por encima de 196 en lugar de recortar a 255: los blancos al sol no se queman
+       ni pierden el matiz (antes fachadas claras y aceras quedaban en blanco plano). */
+    #define LIT_SHOULDER(v) ((v)<196?(v):196+59*((v)-196)/((v)-196+59))
+    R=LIT_SHOULDER(R);G=LIT_SHOULDER(G);B=LIT_SHOULDER(B);
+    #undef LIT_SHOULDER
+    return COLOR((int)R,(int)G,(int)B);
 }
 /* Atenuacion global para lo que no pasa por lit_color (coches, personas, detalles). */
 static uint32_t day_scale(uint32_t c){
