@@ -49,16 +49,18 @@ static void rooftop(float x,float z,float top,unsigned h){
 /* Windows have actual frames and panes instead of being a flat brick wall.
    Only close LOD receives them; party-wall panes are naturally occluded. */
 static void residential_facade(float x,float z,float width,float base,int floors,float storey,float angle,int door){
-    if(cityMid||view_distance(x,z)>170)return;
+    /* v2.48 (Claude): a media distancia (detalle medio o >170) solo el cristal, sin marco ni puerta; antes no se
+       dibujaba nada y las ventanas aparecian de golpe al acercarse. Mas alla de 380 las casas usan el LOD lejano. */
+    float dist=view_distance(x,z);if(dist>380)return;int simple=cityMid||dist>170;
     float win=fminf(10,width*.18f);
     for(int floor=0;floor<floors;floor++)for(int side=-1;side<=1;side+=2){
         float xx=side*width*.25f,y=base+floor*storey+8;
-        quad(METAL,local(xx-win*.5f-1,y+10,-1.0f,x,z,angle),local(xx+win*.5f+1,y+10,-1.0f,x,z,angle),local(xx+win*.5f+1,y,-1.0f,x,z,angle),local(xx-win*.5f-1,y,-1.0f,x,z,angle),COLOR(74,79,75),1,1);
+        if(!simple)quad(METAL,local(xx-win*.5f-1,y+10,-1.0f,x,z,angle),local(xx+win*.5f+1,y+10,-1.0f,x,z,angle),local(xx+win*.5f+1,y,-1.0f,x,z,angle),local(xx-win*.5f-1,y,-1.0f,x,z,angle),COLOR(74,79,75),1,1);
         quad(GLASS,local(xx-win*.5f,y+9,-1.5f,x,z,angle),local(xx+win*.5f,y+9,-1.5f,x,z,angle),local(xx+win*.5f,y+1,-1.5f,x,z,angle),local(xx-win*.5f,y+1,-1.5f,x,z,angle),COLOR(120,169,190),1,1);
     }
     /* v2.33: marcos a 0,4 y cristal a 0,6 (antes 0,12/0,25). v2.41 (Claude): 1,0 / 1,5 / puerta 1,2: con 16 bits de
        profundidad, a 100-170 de distancia 0,2-0,4 eran 2-4 pasos y seguian parpadeando (tools/qa_zfight_v233.c, ZTOL .3) */
-    if(door)quad(ROOF,local(-3,base+15,-1.2f,x,z,angle),local(3,base+15,-1.2f,x,z,angle),local(3,base,-1.2f,x,z,angle),local(-3,base,-1.2f,x,z,angle),COLOR(105,82,61),1,1);
+    if(door&&!simple)quad(ROOF,local(-3,base+15,-1.2f,x,z,angle),local(3,base+15,-1.2f,x,z,angle),local(3,base,-1.2f,x,z,angle),local(-3,base,-1.2f,x,z,angle),COLOR(105,82,61),1,1);
 }
 /* Casa colonial: 1-2 plantas, color pastel, balcon y tejado a dos aguas. */
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
@@ -66,9 +68,9 @@ static void colonial_house(float x,float z,float L,float W,int floors,uint32_t c
     if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);return;}
     for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,STUCCO,ROOF,f?color:shade(color,.92f));
     gable_roof(x,z,L,W,top,top+9,(h&1)?COLOR(190,90,60):COLOR(150,110,90));
-    if(cityMid)return;
     residential_facade(x,z-W*.5f,L,6,floors,22,0,1);
     residential_facade(x,z+W*.5f,L,6,floors,22,PI,0);
+    if(cityMid)return;
     if(floors>1){box(x,z-W*.5f-3,6+22,L*.6f,6,1.2f,0,SIDEWALK,SIDEWALK,COLOR(120,70,50));box(x,z-W*.5f-6,6+23,L*.6f,.6f,7,0,CAR_PAINT,CAR_PAINT,COLOR(70,50,40));}
     box(x-L*.25f,z-W*.5f-4,17,L*.4f,8,.8f,-.25f,CAR_PAINT,CAR_PAINT,cityPastel[(h>>3)&7]); /* toldo */
 }
@@ -79,9 +81,9 @@ static void comuna_house(float x,float z,float L,float W,float base,int floors,i
     if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);return;}
     for(int f=0;f<floors;f++)box(x,z,base+f*20,L,W,20,0,(h>>f)&1?BRICK:STUCCO,SIDEWALK,(h>>f)&1?tint:cityPastel[(h>>(4+f))&7]);
     box(x,z,base+floors*20,L+3,W+3,1.5f,0,SIDEWALK,SIDEWALK,COLOR(150,152,150)); /* techo de zinc */
-    if(cityMid)return;
     residential_facade(x,z-W*.5f,L,base,floors,20,0,1);
     residential_facade(x,z+W*.5f,L,base,floors,20,PI,0);
+    if(cityMid)return;
     /* v2.47 (Claude): tanque de agua cilindrico oscuro con tapa, como los de las azoteas de Medellin. Antes era un
        cubo azul de 6x6x6 que ademas atravesaba el tejado a dos aguas (h&1): solo en tejado plano. */
     if((h&32)&&!(h&1)){float t=base+floors*20+1.5f;cylinder(x+3,z-2,t,2.6f,4.2f,8,0,CAR_PAINT,CAR_PAINT,COLOR(46,52,58));

@@ -116,8 +116,10 @@ static void facade_lights(Point a,Point b,float height,float nx,float nz,int mat
         unsigned hash=city_hash((int)mx+col,(int)mz+row,17);if(hash%3==0)continue;
         float t=(col+.5f)/cols,w=fminf(7,len/cols*.28f)/len;
         float y=a.y+row*24+9,hh=fminf(8,height-row*24-10);if(hh<2)continue;
-        Point p=point(a.x+dx*(t-w)+nx*.25f,y,a.z+dz*(t-w)+nz*.25f);
-        Point q=point(a.x+dx*(t+w)+nx*.25f,y,a.z+dz*(t+w)+nz*.25f);
+        /* v2.48 (Claude): 0,8 fuera de la pared (antes 0,25: a ~200 de distancia eran 2 pasos de profundidad y la
+           ventana iluminada parpadeaba contra la fachada) */
+        Point p=point(a.x+dx*(t-w)+nx*.8f,y,a.z+dz*(t-w)+nz*.8f);
+        Point q=point(a.x+dx*(t+w)+nx*.8f,y,a.z+dz*(t+w)+nz*.8f);
         Point r=q,s=p;r.y+=hh;s.y+=hh;
         uint32_t rgb=hash&1?COLOR(255,204,130):COLOR(170,202,228);
         uint32_t color=((uint32_t)(int)(night*125)<<24)|(rgb&0xffffff);
