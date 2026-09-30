@@ -665,6 +665,10 @@ static Point player_pose(Point p,int bone){
 /* Tabla de vertices distintos del jugador (posicion, uv, color, hueso). Se construye una vez (tabla hash). */
 #define PLAYER_UNIQUE_MAX 2048
 static unsigned short playerUnique[PLAYER_UNIQUE_MAX],playerIndex[PLAYER_VERTEX_COUNT];static int playerUniqueCount=-1;
+/* v2.49 (Claude): triangulos de piel que quedan SIEMPRE bajo la ropa (brazo dentro de la manga: y>=18,0 en reposo;
+   hombros y base del cuello bajo la chaqueta: y<24,3). Antes se dibujaban y, al balancear brazos y torso, asomaban
+   por la tela al caminar o correr. Se descartan una vez; ademas se dibuja menos. */
+static unsigned char playerHidden[PLAYER_VERTEX_COUNT/3];
 static void player_index_build(void){
     if(playerUniqueCount>=0)return;
     static short table[8192];for(int i=0;i<8192;i++)table[i]=-1;
@@ -679,6 +683,12 @@ static void player_index_build(void){
             if(a->x==b->x&&a->y==b->y&&a->z==b->z&&a->u==b->u&&a->v==b->v&&a->color==b->color&&a->bone==b->bone&&a->mat==b->mat){found=u;break;}
         }
         playerIndex[i]=(unsigned short)found;
+    }
+    for(int t=0;t<PLAYER_VERTEX_COUNT/3;t++){const PlayerVertex *v=&player_mesh[t*3];playerHidden[t]=0;
+        if(v[0].mat!=SKIN||v[1].mat!=SKIN||v[2].mat!=SKIN)continue;
+        float ymin=fminf(v[0].y,fminf(v[1].y,v[2].y)),ymax=fmaxf(v[0].y,fmaxf(v[1].y,v[2].y));int bone=v[0].bone;
+        if(bone>=3&&ymin>=18.0f)playerHidden[t]=1;                 /* dentro de la manga (el dobladillo baja a 18,9) */
+        if(bone==0&&ymax<24.3f)playerHidden[t]=1;                  /* bajo la chaqueta (hombros, base del cuello) */
     }
 }
 static void weapon_part(Point grip,float fx,float fy,float fz,float length,float height,float width,uint32_t color,float x,float z,float angle){
@@ -751,6 +761,7 @@ static void person(float x,float z,float angle,int style,int walking){
         posed[u]=(Vertex){a->u,a->v,day_scale(a->color),wx,wy,wz};
     }
     for(int i=0;i<PLAYER_VERTEX_COUNT;i+=3){
+        if(playerHidden[i/3])continue;
         int mat=player_mesh[i].mat;
         if(used[mat]+3>MAX_VERTICES){overflow++;continue;}
         Vertex *out=mesh[mat]+used[mat];
