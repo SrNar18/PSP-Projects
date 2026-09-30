@@ -118,7 +118,9 @@ static void traffic_light(float x,float z,float angle){
 static void bus_stop(float x,float z){
     float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);
     box(x-6,z,0,1,1,14,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));box(x+6,z,0,1,1,14,0,CAR_PAINT,CAR_PAINT,COLOR(90,90,96));
-    box(x,z,14,18,7,1.2f,0,GLASS,GLASS,COLOR(160,200,210));box(x,z+3,5,16,.6f,7,0,GLASS,GLASS,COLOR(180,210,220));
+    /* A small separation keeps the translucent roof from depth-fighting
+       with the opaque post caps at the same height on PSP's 16-bit depth. */
+    box(x,z,14.35f,18,7,1.2f,0,GLASS,GLASS,COLOR(160,200,210));box(x,z+3,5,16,.6f,7,0,GLASS,GLASS,COLOR(180,210,220));
     fixedGround=saved;
 }
 /* Puente sobre el rio en la fila bz: tablero, barandillas, arcos y farolas. */

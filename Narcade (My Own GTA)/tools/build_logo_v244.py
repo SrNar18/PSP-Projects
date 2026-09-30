@@ -1,60 +1,59 @@
-"""Build a clean original Narcade wordmark at PSP native resolution.
+"""Extract the actual PSP XMB cover mark as one reusable, transparent logo.
 
-The former logo keyed neon pixels out of a painted image. That process left
-dark holes and isolated square artifacts. This version draws the glyph masks
-from the project's OFL-licensed Oxanium face and colors every covered pixel.
+The source is our own icon artwork. The compact mark is shared by the cover,
+menu and future screens without embedding an unused 120 KB large duplicate.
 """
 from pathlib import Path
 import struct
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageFilter, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
-SCALE = 4
-SIZE = (115, 39)
-hi = (SIZE[0] * SCALE, SIZE[1] * SCALE)
-face = ROOT / "tools/fonts/Oxanium.ttf"
-font_size = 34 * SCALE
-while True:
-    font = ImageFont.truetype(str(face), font_size)
-    font.set_variation_by_axes([760])
-    bounds = font.getbbox("NARCADE", stroke_width=0)
-    if bounds[2] - bounds[0] <= 109 * SCALE and bounds[3] - bounds[1] <= 29 * SCALE:
-        break
-    font_size -= 2
-mask = Image.new("L", hi)
-draw = ImageDraw.Draw(mask)
-word = "NARCADE"
-width = draw.textlength(word, font=font)
-left = int((hi[0] - width) / 2)
-top = 2 * SCALE - bounds[1]
-draw.text((left, top), word, font=font, fill=255)
-n_width = int(draw.textlength("N", font=font))
-n_mask = Image.new("L", hi)
-ImageDraw.Draw(n_mask).text((left, top), "N", font=font, fill=255)
+source = Image.open(ASSETS / "icon-source.png").convert("RGB")
+# The original mark occupies this rectangle; the surroundings are dark sky.
+crop = source.crop((265, 190, 1410, 580))
+alpha = Image.new("L", crop.size)
+ap = alpha.load()
+for y in range(crop.height):
+    for x in range(crop.width):
+        r, g, b = crop.getpixel((x, y))
+        hi, lo = max(r, g, b), min(r, g, b)
+        # Saturated, bright neon only. Fade the faint glow at the edge.
+        strength = max(0, min(255, (hi - 44) * 3))
+        saturation = max(0, min(255, (hi - lo - 19) * 5))
+        ap[x, y] = min(strength, saturation)
+# The source mark has tiny pale cuts along the sharp blue N. A luminance/
+# saturation key alone drops those highlights. Close only subpixel-size gaps
+# in the extracted mark, keeping the interior letter counters transparent.
+closed = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.MinFilter(9))
+alpha = ImageChops.lighter(alpha, closed).filter(ImageFilter.GaussianBlur(.65))
+mark = crop.convert("RGBA")
+mark.putalpha(alpha)
 
-image = Image.new("RGBA", hi)
-src, nsrc, out = mask.load(), n_mask.load(), image.load()
-for y in range(hi[1]):
-    for x in range(hi[0]):
-        alpha = src[x, y]
-        if not alpha:
-            continue
-        if nsrc[x, y] and x < left + n_width + SCALE:
-            color = (25, 193 + min(43, y // 8), 255)
-        else:
-            t = max(0, min(1, (x - left - n_width) / max(1, width - n_width)))
-            color = (255, int(199 - 111 * t), int(93 + 117 * t))
-        out[x, y] = (*color, alpha)
-
-# One tapered baseline ties the colored letters together without a background.
-draw = ImageDraw.Draw(image)
-draw.line((left, 34*SCALE, hi[0] - 5*SCALE, 34*SCALE), fill=(35, 207, 244, 210), width=SCALE)
-draw.line((hi[0] - 28*SCALE, 34*SCALE, hi[0] - 5*SCALE, 34*SCALE), fill=(243, 87, 192, 210), width=SCALE)
-image = image.resize(SIZE, Image.Resampling.LANCZOS)
-image.save(ASSETS / "narcade-logo-small-v244.png")
-raw = bytearray()
-for r, g, b, a in image.get_flattened_data():
-    raw += struct.pack("<H", (r >> 4) | ((g >> 4) << 4) | ((b >> 4) << 8) | ((a >> 4) << 12))
-(ASSETS / "narcade-logo-small-v244.4444").write_bytes(raw)
-print("clean logo:", SIZE, "pixels")
+for name, size in (("small", (115, 39)),):
+    image = mark.resize(size, Image.Resampling.LANCZOS)
+    # The native-size reduction used to leave a black pinhole at the tapered
+    # end of the blue N. Close the N's own cyan silhouette and paint the
+    # recovered pixels opaquely. This retains the original sharp, hand-painted
+    # XMB lettering instead of replacing it with a typeset wordmark.
+    pix = image.load()
+    blue = Image.new("L", size)
+    bp = blue.load()
+    for y in range(size[1]):
+        for x in range(min(25, size[0])):
+            r, g, b, a = pix[x, y]
+            if a > 22 and b > r * 1.15 and b > g * .85:
+                bp[x, y] = 255
+    blue = blue.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
+    bp = blue.load()
+    for y in range(size[1]):
+        for x in range(min(24, size[0])):
+            r, g, b, a = pix[x, y]
+            if bp[x, y]:
+                pix[x, y] = (26, 179 + min(58, x * 2), 249, max(a, 225))
+    image.save(ASSETS / f"narcade-logo-{name}-v244.png")
+    # PSP-friendly RGBA4444, little endian (GU_PSM_4444 layout).
+    raw = bytearray()
+    for r, g, b, a in image.get_flattened_data():
+        raw += struct.pack("<H", (r >> 4) | ((g >> 4) << 4) | ((b >> 4) << 8) | ((a >> 4) << 12))
+    (ASSETS / f"narcade-logo-{name}-v244.4444").write_bytes(raw)
