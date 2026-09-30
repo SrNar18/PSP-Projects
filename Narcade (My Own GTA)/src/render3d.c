@@ -835,7 +835,12 @@ void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
 /* v2.44 (Claude): ilustracion de la pantalla de carga dibujada por el GE: filtrado bilineal (zoom suave, sin
    "vibracion" del muestreo por CPU) y fundido por mezcla alfa. img: RGB565 (5650 PSP) de 512x288 en RAM.
    zoom 1 = recorte 480x272 centrado; light 0..255 atenua; alpha 0..255 mezcla sobre lo que haya. */
-void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int alpha){
+void r3_slide_image(uint32_t *fb,const uint16_t *img,float zoom,float panx,int light,int alpha);
+void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int alpha){r3_slide_image(fb,img,zoom,0,light,alpha);}
+/* v2.50 (Claude): memoria de mallas libre fuera del mundo (portada): la usa la portada para sus ilustraciones. */
+void *r3_scratch(unsigned *bytes){if(bytes)*bytes=sizeof(mesh);return mesh;}
+/* panx -1..1: desplaza el recorte horizontalmente dentro del margen del zoom (paneo de un lado al otro) */
+void r3_slide_image(uint32_t *fb,const uint16_t *img,float zoom,float panx,int light,int alpha){
 #ifndef R3_HOST
     typedef struct {float u,v;uint32_t color;float x,y,z;} SpriteV;
     sceKernelDcacheWritebackRange(img,512*288*2); /* la imagen se leyo del disco por la cache de la CPU */
@@ -848,7 +853,7 @@ void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int 
     sceGuTexScale(1,1);sceGuTexOffset(0,0); /* en 2D las coordenadas van en texeles */
     if(alpha<255){sceGuEnable(GU_BLEND);sceGuBlendFunc(GU_ADD,GU_SRC_ALPHA,GU_ONE_MINUS_SRC_ALPHA,0,0);}else sceGuDisable(GU_BLEND);
     uint32_t col=((uint32_t)alpha<<24)|((uint32_t)light<<16)|((uint32_t)light<<8)|(uint32_t)light;
-    float sw=480.f/zoom,sh=272.f/zoom,u0=(512-sw)*.5f,v0=(288-sh)*.5f;
+    float sw=480.f/zoom,sh=272.f/zoom,u0=(512-sw)*.5f*(1+panx),v0=(288-sh)*.5f;
     for(int x=0;x<480;x+=32){int end=x+32>480?480:x+32; /* tiras de 32 px: evita la penalizacion de sprites anchos */
         SpriteV *v=sceGuGetMemory(2*sizeof(SpriteV));
         v[0]=(SpriteV){u0+sw*x/480.f,v0,col,(float)x,0,0};v[1]=(SpriteV){u0+sw*end/480.f,v0+sh,col,(float)end,272,0};
@@ -857,7 +862,7 @@ void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int 
     sceGuFinish();sceGuSync(0,0);
 #else
     /* PC: muestreo simple por CPU (solo para vistas previas) */
-    float sw=480.f/zoom,sh=272.f/zoom,x0=(512-sw)*.5f,y0=(288-sh)*.5f;
+    float sw=480.f/zoom,sh=272.f/zoom,x0=(512-sw)*.5f*(1+panx),y0=(288-sh)*.5f;
     for(int y=0;y<272;y++)for(int x=0;x<480;x++){uint16_t c=img[(int)(y0+y*sh/272.f)*512+(int)(x0+x*sw/480.f)];
         unsigned r=((c&31)*255/31)*light/255,g=(((c>>5)&63)*255/63)*light/255,b=(((c>>11)&31)*255/31)*light/255;uint32_t o=fb[y*512+x];
         r=(r*alpha+(o&255)*(255-alpha))/255;g=(g*alpha+((o>>8)&255)*(255-alpha))/255;b=(b*alpha+((o>>16)&255)*(255-alpha))/255;

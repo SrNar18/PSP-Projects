@@ -51,7 +51,7 @@ static void rooftop(float x,float z,float top,unsigned h){
 static void residential_facade(float x,float z,float width,float base,int floors,float storey,float angle,int door){
     /* v2.48 (Claude): a media distancia (detalle medio o >170) solo el cristal, sin marco ni puerta; antes no se
        dibujaba nada y las ventanas aparecian de golpe al acercarse. Mas alla de 380 las casas usan el LOD lejano. */
-    float dist=view_distance(x,z);if(dist>380)return;int simple=cityMid||dist>170;
+    float dist=view_distance(x,z);int simple=cityMid||dist>170; /* v2.50: tambien lejos (antes >380 no habia ventanas y aparecian de golpe) */
     float win=fminf(10,width*.18f);
     for(int floor=0;floor<floors;floor++)for(int side=-1;side<=1;side+=2){
         float xx=side*width*.25f,y=base+floor*storey+8;
@@ -65,7 +65,7 @@ static void residential_facade(float x,float z,float width,float base,int floors
 /* Casa colonial: 1-2 plantas, color pastel, balcon y tejado a dos aguas. */
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
     float top=6+floors*22;
-    if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);return;}
+    if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);residential_facade(x,z-W*.5f,L,6,floors,22,0,0);return;} /* v2.50: ventanas tambien lejos */
     for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,STUCCO,ROOF,f?color:shade(color,.92f));
     gable_roof(x,z,L,W,top,top+9,(h&1)?COLOR(190,90,60):COLOR(150,110,90));
     residential_facade(x,z-W*.5f,L,6,floors,22,0,1);
@@ -78,7 +78,7 @@ static void colonial_house(float x,float z,float L,float W,int floors,uint32_t c
 static void cylinder(float x,float z,float bottom,float r,float height,int n,float rot,int side,int top,uint32_t color);
 static void comuna_house(float x,float z,float L,float W,float base,int floors,int far,unsigned h){
     uint32_t tint=cityBrick[h&3];
-    if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);return;}
+    if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);residential_facade(x,z-W*.5f,L,base,floors,20,0,0);return;} /* v2.50 */
     for(int f=0;f<floors;f++)box(x,z,base+f*20,L,W,20,0,(h>>f)&1?BRICK:STUCCO,SIDEWALK,(h>>f)&1?tint:cityPastel[(h>>(4+f))&7]);
     box(x,z,base+floors*20,L+3,W+3,1.5f,0,SIDEWALK,SIDEWALK,COLOR(150,152,150)); /* techo de zinc */
     residential_facade(x,z-W*.5f,L,base,floors,20,0,1);

@@ -14,7 +14,13 @@
 #define ML_DECK 26.f       /* cara superior del tablero sobre el terreno */
 #define ML_FLOOR (ML_DECK+2.2f) /* suelo del tren y de los andenes */
 #define ML_STATIONS 6
-#define ML_CAR 40.f        /* largo de cada vagon */
+#define ML_CAR 46.f        /* largo de cada vagon */
+#define ML_TRAIN_W 18.f    /* v2.50: ancho del tren (antes 10) */
+#define ML_TRAIN_H 28.f    /* v2.50: alto sobre el suelo (antes 17; el personaje mide ~29 y los coches ~17) */
+#define ML_DECK_W 26.f     /* ancho del tablero */
+#define ML_PLAT_IN 11.f    /* borde interior del anden (desde el eje) */
+#define ML_PLAT_W 12.f     /* ancho del anden */
+#define ML_STAIR_W 11.f    /* ancho de la escalera (antes 6) */
 #define ML_CARS 3
 #define ML_PLAT_HALF 55.f   /* medio largo del anden */
 #define ML_STAIR_OFF 32.f   /* desplazamiento lateral de la escalera (acera interior) */
@@ -63,9 +69,18 @@ static const char *const mlStationNames[ML_STATIONS]={"ESTACION ARANJUEZ","ESTAC
     "ESTACION POBLADO","ESTACION BELEN","ESTACION LAURELES"};
 /* Entrada de la estacion a pie de calle: en la acera interior del anillo (la exterior del borde no tiene manzanas), junto a la escalera. */
 static inline void ml_entrance(int i,float *x,float *z){
-    float px,pz,tx,tz;ml_point(ml_station_s(i)-ML_STAIR_FOOT,&px,&pz,&tx,&tz);
+    float px,pz,tx,tz;ml_point(ml_station_s(i)-ML_STAIR_FOOT-8,&px,&pz,&tx,&tz); /* justo delante del pie de la escalera */
     float nx=-tz,nz=tx; /* normal interior (a la derecha del sentido de marcha) */
     *x=px+nx*ML_STAIR_OFF;*z=pz+nz*ML_STAIR_OFF;
+}
+/* Escalera de la estacion i como rectangulo alineado con los ejes (las estaciones estan en tramos rectos). */
+static inline void ml_frame_pt(float s,float off,float *x,float *z){float px,pz,tx,tz;ml_point(s,&px,&pz,&tx,&tz);*x=px-tz*off;*z=pz+tx*off;}
+static inline int ml_stairs_at(float x,float z,float r){
+    for(int i=0;i<ML_STATIONS;i++){float s0=ml_station_s(i)-ML_PLAT_HALF-4,s1=ml_station_s(i)-ML_STAIR_FOOT;
+        float ax,az,bx,bz;ml_frame_pt(s0,ML_STAIR_OFF-ML_STAIR_W*.5f,&ax,&az);ml_frame_pt(s1,ML_STAIR_OFF+ML_STAIR_W*.5f,&bx,&bz);
+        float x0=fminf(ax,bx)-r,x1=fmaxf(ax,bx)+r,z0=fminf(az,bz)-r,z1=fmaxf(az,bz)+r;
+        if(x>=x0&&x<=x1&&z>=z0&&z<=z1)return 1;}
+    return 0;
 }
 /* Distancia (en s) desde a hasta b en sentido de marcha. */
 static inline float ml_ahead(float a,float b){float d=ml_wrap(b)-ml_wrap(a);return d<0?d+ml_length():d;}
