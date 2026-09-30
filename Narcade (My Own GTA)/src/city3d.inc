@@ -85,7 +85,7 @@ static void comuna_house(float x,float z,float L,float W,float base,int floors,i
 }
 /* Zona verde: cesped, arbustos redondeados y matas de flores de colores (deterministas por hash). */
 static void garden(float x,float z,float w,float d,unsigned h,int far){
-    float base=fixedGround>-999999?6.3f:1.9f;
+    float base=fixedGround>-999999?6.3f:2.15f; /* v2.46: 0,35 sobre el cesped del parque (1,8; antes 1,9 parpadeaba) */
     ground(GRASS,x,z,w,d,base,COLOR(200,230,190),3);
     if(far||cityMid)return;
     for(int k=0;k<3;k++){unsigned hk=city_hash((int)x+k,(int)z,9);float bx=x+6+(hk%97)/97.0f*(w-12),bz=z+6+((hk>>7)%97)/97.0f*(d-12);
@@ -129,7 +129,7 @@ static void river_bridge(int bz,uint32_t white){
     }
     /* Arco: pilas en las orillas y dovelas escalonadas bajo el tablero. */
     box(1400,z+43,-12,8,92,12.4f,0,BRICK,BRICK,COLOR(200,190,180));box(1456,z+43,-12,8,92,12.4f,0,BRICK,BRICK,COLOR(200,190,180)); /* v2.39: 13 (antes 14: asomaban 0,4 por encima de la calzada) */
-    for(int k=0;k<4;k++){float t=k/3.0f;box(1428,z+43,-7.4f-k*.02f,56-k*14,88,1.2f,0,BRICK,BRICK,COLOR(180,170,160));(void)t;} /* v2.41: bajo el tablero (-6) sin compartir plano con el ni entre si */ /* v2.33: 88 (tablero 90, pilas 92) */
+    for(int k=0;k<4;k++){float t=k/3.0f;box(1428,z+43,-7.4f-k*.5f,56-k*14,88-k*.6f,1.2f,0,BRICK,BRICK,COLOR(180,170,160)); /* v2.46: dovelas escalonadas 0,5 (antes 0,02: parpadeaban) */(void)t;} /* v2.41: bajo el tablero (-6) sin compartir plano con el ni entre si */ /* v2.33: 88 (tablero 90, pilas 92) */
 }
 /* Pasarela cubierta que cruza la calle entre dos manzanas (a 38 de altura, por encima de todo lo transitable). */
 static void skybridge(float x0,float x1,float z,float w){
