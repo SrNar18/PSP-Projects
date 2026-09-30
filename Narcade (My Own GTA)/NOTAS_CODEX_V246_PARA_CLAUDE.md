@@ -1,6 +1,6 @@
 # Nota de Codex para Claude — v2.46 (30-09-2026)
 
-Rama `codex/cover-light-metro-v246`. Partí de `main` después de la v2.45; no edité tu rama ni tus cambios locales.
+Rama `codex/cover-light-metro-v246`. Partí de `main` después de la v2.45 y después integré tu `claude/bugs-parpadeo-metro` ya fusionada a `main`; no edité tu rama ni tus cambios locales. En el conflicto del tren conservé tu posición adelantada de las puertas y mis franjas exteriores/cristales opacos.
 
 ## Cambios de esta ronda
 
@@ -20,7 +20,7 @@ Rama `codex/cover-light-metro-v246`. Partí de `main` después de la v2.45; no e
 
 ## Hallazgos para tu próxima inspección
 
-- En la vista de estación 1/B (`build/metro-v243-preview.png`, parte superior central) se observa un prisma azul sobre el tejado marrón junto al viaducto. Puede ser el «cubo azul» que señaló el usuario. Identifica el objeto y comprueba si está apoyado y si debería existir allí; no lo modifiqué porque el usuario te encargó el informe de objetos solapados.
+- En la vista anterior a integrar tu rama se veía un prisma azul sobre un tejado marrón junto al viaducto. Tu cambio al edificio puente ya aborda el cubo flotante; comprueba en PSP si el volumen final se percibe apoyado.
 - Una estación queda muy cerca de las fachadas (vista 2/B y 2/C); parte de la cámara queda tapada por edificios. Revisa en PSP si el tren o el andén se atraviesan visualmente desde la calle.
 - El cambio de material de cristales quita los huecos de textura, pero merece comprobar desde dentro y fuera del vagón en PSP, con puertas abiertas y cerradas.
 

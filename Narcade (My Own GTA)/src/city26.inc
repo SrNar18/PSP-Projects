@@ -392,8 +392,8 @@ static void fill_parking_park(const CmParcel *p,int far,unsigned h){
     ground(SIDEWALK,x0+3,cz-15,x1-x0-6,8,2,0xffffffffu,4);
     if(far)return;
     for(float zz=z0+12;zz<cz-23;zz+=18){
-        ground(FLAT,x0+7,zz,25,.7f,1.9f,COLOR(236,224,171),1);
-        ground(FLAT,x1-32,zz,25,.7f,1.9f,COLOR(236,224,171),1);
+        ground(FLAT,x0+7,zz,25,.7f,2.1f,COLOR(236,224,171),1); /* v2.46: 0,3 sobre el asfalto (antes 0,1: parpadeaba) */
+        ground(FLAT,x1-32,zz,25,.7f,2.1f,COLOR(236,224,171),1);
     }
     tree(x0+18,z1-20);tree(x1-18,z1-20);
     cylinder(cx+6,cz+7,2,6,1,8,0,CONCRETE,CONCRETE,0xffffffffu);
@@ -448,7 +448,11 @@ static void fill_stadium(const CmParcel *p,int far,unsigned h){
 /* Edificio puente sobre el paso (tunel) de una manzana doble. */
 static void tunnel_building(int bx,float z0,float z1,int far){
     float x=bx*320+351,cz=(z0+z1)*.5f,d=(z1-z0)*.72f;
-    box(x,cz,60,150,d,34,0,GLASS,ROOF,COLOR(190,215,225));
+    /* v2.46 (Claude): se veia como un cubo de cristal flotando entre dos manzanas. Ahora es un edificio puente:
+       forjado de hormigon, bandas de forjado por planta y cristal mas oscuro. */
+    box(x,cz,56,154,d+2,4,0,CONCRETE,CONCRETE,COLOR(176,170,160));            /* forjado inferior */
+    box(x,cz,60,150,d,34,0,GLASS,ROOF,COLOR(120,150,168));
+    for(int f=1;f<3;f++)box(x,cz,60+f*11.3f,151,d+1,1.4f,0,CONCRETE,CONCRETE,COLOR(196,190,180)); /* bandas de planta */
     for(int k=0;k<4;k++)box(x+(k&1?42:-42),cz+(k&2?d*.3f:-d*.3f),6,10,10,54,0,STUCCO,STUCCO,COLOR(200,200,205));
     if(far)return;
     box(x,cz,94,120,d*.7f,16,0,STUCCO,ROOF,COLOR(200,200,205));
@@ -536,10 +540,10 @@ static void metro_train(void){
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
             for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
                 float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
-                box(x+sd*.25f,dz,fl+1.2f,.9f,4.7f,17,0,FLAT,FLAT,COLOR(218,229,222));
-                box(x+sd*.77f,dz+panel*2.23f,fl+1.3f,.08f,.16f,16.4f,0,FLAT,FLAT,COLOR(39,52,53)); /* rubber door seam */
-                box(x+sd*.80f,dz-panel*1.4f,fl+7.8f,.10f,.26f,1.1f,0,FLAT,FLAT,COLOR(78,99,96)); /* recessed grab handle */
-                if(!view->inMetro)box(x+sd*.8f,dz,fl+10,.12f,3.2f,5.4f,0,METAL,METAL,COLOR(101,143,147)); /* opaque tinted pane */
+                box(x+sd*.45f,dz,fl+1.2f,.9f,4.7f,17,0,FLAT,FLAT,COLOR(218,229,222)); /* v2.46: puerta 0,25 por delante de la franja */
+                box(x+sd*1.02f,dz+panel*2.23f,fl+1.3f,.12f,.16f,16.4f,0,FLAT,FLAT,COLOR(39,52,53)); /* rubber door seam */
+                box(x+sd*1.04f,dz-panel*1.4f,fl+7.8f,.14f,.26f,1.1f,0,FLAT,FLAT,COLOR(78,99,96)); /* recessed grab handle */
+                if(!view->inMetro)box(x+sd*1.06f,dz,fl+10,.16f,3.2f,5.4f,0,METAL,METAL,COLOR(101,143,147)); /* opaque pane beyond the door */
             }
             box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
         }
