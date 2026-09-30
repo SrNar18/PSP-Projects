@@ -242,7 +242,8 @@ static void tree_shape(float x,float z,int kind,int simple){
             Vertex f1[3]={{.5f,0,lc,c.x,c.y+1,c.z},{0,.5f,lc,l.x,l.y,l.z},{.5f,1,lc,tip.x,tip.y,tip.z}};polygon(LEAVES,f1,3);
             Vertex f2[3]={{.5f,0,lc,c.x,c.y+1,c.z},{.5f,1,lc,tip.x,tip.y,tip.z},{1,.5f,lc,r.x,r.y,r.z}};polygon(LEAVES,f2,3);}
         litAlready=0;
-          if(!simple)box(c.x,c.z,top-1.4f*s,1.15f*s,1.15f*s,1.1f*s,rot,ROOF,ROOF,COLOR(123,96,50));
+        /* The former ROOF cube sat inside the BARK trunk cap and flickered.
+           The tapered trunk now meets the open fronds without an extra cap. */
         return;
     }
     if(kind==2){ /* cipres / pino */

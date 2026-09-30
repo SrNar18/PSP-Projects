@@ -1544,10 +1544,12 @@ static void mini_draw(void){
 static void map_draw(void){
  char b[180];rect(0,0,W,H,RGB(8,11,18));header("MEDELLIN / VALLE Y LADERAS","Mapa de la ciudad");
  rect(14,59,210,181,RGB(24,30,39));outline(14,59,210,181,RGB(91,104,106));
- float sc=.0715f;int ox=27,oy=68;
- for(int py=0;py<161;py++)for(int pxp=0;pxp<184;pxp++)px(ox+pxp,oy+py,map_ground(pxp/sc,py/sc));
- rect(24,67,1,162,RGB(211,174,110));rect(24,229,189,1,RGB(211,174,110));
- text(29,74,"N",WHITE,1);line(32,101,32,87,WHITE);line(32,87,29,92,WHITE);line(32,87,35,92,WHITE);
+ /* geo_project stretches the valley's north/south axis by 1.5. Fit that
+    projected height, not WORLD_H, or the southern third is clipped. */
+ float sc=.04765f;int ox=58,oy=68;
+ for(int py=0;py<161;py++)for(int pxp=0;pxp<123;pxp++)px(ox+pxp,oy+py,map_ground(pxp/sc,py/sc));
+ rect(55,67,1,162,RGB(211,174,110));rect(55,229,127,1,RGB(211,174,110));
+ text(43,74,"N",WHITE,1);line(46,101,46,87,WHITE);line(46,87,43,92,WHITE);line(46,87,49,92,WHITE);
  for(int i=0;i<30;i++){int x,y;map_point(locations[i].x,locations[i].y,sc,ox,oy,&x,&y);circle(x,y,2,MUTED);if(i==g.mapSel)outline(x-4,y-4,9,9,WHITE);}
  if(g.mission<36){int l=g.raceTime>0?g.route[g.checkpoint]:step_now()->loc;int mx,my;map_point(locations[l].x,locations[l].y,sc,ox,oy,&mx,&my);
   /* Icono de objetivo: chincheta amarilla con "!" sobre el punto. */

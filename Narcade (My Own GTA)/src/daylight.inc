@@ -35,19 +35,21 @@ static void day_update(float time){
     float n=sqrtf(sunX*sunX+sunY*sunY+sunZ*sunZ);sunX/=n;sunY/=n;sunZ/=n;
     night=1-smooth01((elev+.12f)/.30f);                          /* transicion en el crepusculo */
     float low=1-smooth01((elev-.05f)/.35f);                       /* sol bajo: luz calida y rasante */
-    sunR=lerpf(1.05f,1.25f,low);sunG=lerpf(1.0f,.74f,low);sunB=lerpf(.96f,.52f,low);
+    /* Stronger warm key and cooler shadow fill: the city's materials retain
+       their hue instead of converging on the same pale grey at sunset. */
+    sunR=lerpf(1.10f,1.38f,low);sunG=lerpf(1.02f,.78f,low);sunB=lerpf(.98f,.50f,low);
     float dusk=low*(1-night);
-    ambR=lerpf(lerpf(.53f,.48f,dusk),.22f,night);ambG=lerpf(lerpf(.55f,.39f,dusk),.25f,night);ambB=lerpf(lerpf(.61f,.49f,dusk),.36f,night);
+    ambR=lerpf(lerpf(.47f,.43f,dusk),.22f,night);ambG=lerpf(lerpf(.50f,.40f,dusk),.25f,night);ambB=lerpf(lerpf(.57f,.55f,dusk),.36f,night);
     /* cielo: azul claro de dia, naranja/violeta al amanecer y atardecer, azul noche */
-    float r=lerpf(lerpf(105,205,dusk),14,night),g=lerpf(lerpf(161,112,dusk),18,night),b=lerpf(lerpf(208,156,dusk),40,night);
+    float r=lerpf(lerpf(88,195,dusk),14,night),g=lerpf(lerpf(154,100,dusk),18,night),b=lerpf(lerpf(211,168,dusk),40,night);
     skyColor=COLOR((int)r,(int)g,(int)b);
     /* horizonte: bruma clara de dia, naranja intenso al amanecer/atardecer, gris-azul apagado de noche */
-    float hr=lerpf(lerpf(153,251,dusk),22,night),hg=lerpf(lerpf(198,150,dusk),30,night),hb=lerpf(lerpf(228,105,dusk),58,night);
+    float hr=lerpf(lerpf(125,251,dusk),22,night),hg=lerpf(lerpf(184,128,dusk),30,night),hb=lerpf(lerpf(225,112,dusk),58,night);
     horizonColor=COLOR((int)hr,(int)hg,(int)hb);
 }
 static uint32_t lit_color(uint32_t c,float nx,float ny,float nz){
     float d=nx*sunX+ny*sunY+nz*sunZ;if(d<0)d=0;
-    float direct=d*(1-night)*(.75f);                              /* difusa */
+    float direct=d*(1-night)*(.95f);                              /* difusa */
     float fr=ambR+direct*sunR,fg=ambG+direct*sunG,fb=ambB+direct*sunB;
     /* v2.39 (Claude): luz de luna de noche (fria, tenue, desde el noroeste alto). Antes de noche solo habia
        ambiente: todas las caras igual de oscuras y la ciudad se veia plana. */
@@ -210,15 +212,16 @@ static void headlights(float x,float z,float angle){
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
 static void clouds(float time){
     float wind=time*3.5f;
+    float sunset=(1-smooth01((sunY-.05f)/.35f))*(1-night);
     for(int i=0;i<22;i++){
         unsigned h=city_hash(i*7,13,3);
         float cx=fmodf((h&1023)*3.2f+wind*(1+(h>>10&3)*.2f),3600.0f)-500,cz=(h>>12&1023)*2.4f-200;
         float y=290+(h>>22&63),w=145+(h>>5&127),d=75+(h>>9&63);
         if(!nearby(cx,cz,1100))continue;
         float bright=lerpf(1,.30f,night);int a=(int)(lerpf(150,110,night));
-        uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)(250*bright),(int)(252*bright))&0x00ffffff;
+        uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)((250-48*sunset)*bright),(int)((252-76*sunset)*bright))&0x00ffffff;
         float gx,gz;geo_project(cx,cz,&gx,&gz);
-        uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)(183*bright),(int)(192*bright),(int)(203*bright))&0x00ffffff;
+        uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)((183+23*sunset)*bright),(int)((192-46*sunset)*bright),(int)((203-36*sunset)*bright))&0x00ffffff;
         sky_disc(point(gx,y-11,gz),w*.51f,d*.17f,underside);
         sky_disc(point(gx-w*.21f,y+4,gz),w*.26f,d*.23f,col);
         sky_disc(point(gx+w*.19f,y+8,gz),w*.24f,d*.24f,col);
@@ -228,6 +231,8 @@ static void clouds(float time){
     /* disco solar / luna */
     float sx=eye.x+sunX*600,sy=eye.y+sunY*600,sz=eye.z+sunZ*600;
     if(sunY>-.1f){uint32_t sc=(200u<<24)|COLOR(255,(int)lerpf(240,180,1-sunY),(int)lerpf(200,90,1-sunY))&0x00ffffff;float r=26;
+        uint32_t halo=((uint32_t)(int)(42+50*sunset)<<24)|COLOR(255,(int)(205-42*sunset),(int)(143-44*sunset))&0x00ffffff;
+        sky_disc(point(sx,sy,sz),r*3.0f,r*3.0f,halo);
         sky_disc(point(sx,sy,sz),r,r,sc);}
     float mx=eye.x-sunX*600,my=eye.y-sunY*600,mz=eye.z-sunZ*600;
     if(-sunY>-.1f){uint32_t mc=(170u<<24)|COLOR(220,225,240)&0x00ffffff;float r=16;
