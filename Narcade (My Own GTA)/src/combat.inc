@@ -46,7 +46,7 @@ static void combat_jump(void){
    physics_unproject(x+cosf(a)*k,z+sinf(a)*k,&nx,&ny);
    if(foot_free(nx,ny)&&fabsf(geo_height(nx,ny)-geo_height(g.x,g.y))<4){
     int clear=1;
-    for(int j=1;j<k;j++){float u,v;physics_unproject(x+cosf(a)*j,z+sinf(a)*j,&u,&v);if(cm_solid(u,v)||fabsf(u-CM_METRO_X)<5)clear=0;}
+    for(int j=1;j<k;j++){float u,v;physics_unproject(x+cosf(a)*j,z+sinf(a)*j,&u,&v);if(cm_solid(u,v)||ml_pillar_at(u,v,0))clear=0; /* v2.49: pilares del Metro circular (antes la linea del rio) */}
     if(clear){combat.vault=.01f;combat.startX=g.x;combat.startY=g.y;combat.vaultX=nx;combat.vaultY=ny;return;}
    }
   }
