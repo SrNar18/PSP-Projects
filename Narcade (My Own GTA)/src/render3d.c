@@ -838,6 +838,7 @@ void r3_gu_buffers(uint32_t *draw,uint32_t *disp){
 void r3_slide_image(uint32_t *fb,const uint16_t *img,float zoom,float panx,int light,int alpha);
 void r3_loading_image(uint32_t *fb,const uint16_t *img,float zoom,int light,int alpha){r3_slide_image(fb,img,zoom,0,light,alpha);}
 /* v2.50 (Claude): memoria de mallas libre fuera del mundo (portada): la usa la portada para sus ilustraciones. */
+int r3SlideStride=512; /* v2.51: paso del destino en la ruta PC (qa.c usa 480) */
 void *r3_scratch(unsigned *bytes){if(bytes)*bytes=sizeof(mesh);return mesh;}
 /* panx -1..1: desplaza el recorte horizontalmente dentro del margen del zoom (paneo de un lado al otro) */
 void r3_slide_image(uint32_t *fb,const uint16_t *img,float zoom,float panx,int light,int alpha){
@@ -864,9 +865,9 @@ void r3_slide_image(uint32_t *fb,const uint16_t *img,float zoom,float panx,int l
     /* PC: muestreo simple por CPU (solo para vistas previas) */
     float sw=480.f/zoom,sh=272.f/zoom,x0=(512-sw)*.5f*(1+panx),y0=(288-sh)*.5f;
     for(int y=0;y<272;y++)for(int x=0;x<480;x++){uint16_t c=img[(int)(y0+y*sh/272.f)*512+(int)(x0+x*sw/480.f)];
-        unsigned r=((c&31)*255/31)*light/255,g=(((c>>5)&63)*255/63)*light/255,b=(((c>>11)&31)*255/31)*light/255;uint32_t o=fb[y*512+x];
+        unsigned r=((c&31)*255/31)*light/255,g=(((c>>5)&63)*255/63)*light/255,b=(((c>>11)&31)*255/31)*light/255;uint32_t o=fb[y*r3SlideStride+x];
         r=(r*alpha+(o&255)*(255-alpha))/255;g=(g*alpha+((o>>8)&255)*(255-alpha))/255;b=(b*alpha+((o>>16)&255)*(255-alpha))/255;
-        fb[y*512+x]=0xff000000u|(b<<16)|(g<<8)|r;}
+        fb[y*r3SlideStride+x]=0xff000000u|(b<<16)|(g<<8)|r;}
 #endif
 }
 void r3_gu_display(int on){

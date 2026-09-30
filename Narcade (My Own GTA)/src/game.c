@@ -1505,7 +1505,7 @@ static void title_draw(void){
  if(!g.titleStage){
   if(titleSlides<0)title_slides_load();
 #ifdef R3_HOST
-  title_slides_draw(fb);
+  {extern int r3SlideStride;r3SlideStride=W;title_slides_draw(fb);r3SlideStride=512;} /* v2.51: fb de PC tiene paso W */
 #endif
   if(titleSlides<=0)title_image(title_cover_v213,W,H,0,0); /* sin ilustraciones en disco: la portada fija */
   /* Illustration and transparent mark share the sky; no opaque UI panel
