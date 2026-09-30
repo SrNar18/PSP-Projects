@@ -1,12 +1,13 @@
 """v2.50 (Claude): ilustraciones de la portada animada -> assets/title-slides/slideN.rgb565 (PSP 5650, 512x288).
-Fuentes, en orden: assets/title-cover-v246.png (portada actual) y, si existen, assets/title-slide-1.png y
-assets/title-slide-2.png (las dos nuevas de Codex). Recorte centrado a 16:9 y reescalado con LANCZOS."""
+Fuentes, en orden: portada actual, carro de barrio y partida de parques.
+Recorte centrado a 16:9 y reescalado con LANCZOS."""
 from pathlib import Path
 import numpy as np
 from PIL import Image
 ROOT=Path(__file__).resolve().parents[1]
 out=ROOT/'assets/title-slides';out.mkdir(exist_ok=True)
-sources=[ROOT/'assets/title-cover-v246.png',ROOT/'assets/title-slide-1.png',ROOT/'assets/title-slide-2.png']
+sources=[ROOT/'assets/title-cover-v246.png',ROOT/'assets/title-car-barrio-v251-source.png',
+         ROOT/'assets/title-parques-barrio-v251-source.png']
 n=0
 for src in sources:
     if not src.exists():continue
