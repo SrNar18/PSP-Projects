@@ -938,13 +938,16 @@ void r3_init(void){
 static void horizon_build(void){
  for(int k=0;k<96;k++){
   float a=k*2*PI/96,b=(k+1)*2*PI/96;
-  float h0=18+42*powf(fabsf(cosf(a)),2)+12*sinf(a*7)+5*cosf(a*13);
-  float h1=18+42*powf(fabsf(cosf(b)),2)+12*sinf(b*7)+5*cosf(b*13);
+  float h0=18+42*powf(fabsf(cosf(a)),2)+12*sinf(a*7)+5*cosf(a*13)+3*sinf(a*31);
+  float h1=18+42*powf(fabsf(cosf(b)),2)+12*sinf(b*7)+5*cosf(b*13)+3*sinf(b*31);
   float x0=eye.x+cosf(a)*300,z0=eye.z+sinf(a)*300,x1=eye.x+cosf(b)*300,z1=eye.z+sinf(b)*300;
-  uint32_t mountain=day_scale(COLOR(47,85,67));
+  /* Height bands and sun-facing ridges break up the old flat green wall. */
+  float sunFacing=.5f+.5f*(cosf(a)*sunX+sinf(a)*sunZ);
+  uint32_t base=day_scale(COLOR(35+(k%5)*3,61+(k%4)*3,57+(k%3)*2));
+  uint32_t ridge=day_scale(COLOR(64+(int)(sunFacing*25),85+(int)(sunFacing*17),72+(int)(sunFacing*12)));
   Vertex *v=horizonMesh+k*12;
-  v[0]=(Vertex){0,0,mountain,x0,eye.y-220,z0};v[1]=(Vertex){0,0,mountain,x1,eye.y-220,z1};v[2]=(Vertex){0,0,mountain,x1,eye.y+h1,z1};
-  v[3]=v[0];v[4]=v[2];v[5]=(Vertex){0,0,mountain,x0,eye.y+h0,z0};
+  v[0]=(Vertex){0,0,base,x0,eye.y-220,z0};v[1]=(Vertex){0,0,base,x1,eye.y-220,z1};v[2]=(Vertex){0,0,ridge,x1,eye.y+h1,z1};
+  v[3]=v[0];v[4]=v[2];v[5]=(Vertex){0,0,ridge,x0,eye.y+h0,z0};
   float top=eye.y-9+(k*37%23),bottom=eye.y-220;
   uint32_t building=day_scale(COLOR(74+(k%4)*10,78+(k%3)*8,83));
   v[6]=(Vertex){0,0,building,x0,bottom,z0};v[7]=(Vertex){0,0,building,x1,bottom,z1};v[8]=(Vertex){0,0,building,x1,top,z1};

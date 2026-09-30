@@ -219,22 +219,23 @@ static void headlights(float x,float z,float angle){
 }
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
 static void clouds(float time){
-    float wind=time*3.5f;
+    /* Keep cloud groups around the camera instead of scattering them across
+       the world grid. The old x/z range often left the visible sky empty. */
+    float wind=time*.009f;
     float sunset=(1-smooth01((sunY-.05f)/.35f))*(1-night);
-    for(int i=0;i<22;i++){
+    for(int i=0;i<9;i++){
         unsigned h=city_hash(i*7,13,3);
-        float cx=fmodf((h&1023)*3.2f+wind*(1+(h>>10&3)*.2f),3600.0f)-500,cz=(h>>12&1023)*2.4f-200;
-        float y=290+(h>>22&63),w=145+(h>>5&127),d=75+(h>>9&63);
-        if(!nearby(cx,cz,1100))continue;
-        float bright=lerpf(1,.30f,night);int a=(int)(lerpf(150,110,night));
+        float angle=(i+wind*(1+(h>>10&3)*.15f))*2*PI/9;
+        float distance=440+(h&63),y=eye.y+115+(h>>22&47);
+        float w=43+(h>>5&31),d=21+(h>>9&15);
+        float cx=eye.x+cosf(angle)*distance,cz=eye.z+sinf(angle)*distance;
+        float bright=lerpf(1,.55f,night);int a=(int)(lerpf(170,75,night));
         uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)((250-48*sunset)*bright),(int)((252-76*sunset)*bright))&0x00ffffff;
-        float gx,gz;geo_project(cx,cz,&gx,&gz);
         uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)((183+23*sunset)*bright),(int)((192-46*sunset)*bright),(int)((203-36*sunset)*bright))&0x00ffffff;
-        sky_disc(point(gx,y-11,gz),w*.51f,d*.17f,underside);
-        sky_disc(point(gx-w*.21f,y+4,gz),w*.26f,d*.23f,col);
-        sky_disc(point(gx+w*.19f,y+8,gz),w*.24f,d*.24f,col);
-        sky_disc(point(gx,y+15,gz),w*.30f,d*.29f,col);
-        sky_disc(point(gx+w*.37f,y+1,gz),w*.15f,d*.16f,col);
+        sky_disc(point(cx,y-8,cz),w*.54f,d*.34f,underside);
+        sky_disc(point(cx-w*.20f,y+3,cz),w*.34f,d*.63f,col);
+        sky_disc(point(cx+w*.20f,y+5,cz),w*.31f,d*.59f,col);
+        sky_disc(point(cx,y+10,cz),w*.39f,d*.72f,col);
     }
     /* disco solar / luna */
     float sx=eye.x+sunX*600,sy=eye.y+sunY*600,sz=eye.z+sunZ*600;

@@ -1539,6 +1539,24 @@ static void credits_draw(void){
  text(24,226,"Version en desarrollo / gracias por jugar",GOLD,1);
  footer("O VOLVER");
 }
+/* Five compact pictograms remain legible at the PSP's native 480x272 size. */
+static void trophy_icon(int kind,int x,int y,uint32_t c){
+ if(kind==0){ /* footsteps */
+  circle(x-3,y-4,2,c);line(x-4,y-1,x-6,y+5,c);line(x-2,y-1,x,y+4,c);
+  circle(x+4,y+2,2,c);line(x+3,y+5,x+2,y+8,c);line(x+5,y+5,x+7,y+8,c);
+ }else if(kind==1){ /* steering wheel */
+  for(int a=0;a<12;a++){float t=a*PI/6;px(x+(int)(cosf(t)*7),y+(int)(sinf(t)*7),c);}
+  circle(x,y,2,c);line(x,y-2,x,y-7,c);line(x-2,y,x-6,y+4,c);line(x+2,y,x+6,y+4,c);
+ }else if(kind==2){ /* target */
+  circle(x,y,6,c);circle(x,y,4,RGB(27,33,42));circle(x,y,2,c);
+  line(x-9,y,x-5,y,c);line(x+5,y,x+9,y,c);line(x,y-9,x,y-5,c);line(x,y+5,x,y+9,c);
+ }else if(kind==3){ /* police star lost in the night */
+  for(int a=0;a<5;a++){float t=a*2*PI/5-PI/2,u=((a+2)%5)*2*PI/5-PI/2;
+   line(x+(int)(cosf(t)*8),y+(int)(sinf(t)*8),x+(int)(cosf(u)*8),y+(int)(sinf(u)*8),c);}
+ }else{ /* vinyl record */
+  circle(x,y,7,c);circle(x,y,5,RGB(27,33,42));circle(x,y,3,c);circle(x,y,1,RGB(27,33,42));
+ }
+}
 static void trophies_draw(void){
  title_image(title_menu_v213,W,H,0,0);header("TROFEOS","CADA HISTORIA DEJA SU HUELLA");title_logo(narcade_logo_small_v244,115,39,344,4);
  for(int i=0;i<GAME_TROPHY_COUNT;i++){
@@ -1548,8 +1566,8 @@ static void trophies_draw(void){
   int y=57+i*35;uint32_t accent=info.unlocked?GOLD:RGB(148,151,156);
   rect(14,y,452,32,i==trophySelection?RGB(48,43,39):RGB(24,28,37));
   rect(14,y,3,32,accent);if(i==trophySelection)outline(14,y,452,32,accent);
-  circle(32,y+16,11,RGB(57,54,50));circle(32,y+16,8,info.unlocked?GOLD:RGB(95,103,111));
-  text(29,y+10,info.unlocked?"+":"*",RGB(18,22,28),1);
+  circle(32,y+16,11,RGB(57,54,50));
+  trophy_icon(i,32,y+16,info.unlocked?GOLD:RGB(164,193,201));
   text(51,y+3,info.title?info.title:trophyDefs[i].name,WHITE,1);
   text(51,y+17,info.unlocked?"DESBLOQUEADO":(valid?"EN PROGRESO":"PROXIMAMENTE"),info.unlocked?GOLD:MUTED,1);
   float amount=info.unlocked?1:!trophyProvider?clampf(trophy_progress(i)/trophyDefs[i].goal,0,1):info.target>0?clampf((float)info.current/info.target,0,1):0;

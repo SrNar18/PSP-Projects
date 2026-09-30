@@ -29,7 +29,9 @@ def create(name):
                 fold = 8*math.cos(y*.147+math.sin(x*.049)*1.5)*math.exp(-((y-84)/28)**2)
                 c = (45+weave+worn+fold,64+weave+worn+fold,85+weave+worn+fold)
             elif name == 'skin':
-                c = (186+n*3+grain*.4,133+n*2+grain*.3,101+n*2+grain*.3)
+                # Match the warm terracotta midtones of Nico's painted face.
+                # The old beige forearms/neck looked like a second complexion.
+                c = (191+n*3+grain*.4,112+n*2+grain*.3,72+n*2+grain*.3)
             elif name == 'hair':
                 curls = math.sin(x*.49+math.sin(y*.39))*math.cos(y*.59+x*.21)*6
                 c = (38+curls+grain,30+curls+grain,26+curls+grain)
