@@ -73,6 +73,9 @@ static float planes[6][4];
 static Point eye,target;
 static int overflow;
 static float r3FogNear=420.f; /* v2.39: inicio de la niebla de distancia */
+#ifndef R3_FAR
+#define R3_FAR 1100.f /* v2.48 (Claude): plano lejano (antes 720): se ve mucha mas ciudad */
+#endif
 static int distanceFog;
 void r3_set_distance_fog(int enabled){distanceFog=enabled!=0;}
 /* Opaque horizon silhouettes, rendered behind the playable city. They hide
@@ -121,7 +124,7 @@ static void camera(const R3Scene *s){
         memcpy(planes[k],normals[k],3*sizeof(float));
         planes[k][3]=-normals[k][0]*eye.x-normals[k][1]*eye.y-normals[k][2]*eye.z;
     }
-    planes[0][3]-=5.1f;planes[1][3]+=710; /* v2.6: acorde con sceGumPerspective(...,5,720) */
+    planes[0][3]-=5.1f;planes[1][3]+=R3_FAR-10; /* v2.6: acorde con sceGumPerspective(...,5,720) */
     /* Sphere distances require unit normals, including the side planes. */
     for(int k=0;k<6;k++){
         float length=sqrtf(planes[k][0]*planes[k][0]+planes[k][1]*planes[k][1]+planes[k][2]*planes[k][2]);
@@ -1006,7 +1009,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     sceGuEnable(GU_TEXTURE_2D);sceGuTexMode(GU_PSM_5650,0,0,1);
     sceGuTexFunc(GU_TFX_MODULATE,GU_TCC_RGB);sceGuTexFilter(GU_LINEAR,GU_LINEAR);
     sceGuTexWrap(GU_REPEAT,GU_REPEAT);sceGuTexScale(1,1);sceGuTexOffset(0,0);sceGuShadeModel(GU_SMOOTH);
-    sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,5,720); /* v2.6: plano cercano 5 (antes 2): 2.5x mas precision de profundidad, menos parpadeo (z-fighting) */
+    sceGumMatrixMode(GU_PROJECTION);sceGumLoadIdentity();sceGumPerspective(62,480.0f/272,5,R3_FAR); /* v2.6: plano cercano 5 (antes 2): 2.5x mas precision de profundidad, menos parpadeo (z-fighting) */
     ScePspFVector3 e={eye.x,eye.y,eye.z},t={target.x,target.y,target.z};
     ScePspFVector3 up={0,1,0};sceGumMatrixMode(GU_VIEW);sceGumLoadIdentity();sceGumLookAt(&e,&t,&up);
     sceGumMatrixMode(GU_MODEL);sceGumLoadIdentity();
@@ -1030,7 +1033,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     /* v2.39 (Claude): niebla de distancia hacia el color del horizonte. Sin ella lo lejano entraba y
        salia de golpe en el plano lejano (720) y en los cambios de detalle: ahora aparece poco a poco.
        La hace el GE por vertice: sin coste de CPU. */
-    if(distanceFog){sceGuFog(r3FogNear,700.f,horizonColor&0x00ffffffu);sceGuEnable(GU_FOG);}
+    if(distanceFog){sceGuFog(r3FogNear*R3_FAR/720.f,R3_FAR-20,horizonColor&0x00ffffffu);sceGuEnable(GU_FOG);}
     else sceGuDisable(GU_FOG);
 #endif
 #ifndef AB_NODRAW

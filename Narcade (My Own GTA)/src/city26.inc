@@ -96,6 +96,23 @@ static void prism(const CmParcel *p,float bottom,float height,int side,int top,u
 }
 /* Losa transitable que SIGUE el terreno (parques y plazas poligonales): abanico desde el centroide subdividido en 4,
    con faldon perimetral. Sin fixedGround: cada vertice toma su altura de terreno, como ground(). */
+/* v2.48 (Claude): el terreno es lineal por tramos en z (quiebros en geo_next_z). Un triangulo de losa que cruza un
+   quiebro se interpolaba recto y en las cuestas quedaba POR DEBAJO del terreno: la calzada (que ground() ya corta
+   en esos quiebros) asomaba por encima de la acera. Se corta cada triangulo en franjas de z exactas. */
+static void draped_emit(int mat,const Vertex *tri,int n){
+    float zmin=1e9f,zmax=-1e9f;for(int i=0;i<n;i++){zmin=fminf(zmin,tri[i].z);zmax=fmaxf(zmax,tri[i].z);}
+    for(float lo=zmin;lo<zmax-.001f;){float hi=fminf(zmax,geo_next_z(lo));if(hi<=lo+.001f)hi=fminf(zmax,lo+.01f);
+        Vertex a[8],b[8];int na=0,nb=0;
+        for(int i=0;i<n;i++){const Vertex *p=&tri[i],*q=&tri[(i+1)%n];int pin=p->z>=lo,qin=q->z>=lo; /* recorte z>=lo */
+            if(pin)a[na++]=*p;
+            if(pin!=qin){float t=(lo-p->z)/(q->z-p->z);Vertex v=*p;v.x+=(q->x-p->x)*t;v.z=lo;v.u+=(q->u-p->u)*t;v.v+=(q->v-p->v)*t;a[na++]=v;}}
+        for(int i=0;i<na;i++){const Vertex *p=&a[i],*q=&a[(i+1)%na];int pin=p->z<=hi,qin=q->z<=hi; /* recorte z<=hi */
+            if(pin)b[nb++]=*p;
+            if(pin!=qin){float t=(hi-p->z)/(q->z-p->z);Vertex v=*p;v.x+=(q->x-p->x)*t;v.z=hi;v.u+=(q->u-p->u)*t;v.v+=(q->v-p->v)*t;b[nb++]=v;}}
+        if(nb>=3)polygon(mat,b,nb);
+        lo=hi;
+    }
+}
 static void slab_draped(const CmParcel *p,float y,int mat,uint32_t color){
     if(p->n<3)return;float cx,cz;parcel_centroid(p,&cx,&cz);
     float savedGround=fixedGround;fixedGround=-1000000;
@@ -107,8 +124,8 @@ static void slab_draped(const CmParcel *p,float y,int mat,uint32_t color){
         #define SV(X,Z) {((X)-cx)/sc,((Z)-cz)/sc,tc,X,y,Z}
         Vertex t1[3]={SV(cx,cz),SV(m1x,m1z),SV(m3x,m3z)},t2[3]={SV(m1x,m1z),SV(ax,az),SV(m2x,m2z)},t3[3]={SV(m3x,m3z),SV(m2x,m2z),SV(bx,bz)},t4[3]={SV(m1x,m1z),SV(m2x,m2z),SV(m3x,m3z)};
         #undef SV
-        polygon(mat,t1,3);polygon(mat,t2,3);polygon(mat,t3,3);polygon(mat,t4,3);
-        uint32_t kc=lit_color(COLOR(226,222,214),0,0,1);Vertex sk[4]={{0,0,kc,ax,y,az},{1,0,kc,bx,y,bz},{1,1,kc,bx,-3,bz},{0,1,kc,ax,-3,az}};polygon(CONCRETE,sk,4); /* bordillo */
+        draped_emit(mat,t1,3);draped_emit(mat,t2,3);draped_emit(mat,t3,3);draped_emit(mat,t4,3);
+        uint32_t kc=lit_color(COLOR(226,222,214),0,0,1);Vertex sk[4]={{0,0,kc,ax,y,az},{1,0,kc,bx,y,bz},{1,1,kc,bx,-3,bz},{0,1,kc,ax,-3,az}};draped_emit(CONCRETE,sk,4); /* bordillo (v2.48: tambien cortado en franjas) */
     }
     litAlready=0;fixedGround=savedGround;
 }
@@ -321,7 +338,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
             int frontMat=((hk>>13)%5==0)?EATERY:((hk>>13)%5==1)?OFFICE_FRONT:RETAIL;
             box(xx,zz,6,L,Wd,20,0,CONCRETE,CONCRETE,COLOR(221,213,194));
             box(xx,zz,26,L,Wd,floors*24-20,0,mat,ROOF,tint);
-            if(!far&&!cityMid){
+            if(!far){ /* v2.48: tambien en detalle medio (cristal simple) */
                 residential_facade(xx,zz-Wd*.5f,L,26,floors-1,24,0,0);
                 if(c==0||c==cols-1)residential_facade(c==0?x0:x1,zz,Wd,26,floors-1,24,c==0?-PI*.5f:PI*.5f,0);
             }
@@ -536,7 +553,7 @@ static void metro_train(void){
             box(x,zc,fl+1.2f,.8f,CM_TRAIN_CAR,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));                  /* panel bajo */
             /* Set the livery outside the shell. The previous 1.0-wide box
                intersected the .8-wide lower panel and depth-fought in PSP. */
-            box(x+sd*.56f,zc,fl+5.4f,.10f,CM_TRAIN_CAR-.4f,1.6f,0,FLAT,FLAT,COLOR(50,150,80));
+            box(x+sd*.68f,zc,fl+5.4f,.10f,CM_TRAIN_CAR-.4f,1.6f,0,FLAT,FLAT,COLOR(50,150,80)); /* v2.48 (Claude): 0,23 del panel (revision de Codex) */
             for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
             for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
                 float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
@@ -593,12 +610,14 @@ static void metro(int bz,int far){
     48-unit rhythm and two continuous under-deck girders make the elevated
     structure read as a viaduct even where it spans a road without a pillar. */
  for(int k=0;k<5;k++)cylinder(CM_METRO_X,z+96+k*48,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
- for(int side=-1;side<=1;side+=2)
+ if(!far)for(int side=-1;side<=1;side+=2) /* v2.48: vigas inferiores solo de cerca */
   metro_ribbon(CM_METRO_X+side*5.2f,z,z+320,1.3f,CM_METRO_DECK-4,4,CONCRETE,CONCRETE,COLOR(106,115,115));
  metro_ribbon(CM_METRO_X,z,z+320,18,CM_METRO_DECK,3,CONCRETE,SIDEWALK,COLOR(133,140,139));
  /* Rails remain visible in both LODs. A continuous silver cap replaces dark
     car paint; the station never draws pavement over this central track bed. */
- for(int side=-1;side<=1;side+=2)
+ /* v2.48 (Claude): con la distancia de dibujo nueva (1100) la linea entera entra en pantalla: los detalles de menos de
+    un pixel a lo lejos (carriles, postes, remates) solo en el detalle cercano; asi no se desbordan METAL/CONCRETE. */
+ for(int side=-1;side<=1;side+=2) /* carriles en ambos detalles (qa_metro_station) */
   metro_ribbon(CM_METRO_X+side*6,z,z+320,.65f,CM_METRO_DECK+3.06f,.55f,METAL,FLAT,COLOR(206,220,222));
  if(!far){
   for(int k=0;k<16;k++)box(CM_METRO_X,z+10+k*20,CM_METRO_DECK+3.01f,13,1.1f,.16f,0,FLAT,FLAT,COLOR(60,70,69));
@@ -614,7 +633,7 @@ static void metro(int bz,int far){
    metro_ribbon(CM_METRO_X+side*16.5f,z+61,z+259,.55f,CM_PLAT_H,5.5f,METAL,METAL,COLOR(73,111,108));
   }
   for(int k=0;k<3;k++)for(int side=-1;side<=1;side+=2)cylinder(CM_METRO_X+side*15,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu);
-  for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,26,0,METAL,METAL,COLOR(113,143,144));
+  if(!far)for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,26,0,METAL,METAL,COLOR(113,143,144));
   /* Platform canopies leave the central track open: the follow camera can
      see trains/rails instead of looking through one opaque full-width roof. */
   for(int side=-1;side<=1;side+=2){
@@ -622,8 +641,8 @@ static void metro(int bz,int far){
    rail_canopy(roofX,z+160,8,208,CM_PLAT_H+24,2);
    /* Continuous dark fascia hides the raw canopy edges and identifies the
       platform as a station rather than an exposed piece of track. */
-   metro_ribbon(CM_METRO_X+side*20.8f,z+56,z+264,.8f,CM_PLAT_H+23.6f,1.4f,METAL,METAL,COLOR(44,82,93));
-   metro_ribbon(roofX,z+56,z+264,.55f,CM_PLAT_H+25.6f,.55f,METAL,METAL,COLOR(209,230,226));
+   if(!far){metro_ribbon(CM_METRO_X+side*20.8f,z+56,z+264,.8f,CM_PLAT_H+23.6f,1.4f,METAL,METAL,COLOR(44,82,93));
+   metro_ribbon(roofX,z+56,z+264,.55f,CM_PLAT_H+25.6f,.55f,METAL,METAL,COLOR(209,230,226));}
   }
   if(!far){
    for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++)
@@ -634,8 +653,8 @@ static void metro(int bz,int far){
    }
   }
   /* A narrower stair no longer intersects the body/doors of a stopped train. */
-  for(int k=0;k<20;k++)box(1470.5f,z+316.5f-k*3,0,8,3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214));
-  for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
+  for(int k=far?3:0;k<20;k+=far?4:1)box(1470.5f,z+316.5f-k*3-(far?4.5f:0),0,8,far?12:3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214)); /* lejos: 5 tramos */
+  if(!far)for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
   /* Leave half a unit between landing and final stair: their side planes used
      to overlap at x=1466 and shimmer in the PSP depth buffer. */
   box(1470.5f,z+255.5f,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
@@ -695,9 +714,11 @@ static void diagonal_avenue(void){
         float mx=(x0+x1)*.5f,mz=(z0+z1)*.5f;
         if(!nearby(mx,mz,700))continue;
         if(cm_on_grid_road(x0,z0)||cm_on_grid_road(x1,z1)||cm_on_grid_road(mx,mz))continue;
-        quad(GRASS,point(x0-nx*3,.45f,z0-nz*3),point(x1-nx*3,.45f,z1-nz*3),point(x1+nx*3,.45f,z1+nz*3),point(x0+nx*3,.45f,z0+nz*3),COLOR(140,190,120),1,2);
-        quad(SIDEWALK,point(x0-nx*3.6f,.4f,z0-nz*3.6f),point(x1-nx*3.6f,.4f,z1-nz*3.6f),point(x1-nx*3,.4f,z1-nz*3),point(x0-nx*3,.4f,z0-nz*3),0xffffffffu,1,1);
-        quad(SIDEWALK,point(x0+nx*3,.4f,z0+nz*3),point(x1+nx*3,.4f,z1+nz*3),point(x1+nx*3.6f,.4f,z1+nz*3.6f),point(x0+nx*3.6f,.4f,z0+nz*3.6f),0xffffffffu,1,1);
+        /* v2.48 (Claude): tramos de 12 (antes 60): el terreno se quiebra en z y un quad largo se hundia bajo la calzada */
+        for(int q=0;q<5;q++){float a0=q/5.f,a1=(q+1)/5.f;float qx0=x0+(x1-x0)*a0,qz0=z0+(z1-z0)*a0,qx1=x0+(x1-x0)*a1,qz1=z0+(z1-z0)*a1;
+        quad(GRASS,point(qx0-nx*3,.45f,qz0-nz*3),point(qx1-nx*3,.45f,qz1-nz*3),point(qx1+nx*3,.45f,qz1+nz*3),point(qx0+nx*3,.45f,qz0+nz*3),COLOR(140,190,120),1,.4f);
+        quad(SIDEWALK,point(qx0-nx*3.6f,.4f,qz0-nz*3.6f),point(qx1-nx*3.6f,.4f,qz1-nz*3.6f),point(qx1-nx*3,.4f,qz1-nz*3),point(qx0-nx*3,.4f,qz0-nz*3),0xffffffffu,1,.2f);
+        quad(SIDEWALK,point(qx0+nx*3,.4f,qz0+nz*3),point(qx1+nx*3,.4f,qz1+nz*3),point(qx1+nx*3.6f,.4f,qz1+nz*3.6f),point(qx0+nx*3.6f,.4f,qz0+nz*3.6f),0xffffffffu,1,.2f);}
         if(view_distance(mx,mz)<430&&(k&1))tree(mx,mz);
         if(!(k%3)){box(x0-nx*2,z0-nz*2,.4f,1.2f,1.2f,30,0,CAR_PAINT,CAR_PAINT,COLOR(75,79,80));box(x0-nx*2,z0-nz*2,29,8,3,2,0,CAR_PAINT,CAR_PAINT,COLOR(255,236,167));}
     }
@@ -988,7 +1009,7 @@ static void city_v26(void){
     const uint32_t white=0xffffffffu;int cacheBudget=r3WarmBudget>0?r3WarmBudget:1;
     for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++){
         float x=bx*320,z=bz*320;
-        if(!nearby(x+160,z+160,720))continue;
+        if(!nearby(x+160,z+160,R3_FAR))continue; /* v2.48: antes 720 */
         if(!nearby(x+160,z+160,400)&&!sphere_visible(x+160,z+160,460))continue;
         float dist=view_distance(x+160,z+160);int far=dist>380;cityMid=dist>230;
         /* v2.36: margen de 25 en los cambios de detalle: si ya hay en cache el nivel vecino se sigue
