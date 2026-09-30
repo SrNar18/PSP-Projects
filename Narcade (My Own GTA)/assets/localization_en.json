@@ -590,5 +590,18 @@
   "Vera / Periodista": "Vera / Journalist",
   "X gas / [] freno en carro": "X accelerate / [] brake in car",
   "X trotar / pulsar X correr": "X jog / tap X to sprint",
-  "[] saltar / R+[] interactuar": "[] jump / R+[] interact"
+  "[] saltar / R+[] interactuar": "[] jump / R+[] interact",
+  "ESTACION ARANJUEZ": "ARANJUEZ STATION",
+  "ESTACION BELEN": "BELEN STATION",
+  "ESTACION BUENOS AIRES": "BUENOS AIRES STATION",
+  "ESTACION LAURELES": "LAURELES STATION",
+  "ESTACION POBLADO": "POBLADO STATION",
+  "ESTACION PRADO": "PRADO STATION",
+  "El Metro para 7 segundos en cada estacion. Espera aqui a que llegue.": "The Metro stops for 7 seconds at every station. Wait here for it.",
+  "Espera a la siguiente estacion para bajar.": "Wait for the next station to get off.",
+  "METRO CIRCULAR: TRIANGULO para bajar en cualquier estacion.": "CIRCLE LINE METRO: TRIANGLE to get off at any station.",
+  "METRO CIRCULAR: espera el tren aqui": "CIRCLE LINE METRO: wait for the train here",
+  "PROXIMA: %s": "NEXT: %s",
+  "TRIANGULO BAJAR / %s": "TRIANGLE GET OFF / %s",
+  "TRIANGULO SUBIR AL METRO": "TRIANGLE BOARD THE METRO"
 }

@@ -111,5 +111,8 @@
   "wb",
   "weapon_icons.h",
   "world_geo.h",
-  "x%d y%d lift%d metro%d z%d w%d sp%d ff%d lo%d s%d"
+  "x%d y%d lift%d metro%d z%d w%d sp%d ff%d lo%d s%d",
+  "metro_loop.h",
+  "metro_loop_draw.inc",
+  "M"
 ]

@@ -478,194 +478,18 @@ static void tunnel_building(int bx,float z0,float z1,int far){
 /* Metro de Medellin a escala del jugador (citymap.h: CM_METRO_*): viaducto sobre pilares, estaciones con anden a 30,
    escalera de 60 de recorrido en la orilla, y tren de dos coches (paneles bajos + pilares de ventana: se ve la ciudad
    desde dentro cuando el jugador va a bordo). */
-static Point metro_point(float x,float z,float y){
- float gx,gz;geo_project(x,z,&gx,&gz);
- return point(gx,geo_height(CM_METRO_X,z)+y,gz);
-}
-static float metro_next_z(float z,float end){
- float row=floorf(z/320.f),local=z-row*320.f;
- float limit=local<86.f?row*320.f+86.f:geo_next_z(z);
- float step=local<86.f?12.f:48.f;
- float next=fminf(end,fminf(z+step,limit));
- return next<=z+.001f?fminf(end,z+step):next;
-}
+
+
 /* Adjacent rows share exactly the same projected edge coordinates and rail
    height. A long box used its highest corner as one flat foundation, creating
    seams whenever the route crosses a valley terrace. */
-static void metro_ribbon(float x,float z0,float z1,float width,float bottom,float height,int side,int top,uint32_t color){
- int saved=geographic;geographic=0;
- float left=x-width*.5f,right=x+width*.5f,upper=bottom+height;
- for(float a=z0;a<z1-.001f;){
-  float b=metro_next_z(a,z1);
-  Point la=metro_point(left,a,upper),lb=metro_point(left,b,upper);
-  Point ra=metro_point(right,a,upper),rb=metro_point(right,b,upper);
-  Point lda=metro_point(left,a,bottom),ldb=metro_point(left,b,bottom);
-  Point rda=metro_point(right,a,bottom),rdb=metro_point(right,b,bottom);
-  quad(top,la,lb,rb,ra,color,width/12.f,(b-a)/12.f);
-  quad(side,lda,ldb,lb,la,shade(color,.75f),1,(b-a)/12.f);
-  quad(side,rb,ra,rda,rdb,shade(color,.68f),1,(b-a)/12.f);
-  if(a<=z0+.001f)quad(side,la,ra,rda,lda,shade(color,.71f),1,1);
-  if(b>=z1-.001f)quad(side,lb,ldb,rdb,rb,shade(color,.71f),1,1);
-  a=b;
- }
- geographic=saved;
-}
-static void rail_canopy(float x,float z,float width,float length,float y,float rise){
-    /* Station roofs follow every curve and terrace at the same 16-unit
-       sampling as the rail deck. Moving carriage roofs keep their existing
-       flexible topology and UVs. */
-    if(geographic&&!metroFlexible){int saved=geographic;geographic=0;
-        float z0=z-length*.5f,z1=z+length*.5f;litAlready=1;
-        for(float za=z0;za<z1-.001f;){
-            float zb=metro_next_z(za,z1);
-            for(int k=0;k<4;k++){
-                float a=PI*k/4,b=PI*(k+1)/4;
-                float xa=x+cosf(a)*width*.5f,xb=x+cosf(b)*width*.5f;
-                float ya=y+sinf(a)*rise,yb=y+sinf(b)*rise;
-                quad(GLASS,metro_point(xa,za,ya),metro_point(xa,zb,ya),
-                    metro_point(xb,zb,yb),metro_point(xb,za,yb),
-                    lit_color(COLOR(111,153,167),cosf((a+b)*.5f),sinf((a+b)*.5f),0),1,1);
-            }
-            za=zb;
-        }
-        litAlready=0;geographic=saved;return;
-    }
-
-    float saved=fixedGround;if(saved<=-999999)fixedGround=geo_height(x,z);litAlready=1;
-    for(int k=0;k<4;k++){
-        float a=PI*k/4,b=PI*(k+1)/4;
-        float xa=x+cosf(a)*width*.5f,xb=x+cosf(b)*width*.5f,ya=y+sinf(a)*rise,yb=y+sinf(b)*rise;
-        quad(METAL,point(xa,ya,z-length*.5f),point(xa,ya,z+length*.5f),point(xb,yb,z+length*.5f),point(xb,yb,z-length*.5f),lit_color(COLOR(210,224,215),cosf((a+b)*.5f),sinf((a+b)*.5f),0),length/45,.5f);
-        /* GE culling is disabled: one surface is already visible from both sides.
-           The old reversed duplicate fought for the same depth and shimmered. */
-    }
-    litAlready=0;fixedGround=saved;
-}
-static void metro_train(void){
-    for(int c=0;c<2;c++){float zc=view->metroZ+(c-.5f)*(CM_TRAIN_CAR+6);
-        if(!nearby(CM_METRO_X,zc,700))continue;
-        float previousGround=fixedGround;fixedGround=geo_height(CM_METRO_X,zc);
-        metroBaseGround=fixedGround;metroFlexible=1;
-        float fl=CM_PLAT_H+.2f;
-        box(CM_METRO_X,zc,fl+.15f,20,CM_TRAIN_CAR,1.05f,0,SIDEWALK,SIDEWALK,COLOR(120,120,124));                 /* piso (v2.33: separado de los rieles) */
-        box(CM_METRO_X,zc,fl-.6f,16,CM_TRAIN_CAR-8,.6f,0,CAR_PAINT,CAR_PAINT,COLOR(60,62,66));                  /* bajos (v2.33: bajo el tope de los rieles) */
-        for(int sd=-1;sd<=1;sd+=2){float x=CM_METRO_X+sd*9.6f;
-            box(x,zc,fl+1.2f,.8f,CM_TRAIN_CAR,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));                  /* panel bajo */
-            /* Set the livery outside the shell. The previous 1.0-wide box
-               intersected the .8-wide lower panel and depth-fought in PSP. */
-            box(x+sd*.68f,zc,fl+5.4f,.10f,CM_TRAIN_CAR-.4f,1.6f,0,FLAT,FLAT,COLOR(50,150,80)); /* v2.48 (Claude): 0,23 del panel (revision de Codex) */
-            for(int k=-2;k<=2;k++){float zz=zc+k*22;box(x,zz,fl+9.2f,.8f,2,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));} /* pilares de ventana */
-            for(int door=-1;door<=1;door+=2)for(int panel=-1;panel<=1;panel+=2){
-                float dz=zc+door*33+panel*(2.4f+view->metroDoors*5);
-                box(x+sd*.45f,dz,fl+1.2f,.9f,4.7f,17,0,FLAT,FLAT,COLOR(218,229,222)); /* v2.46: puerta 0,25 por delante de la franja */
-                box(x+sd*1.02f,dz+panel*2.23f,fl+1.3f,.12f,.16f,16.4f,0,FLAT,FLAT,COLOR(39,52,53)); /* rubber door seam */
-                box(x+sd*1.04f,dz-panel*1.4f,fl+7.8f,.14f,.26f,1.1f,0,FLAT,FLAT,COLOR(78,99,96)); /* recessed grab handle */
-                if(!view->inMetro)box(x+sd*1.06f,dz,fl+10,.16f,3.2f,5.4f,0,METAL,METAL,COLOR(101,143,147)); /* opaque pane beyond the door */
-            }
-            box(x,zc,fl+18.2f,.8f,CM_TRAIN_CAR,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));             /* dintel */
-        }
-        /* Only the two fixed central windows stay on the shell. The outer
-           spans are sliding doors, whose glass belongs to the moving panels
-           above. The former four uninterrupted panes covered an open door. */
-        if(!view->inMetro)for(int side=-1;side<=1;side+=2)
-            for(int k=-1;k<=0;k++)box(CM_METRO_X+side*9.65f,zc+k*22+11,fl+9.3f,.35f,19,8.5f,0,METAL,METAL,COLOR(112,151,165));
-        /* Short fixed panes flank each 9.4-unit doorway. They fill the rest
-           of its 20-unit bay without drawing glass across the actual opening. */
-        if(!view->inMetro)for(int side=-1;side<=1;side+=2)
-            for(int door=-1;door<=1;door+=2)for(int flank=-1;flank<=1;flank+=2)
-                box(CM_METRO_X+side*9.65f,zc+door*33+flank*7.55f,fl+9.3f,.35f,4.7f,8.5f,0,METAL,METAL,COLOR(112,151,165));
-        rail_canopy(CM_METRO_X,zc,21,CM_TRAIN_CAR+1,fl+20,2.8f);
-        if(view_distance(CM_METRO_X,zc)<250){
-            box(CM_METRO_X,zc,fl+22.5f,13,24,2,0,METAL,METAL,COLOR(157,168,168));
-            for(int bogie=-1;bogie<=1;bogie+=2)box(CM_METRO_X,zc+bogie*34,fl-.8f,17,13,1.2f,0,METAL,METAL,COLOR(58,63,67));
-        }
-        for(int e=-1;e<=1;e+=2){float ze=zc+e*CM_TRAIN_CAR*.5f;                                                   /* testeros abiertos: panel bajo, pilares y dintel */
-            box(CM_METRO_X,ze,fl+1.2f,18.6f,1,8,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X,ze,fl+5.4f,18.8f,1.2f,1.6f,0,CAR_PAINT,CAR_PAINT,COLOR(50,150,80)); /* v2.33: entre los paneles laterales */
-            box(CM_METRO_X-7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));box(CM_METRO_X+7,ze,fl+9.2f,2,1,9,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            box(CM_METRO_X,ze,fl+18.2f,18.6f,1,1.8f,0,CAR_PAINT,CAR_PAINT,COLOR(240,240,236));
-            if(!view->inMetro)box(CM_METRO_X,ze+e*.65f,fl+10.1f,13.6f,.35f,6.4f,0,METAL,METAL,COLOR(105,150,168));}
-        if(view->inMetro||view_distance(CM_METRO_X,zc)<200){
-            for(int k=-2;k<=2;k++)for(int sd=-1;sd<=1;sd+=2)box(CM_METRO_X+sd*6.5f,zc+k*20,fl+1.2f,5,12,4,0,CAR_PAINT,CAR_PAINT,COLOR(40,90,160)); /* asientos */
-            for(int k=-2;k<=2;k++)box(CM_METRO_X,zc+k*20+10,fl+1.2f,1,1,18,0,CAR_PAINT,CAR_PAINT,COLOR(200,200,200));       /* barras */
-        }
-        metroFlexible=0;fixedGround=previousGround;
-    }
-}
+/* v2.49: metro_ribbon() del Metro antiguo, retirado */
+/* v2.49: rail_canopy() del Metro antiguo, retirado */
+/* v2.49: metro_train() del Metro de la orilla, sustituido por el Metro circular (metro_loop_draw.inc) */
 /* Two-sided original station marker, built into the cached FLAT mesh.
    Pixel cells are geometry, not untranslated UI: METRO is the network's name. */
-static void metro_marker(float x,float z,float bottom,int number){
- static const unsigned char letters[5][7]={
-  {17,27,21,21,17,17,17},{31,16,16,30,16,16,31},{31,4,4,4,4,4,4},
-  {30,17,17,30,20,18,17},{14,17,17,17,17,17,14}};
- box(x,z,bottom,20,.8f,5.8f,0,FLAT,FLAT,COLOR(10,48,54));
- for(int face=-1;face<=1;face+=2)for(int k=0;k<5;k++)for(int row=0;row<7;row++)for(int col=0;col<5;col++)
-  if(letters[k][row]&(1<<(4-col))){float xx=x+face*(-8+(k*6+col)*.55f),zz=z+face*.43f,yy=bottom+4.9f-row*.55f;
-   quad(FLAT,point(xx,yy,zz),point(xx+face*.48f,yy,zz),point(xx+face*.48f,yy+.48f,zz),point(xx,yy+.48f,zz),COLOR(225,246,186),1,1);}
- /* Color-coded station identifier, independent of the menu language. */
- for(int k=0;k<number;k++)box(x+8,z,bottom+.8f+k*.95f,.8f,1.0f,.5f,0,FLAT,FLAT,COLOR(250,200,60));
-}
-static void metro(int bz,int far){
- float z=bz*320;
- /* Supports stay off the east/west intersection (local z 0..86). Their
-    48-unit rhythm and two continuous under-deck girders make the elevated
-    structure read as a viaduct even where it spans a road without a pillar. */
- for(int k=0;k<5;k++)cylinder(CM_METRO_X,z+96+k*48,0,4,CM_METRO_DECK,6,0,CONCRETE,CONCRETE,0xffffffffu);
- if(!far)for(int side=-1;side<=1;side+=2) /* v2.48: vigas inferiores solo de cerca */
-  metro_ribbon(CM_METRO_X+side*5.2f,z,z+320,1.3f,CM_METRO_DECK-4,4,CONCRETE,CONCRETE,COLOR(106,115,115));
- metro_ribbon(CM_METRO_X,z,z+320,18,CM_METRO_DECK,3,CONCRETE,SIDEWALK,COLOR(133,140,139));
- /* Rails remain visible in both LODs. A continuous silver cap replaces dark
-    car paint; the station never draws pavement over this central track bed. */
- /* v2.48 (Claude): con la distancia de dibujo nueva (1100) la linea entera entra en pantalla: los detalles de menos de
-    un pixel a lo lejos (carriles, postes, remates) solo en el detalle cercano; asi no se desbordan METAL/CONCRETE. */
- for(int side=-1;side<=1;side+=2) /* carriles en ambos detalles (qa_metro_station) */
-  metro_ribbon(CM_METRO_X+side*6,z,z+320,.65f,CM_METRO_DECK+3.06f,.55f,METAL,FLAT,COLOR(206,220,222));
- if(!far){
-  for(int k=0;k<16;k++)box(CM_METRO_X,z+10+k*20,CM_METRO_DECK+3.01f,13,1.1f,.16f,0,FLAT,FLAT,COLOR(60,70,69));
-  if(!cm_metro_station(bz))for(int side=-1;side<=1;side+=2)
-   metro_ribbon(CM_METRO_X+side*8.2f,z,z+320,.4f,CM_METRO_DECK+3,2,CONCRETE,CONCRETE,COLOR(153,163,158));
- }
- if(cm_metro_station(bz)){
-  for(int side=-1;side<=1;side+=2){
-   /* Left side extends to the original stair landing; right ends before buildings at x1506. */
-   float width=side<0?9.5f:8.5f,cx=CM_METRO_X+side*(10.5f+width*.5f);
-   metro_ribbon(cx,z+60,z+260,width,CM_PLAT_H-1.2f,1.2f,SIDEWALK,SIDEWALK,COLOR(226,222,214));
-   metro_ribbon(CM_METRO_X+side*10.9f,z+60,z+260,.55f,CM_PLAT_H+.02f,.12f,FLAT,FLAT,COLOR(250,200,60));
-   metro_ribbon(CM_METRO_X+side*16.5f,z+61,z+259,.55f,CM_PLAT_H,5.5f,METAL,METAL,COLOR(73,111,108));
-  }
-  for(int k=0;k<3;k++)for(int side=-1;side<=1;side+=2)cylinder(CM_METRO_X+side*15,z+80+k*80,0,2.4f,CM_PLAT_H-1.2f,6,0,CONCRETE,CONCRETE,0xffffffffu);
-  if(!far)for(int k=0;k<4;k++)for(int side=-1;side<=1;side+=2)box(CM_METRO_X+side*16.6f,z+70+k*60,CM_PLAT_H,1.2f,1.2f,26,0,METAL,METAL,COLOR(113,143,144));
-  /* Platform canopies leave the central track open: the follow camera can
-     see trains/rails instead of looking through one opaque full-width roof. */
-  for(int side=-1;side<=1;side+=2){
-   float roofX=CM_METRO_X+side*15;
-   rail_canopy(roofX,z+160,8,208,CM_PLAT_H+24,2);
-   /* Continuous dark fascia hides the raw canopy edges and identifies the
-      platform as a station rather than an exposed piece of track. */
-   if(!far){metro_ribbon(CM_METRO_X+side*20.8f,z+56,z+264,.8f,CM_PLAT_H+23.6f,1.4f,METAL,METAL,COLOR(44,82,93));
-   metro_ribbon(roofX,z+56,z+264,.55f,CM_PLAT_H+25.6f,.55f,METAL,METAL,COLOR(209,230,226));}
-  }
-  if(!far){
-   for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++)
-    metro_ribbon(CM_METRO_X+side*15,z+74+k*57-.6f,z+74+k*57+.6f,8,CM_PLAT_H+24.2f,1.1f,METAL,METAL,COLOR(56,80,74));
-   for(int side=-1;side<=1;side+=2)for(int k=0;k<3;k++){
-    box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H+2.5f,3,10,.8f,0,FLAT,FLAT,COLOR(50,137,121));
-    box(CM_METRO_X+side*15,z+96+k*64,CM_PLAT_H,1,7,2.5f,0,METAL,METAL,COLOR(68,86,87));
-   }
-  }
-  /* A narrower stair no longer intersects the body/doors of a stopped train. */
-  for(int k=far?3:0;k<20;k+=far?4:1)box(1470.5f,z+316.5f-k*3-(far?4.5f:0),0,8,far?12:3,(k+1)*(CM_PLAT_H/20),0,STUCCO,SIDEWALK,COLOR(226,222,214)); /* lejos: 5 tramos */
-  if(!far)for(int side=-1;side<=1;side+=2)for(int k=0;k<4;k++){float zz=z+312-k*18;box(1470.5f+side*4.3f,zz,(318-(zz-z))*(CM_PLAT_H/60)+1,.6f,.6f,8,0,METAL,METAL,COLOR(113,143,144));}
-  /* Leave half a unit between landing and final stair: their side planes used
-     to overlap at x=1466 and shimmer in the PSP depth buffer. */
-  box(1470.5f,z+255.5f,CM_PLAT_H-1.2f,8,4,1.2f,0,SIDEWALK,SIDEWALK,COLOR(226,222,214));
-  if(!far){
-   /* Ground entrance sign stands on its own posts, below the viaduct;
-      no floating board or frame crosses the train/roof equipment envelope. */
-   for(int side=-1;side<=1;side+=2)box(1470.5f+side*9.4f,z+314,0,.7f,.7f,24.8f,0,METAL,METAL,COLOR(113,143,144));
-   metro_marker(1470.5f,z+314,19,(bz+1)/2);
-  }
- }
-}
+/* v2.49: metro_marker() del Metro antiguo, retirado */
+/* v2.49: metro() del Metro de la orilla, sustituido por el Metro circular (metro_loop_draw.inc) */
 /* Metrocable: pilonas, cable y cabinas entre (CM_CABLE_X0,Z0) y (CM_CABLE_X1,Z1). */
 static void metrocable(int far){
     enum {N=5};float hs[N+1],px[N+1],pz[N+1];
@@ -977,7 +801,9 @@ static void cached_piece(int slot,int lod,PieceFn fn,int bx,int bz,int far,uint3
     if(oldValid&&cc->nchunks<=oldN&&oldC0+oldN<=cc->chunk0){memcpy(chunkPool+oldC0,chunkPool+cc->chunk0,cc->nchunks*sizeof(CacheChunk));chunkUsed=cc->chunk0;cc->chunk0=oldC0;}
     cc->used=r3Frame;if(!prefetchOnly)cache_replay(cc);
 }
-static void cell_piece(int bx,int bz,int far,uint32_t white){city_cell_v26(bx,bz,far,white);}
+#include "metro_loop_draw.inc"
+static void cell_piece(int bx,int bz,int far,uint32_t white){city_cell_v26(bx,bz,far,white);
+    float saved=fixedGround;fixedGround=-1000000;metro_loop_cell(bx,bz,far);fixedGround=saved;} /* v2.49: Metro circular */
 static float river_centre(float z){return 1428+6*sinf(z/145.f)+2*sinf(z/53.f);}
 static void river_channel(int bz,uint32_t white){
     /* Shared endpoints, including beneath every bridge: no disconnected rows.
@@ -1003,7 +829,7 @@ static void river_row(int bx,int bz,int far,uint32_t white){(void)bx;
     river_footbridge(bz);
     ground(SIDEWALK,1462,bz*320+86,35.5f,234,1.2f,COLOR(226,222,214),6); /* v2.33: hasta 1497,5; desde 1498 es la acera de las manzanas (misma altura: parpadeaba) */
     if(!far)for(int k=0;k<3;k++){tree(1388,bz*320+120+k*60);if(!cm_metro_station(bz))tree(1466,bz*320+150+k*60);}
-    metro(bz,far);
+    (void)far; /* v2.49: el Metro de la orilla del rio se sustituyo por el Metro circular */
 }
 static void city_v26(void){
     const uint32_t white=0xffffffffu;int cacheBudget=r3WarmBudget>0?r3WarmBudget:1;
@@ -1036,7 +862,7 @@ static void city_v26(void){
         int far=view_distance(1428,bz*320+160)>430;
         cached_piece(56+bz,far?2:0,river_row,0,bz,far,white,&cacheBudget); /* v2.31: tramo de rio/Metro en cache */
     }
-    if(nearby(CM_METRO_X,view->metroZ,800))metro_train();
+    metro_loop_train(view->metroZ); /* v2.49: metroZ = posicion s del tren en el anillo */
     {float cx=(CM_CABLE_X0+CM_CABLE_X1)*.5f,cz=(CM_CABLE_Z0+CM_CABLE_Z1)*.5f;if(nearby(cx,cz,1100))metrocable(view_distance(cx,cz)>600);}
     for(int side=0;side<2;side++)for(int row=0;row<28;row++){
         float x=side?2560:-320,z=row*80;
