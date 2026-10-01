@@ -20,10 +20,10 @@
 #define ML_DECK_W 26.f     /* ancho del tablero */
 #define ML_PLAT_IN 11.f    /* borde interior del anden (desde el eje) */
 #define ML_PLAT_W 12.f     /* ancho del anden */
-#define ML_STAIR_W 11.f    /* ancho de la escalera (antes 6) */
+#define ML_STAIR_W 16.f    /* ancho de la escalera (v2.53: antes 11; v2.50: antes 6) */
 #define ML_CARS 3
 #define ML_PLAT_HALF 55.f   /* medio largo del anden */
-#define ML_STAIR_OFF 32.f   /* desplazamiento lateral de la escalera (acera interior) */
+#define ML_STAIR_OFF 34.f   /* desplazamiento lateral de la escalera (acera interior; v2.53: 26..42 desde el eje) */
 #define ML_STAIR_FOOT 112.f /* la escalera baja desde el final del anden hasta aqui (en s, hacia atras) */
 static const float ml_pi=3.14159265f;
 static inline float ml_lh(void){return ML_X1-ML_X0-2*ML_R;}
@@ -81,6 +81,26 @@ static inline int ml_stairs_at(float x,float z,float r){
         float x0=fminf(ax,bx)-r,x1=fmaxf(ax,bx)+r,z0=fminf(az,bz)-r,z1=fmaxf(az,bz)+r;
         if(x>=x0&&x<=x1&&z>=z0&&z<=z1)return 1;}
     return 0;
+}
+/* v2.53 (Claude): escaleras y andenes transitables. Coordenadas locales de la estacion i: a = a lo largo del anillo
+   desde el centro del anden, o = lateral (>0 hacia el interior del anillo, donde estan anden y escalera). */
+#define ML_STAIR_TOP (-ML_PLAT_HALF-4.f) /* a del rellano superior; el pie esta en -ML_STAIR_FOOT */
+static inline void ml_station_local(int i,float x,float z,float *a,float *o){
+    float px,pz,tx,tz;ml_point(ml_station_s(i),&px,&pz,&tx,&tz);float dx=x-px,dz=z-pz;*a=dx*tx+dz*tz;*o=-dx*tz+dz*tx;
+}
+/* Altura sobre el terreno de lo que se pisa en (x,z): la escalera sube de 0 a ML_FLOOR; rellano y anden interior a
+   ML_FLOOR (solo si ya se esta arriba). -1 si no hay nada del Metro. *station = estacion del anden (o -1). */
+static inline float ml_walk_height(float x,float z,int up,int *station){
+    if(station)*station=-1;
+    for(int i=0;i<ML_STATIONS;i++){float a,o;ml_station_local(i,x,z,&a,&o);
+        if(a<-ML_STAIR_FOOT-2||a>ML_PLAT_HALF+2||o<0||o>ML_STAIR_OFF+ML_STAIR_W)continue;
+        float s0=ML_STAIR_OFF-ML_STAIR_W*.5f,s1=ML_STAIR_OFF+ML_STAIR_W*.5f,edge=ML_PLAT_IN+ML_PLAT_W;
+        if(o>=s0&&o<=s1&&a>=-ML_STAIR_FOOT&&a<=ML_STAIR_TOP)return ML_FLOOR*(a+ML_STAIR_FOOT)/(ML_STAIR_TOP+ML_STAIR_FOOT);
+        if(!up)continue;
+        if(a>=ML_STAIR_TOP&&a<=-ML_PLAT_HALF+8&&o>=edge-1&&o<=s1)return ML_FLOOR;                  /* rellano */
+        if(a>=-ML_PLAT_HALF&&a<=ML_PLAT_HALF&&o>=ML_PLAT_IN+1.5f&&o<=edge){if(station)*station=i;return ML_FLOOR;} /* anden */
+    }
+    return -1;
 }
 /* Distancia (en s) desde a hasta b en sentido de marcha. */
 static inline float ml_ahead(float a,float b){float d=ml_wrap(b)-ml_wrap(a);return d<0?d+ml_length():d;}

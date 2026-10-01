@@ -30,6 +30,19 @@ int main(void){
  int got=0;for(int f=0;f<60*60;f++){metro_update(1.f/30);if(g.metroWait>0&&metroStation==1){got=1;break;}}
  assert(got);enter_exit();assert(!g.inMetro);ml_entrance(1,&ex,&ez);assert(dist(g.x,g.y,ex,ez)<1);
  assert(foot_free(g.x,g.y));
+ /* v2.53: escaleras transitables. Por el centro de cada escalera la altura sube sin saltos (>6 seria un muro para
+    lift_ok) desde la entrada hasta el anden; por el costado, a media altura, no se puede entrar; coches y peatones
+    chocan con la escalera y el jugador no; desde el anden se sube al tren con TRIANGULO. */
+ for(int i=0;i<ML_STATIONS;i++){float sc=ml_station_s(i),prev=0;int platform=0;
+  for(float a=-ML_STAIR_FOOT-8;a<=0;a+=1){float x,z;ml_frame_pt(sc+a,a<=ML_STAIR_TOP?ML_STAIR_OFF:(a<=-ML_PLAT_HALF+6?ML_STAIR_OFF-6:ML_PLAT_IN+ML_PLAT_W*.5f),&x,&z);
+   int st;float h=ml_walk_height(x,z,prev>15,&st);if(h<0)h=0;assert(fabsf(h-prev)<=6);prev=h;if(st==i)platform=1;}
+  assert(platform&&prev==ML_FLOOR);
+  float x,z;ml_frame_pt(sc-ML_STAIR_FOOT*.5f-ML_PLAT_HALF*.5f,ML_STAIR_OFF+ML_STAIR_W*.5f+4,&x,&z);float side=ml_walk_height(x,z,0,0);assert(side<0);
+  ml_frame_pt(sc-ML_STAIR_FOOT*.5f-ML_PLAT_HALF*.5f,ML_STAIR_OFF,&x,&z);assert(ml_walk_height(x,z,0,0)>10);
+  assert(world_solid(x,z));stairsWalkable=1;assert(!world_solid(x,z));stairsWalkable=0;}
+ {fresh_game();g.screen=WORLD;g.metroDir=0;metro_update(1.f/30);assert(metroStation==0&&g.metroWait>0);
+  float x,z;ml_frame_pt(ml_station_s(0),ML_PLAT_IN+ML_PLAT_W*.5f,&x,&z);g.x=x;g.y=z;g.lift=ML_FLOOR;g.car=-1;g.inMetro=0;
+  assert(metro_boardable());enter_exit();assert(g.inMetro);}
  printf("PASS: anillo de %.0f continuo y cerrado; %d puntos de pilar fuera de cruces y carriles; vuelta con 6 paradas; subir y bajar con TRIANGULO.\n",ml_length(),pillars);
  return 0;
 }
