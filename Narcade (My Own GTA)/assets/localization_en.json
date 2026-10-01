@@ -332,8 +332,6 @@
   "Acercate al objetivo amarillo, un vinilo o un servicio.": "Approach the yellow objective, a record or a service.",
   "Frena antes de bajar del carro.": "Brake before leaving the car.",
   "No hay espacio para bajar. Mueve el carro.": "No room to get out. Move the car.",
-  "CARRO TOMADO. X acelera / [] frena / L-R radio.": "CAR TAKEN. X accelerate / [] brake / L-R radio.",
-  "Luna: cuidalo. X acelera / [] frena / L-R radio.": "Luna: take care of it. X gas / [] brake / L-R radio.",
   "Acercate a un carro. TRIANGULO para tomarlo.": "Approach a car. TRIANGLE to take it.",
   "Cansado: trota mientras recuperas la estamina.": "Tired: jog while your stamina recovers.",
   "Estamina recuperada. Pulsa X repetidamente para correr.": "Stamina restored. Tap X repeatedly to sprint.",
@@ -603,5 +601,12 @@
   "METRO CIRCULAR: espera el tren aqui": "CIRCLE LINE METRO: wait for the train here",
   "PROXIMA: %s": "NEXT: %s",
   "TRIANGULO BAJAR / %s": "TRIANGLE GET OFF / %s",
-  "TRIANGULO SUBIR AL METRO": "TRIANGLE BOARD THE METRO"
+  "TRIANGULO SUBIR AL METRO": "TRIANGLE BOARD THE METRO",
+  "CARRO TOMADO. X acelera / [] frena": "CAR TAKEN. X accelerate / [] brake",
+  "Luna: cuidalo. X acelera / [] frena": "Luna: take care of it. X accelerate / [] brake",
+  "RADIO APAGADA": "RADIO OFF",
+  "METRO: espera cancelada.": "METRO: wait cancelled.",
+  "METRO: espera el tren / TRIANGULO cancelar": "METRO: wait for the train / TRIANGLE cancel",
+  "METRO: espera junto a la entrada. Subiras al llegar el tren.": "METRO: wait by the entrance. You will board when the train arrives.",
+  "TRIANGULO: esperar el Metro": "TRIANGLE: wait for the Metro"
 }

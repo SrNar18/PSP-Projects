@@ -13,6 +13,7 @@ void game_latch_cross(unsigned pressed);
 void game_tick(unsigned buttons,float analogx,float analogy,float dt);
 void game_draw(uint32_t *pixels,int stride);
 void game_audio(short *stereo,unsigned frames);
+void game_radio_pump(void); /* v2.52: radio de los carros (hilo de baja prioridad en PSP) */
 int game_language(void);
 const char *game_localize(const char *text);
 int game_save(void);

@@ -71,7 +71,7 @@ static uint32_t *fb;static int pitch;
 #ifdef NARCADE_3D
 static uint32_t *renderTarget;
 #endif
-static volatile int audioStation=0,audioEnabled=0,audioAmbient=0;
+static volatile int audioStation=0,audioEnabled=0,audioAmbient=0,audioRadio=0;
 static volatile unsigned hornEvent=0;
 static volatile unsigned menuEvent=0;
 static volatile int hornGain=0,hornPan=0,trafficGain=0,crowdGain=0;
@@ -163,6 +163,7 @@ static void footer(const char *s){rect(0,252,W,20,INK);text(12,257,s,MUTED,1);}
 static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].steps[g.step];}
 static int parkblock(int bx,int by){return cm_park(bx,by);}
 #include "climb_walls.inc"
+#include "car_radio.inc" /* v2.52 (Claude): radio de los carros */
 static int world_solid(float x,float y){
  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8)return 1;
  int ly=(int)y%320;
@@ -658,7 +659,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT camara / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){strncpy(g.speaker,who,sizeof(g.speaker)-1);g.speaker[sizeof(g.speaker)-1]=0;strncpy(g.dialog,s,sizeof(g.dialog)-1);g.dialog[sizeof(g.dialog)-1]=0;g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){metroQueue=-1;g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){metroQueue=-1;car_radio_reset();g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -669,7 +670,7 @@ static void advance(void){
  if(g.step>=missions[g.mission].count){g.cash+=missions[g.mission].reward;g.reputation+=3;dialog("MISION COMPLETADA",missions[g.mission].outro,2);}else{notice("Objetivo completado. Consulta la nueva marca amarilla.");game_save();}
 }
 static void end_dialog(void){int a=g.dialogAction;g.screen=WORLD;if(a==1)advance();if(a==2){g.mission++;g.step=0;game_save();if(g.mission<36)start_mission();else{g.heat=0;dialog("NARCADE / FIN DE LA HISTORIA",g.ending==1?"Vera entrega el expediente a la justicia. Los vecinos conservan sus datos. Sara vuelve a casa. La historia termina, pero la ciudad sigue abierta: encuentra los 24 vinilos, realiza encargos y recorre Medellin. made by Naresz.":"Mara publica las pruebas sin exponer los datos privados. Los barrios guardan copias y vigilan su ciudad. Sara vuelve a casa. La historia termina, pero puedes seguir explorando, reunir los 24 vinilos y realizar encargos. made by Naresz.",0);}}}
-void game_init(void){memset(&g,0,sizeof(g));g.stamina=100;g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");settings_load();trophies_load();world_init();}
+void game_init(void){memset(&g,0,sizeof(g));g.stamina=100;g.zoom=1;g.hudDistrict=-1;g.screen=TITLE;g.car=-1;g.health=100;g.cash=350;g.x=62;g.y=1022;g.viewYaw=-PI*.5f;strcpy(g.savepath,"NARCADE.SAV");settings_load();trophies_load();world_init();car_radio_reset();}
 
 /* Mini-games: all are real state machines and require player input. */
 static const char *puzzleNames[]={"","","PC / CLAVE DE CUATRO DIGITOS","PC / CIRCUITO AISLADO","PC / MEMORIA DEL REGISTRO","RADIO / SINTONIA FINA","CONSOLA / SESION DE RITMO","ESTUCHE / CIERRE MECANICO","ACCESO / PATIO VIGILADO"};
@@ -747,10 +748,10 @@ static void interact(void){
 
 static void enter_exit(void){
  if(g.car<0&&metro_toggle())return; /* v2.49: TRIANGULO sube o baja del Metro circular */
- if(g.car>=0){Car *c=&g.cars[g.car];if(fabsf(c->speed)>45){notice("Frena antes de bajar del carro.");return;}float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}if(!free_at(xx,yy,5)){notice("No hay espacio para bajar. Mueve el carro.");return;}g.x=xx;g.y=yy;c->speed=0;c->parked=1;g.car=-1;return;}
+ if(g.car>=0){Car *c=&g.cars[g.car];if(fabsf(c->speed)>45){notice("Frena antes de bajar del carro.");return;}float xx=c->x+cosf(c->a+PI*.5f)*23,yy=c->y+sinf(c->a+PI*.5f)*23;if(!free_at(xx,yy,5)){xx=c->x-cosf(c->a+PI*.5f)*23;yy=c->y-sinf(c->a+PI*.5f)*23;}if(!free_at(xx,yy,5)){notice("No hay espacio para bajar. Mueve el carro.");return;}g.x=xx;g.y=yy;c->speed=0;c->parked=1;g.car=-1;car_radio_exit();return;}
  int best=-1;float d=43;for(int i=0;i<CAR_COUNT;i++){float dd=dist(g.x,g.y,g.cars[i].x,g.cars[i].y);if(dd<d&&g.cars[i].hp>0){best=i;d=dd;}}
- if(best>=0){g.car=best;g.steerSmooth=0;g.moveActive=0;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;
-  if(best!=1){wanted_crime(g.cars[best].police?4:3);notice("CARRO TOMADO. X acelera / [] frena / L-R radio.");}else notice("Luna: cuidalo. X acelera / [] frena / L-R radio.");
+ if(best>=0){g.car=best;g.steerSmooth=0;g.moveActive=0;g.x=g.cars[best].x;g.y=g.cars[best].y;g.cars[best].parked=0;car_radio_enter(best);
+  if(best!=1){wanted_crime(g.cars[best].police?4:3);notice("CARRO TOMADO. X acelera / [] frena");}else notice("Luna: cuidalo. X acelera / [] frena");
  }else notice("Acercate a un carro. TRIANGULO para tomarlo.");
 }
 static void foot_pace(int moving,float dt){
@@ -889,9 +890,9 @@ static void world_tick(float ax,float ay,float dt){
  if(pressed(B_TRI))enter_exit();
 #ifdef NARCADE_3D
  if(g.car>=0)g.stickActive=0;
- if(g.car>=0){if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;}
+ if(g.car>=0){if(pressed(B_LEFT))car_radio_step(-1);if(pressed(B_RIGHT))car_radio_step(1);} /* v2.52: IZQUIERDA/DERECHA cambian de emisora */
 #else
- if(pressed(B_L))g.station=wrapi(g.station-1,5);if(pressed(B_R))g.station=(g.station+1)%5;
+ if(g.car>=0){if(pressed(B_LEFT))car_radio_step(-1);if(pressed(B_RIGHT))car_radio_step(1);}
 #endif
  combat_tick(ax,ay,dt);
  if(pressed(B_CIRCLE)&&!combat.aiming){g.screen=JOURNAL;g.journalPage=0;return;}
@@ -1007,7 +1008,7 @@ static void world_tick(float ax,float ay,float dt){
 #endif
  }else if(g.car>=0){ /* v2.6: a bordo del Metro no hay coche ni paseo */
   foot_pace(0,dt);
-  Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax+held(B_RIGHT)-held(B_LEFT),-1,1);
+  Car *c=&g.cars[g.car];float oldAngle=c->a,steer=clampf(ax,-1,1); /* v2.52: solo el joystick; las flechas son la radio */
   if(held(B_CROSS))c->speed+=130*dt;else if(held(B_SQUARE))c->speed-=190*dt;else c->speed*=powf(.44f,dt);
   c->speed=clampf(c->speed,-72,220+(c->type==4?32:0));if(c->hp<25)c->speed=clampf(c->speed,-50,120);
   /* Centre the wheel as soon as the stick is released: lingering steering
@@ -1225,7 +1226,11 @@ void game_tick(unsigned buttons,float ax,float ay,float dt){
     (oldScreen==PAUSE&&g.screen==PAUSE&&(oldMenu!=g.menu||oldTab!=g.pauseTab||oldMap!=g.mapSel||oldJournal!=g.journalPage))||
     (oldScreen==MAP&&oldMap!=g.mapSel)||(oldScreen==JOURNAL&&oldJournal!=g.journalPage)||
     (oldScreen==MINI&&oldCursor!=g.p.cursor)||(oldScreen==CHOICE&&oldMenu!=g.menu))menu_click();
- int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=rhythm?3:g.station;audioEnabled=(g.car>=0&&g.station<4&&g.screen!=TITLE&&g.screen!=CREDITS&&g.screen!=TROPHIES)||rhythm;
+ int rhythm=(g.screen==MINI&&g.p.kind==K_RHYTHM);audioStation=3;audioEnabled=rhythm;audioRadio=!rhythm&&g.car>=0&&g.screen!=TITLE&&g.screen!=CREDITS&&g.screen!=TROPHIES;
+ crShowT=fmaxf(0,crShowT-dt);
+#if !defined(__psp__)&&!defined(__PSP__)
+ game_radio_pump(); /* PC: sin hilo de radio */
+#endif
  audioAmbient=g.screen==WORLD;
  if(rhythm)audioPos=(unsigned)(g.p.t*44100)%(track_length[3]*2);
 }
@@ -1408,9 +1413,14 @@ static void hud(void){
 #ifdef NARCADE_PROFILE
  snprintf(b,sizeof(b),"%.1f ms  (max %.1f)",profileMs,profileMax);rect(4,40,140,14,INK);text(8,42,b,GOLD,1);
 #endif
+ /* v2.52: emisora sintonizada arriba (tapa al barrio mientras dura) */
+ if(g.car>=0&&crShowT>0){const char *song=car_radio_song();char rb[96];
+  if(song&&crWant>=0)snprintf(rb,sizeof rb,"%s  /  %s",crLabel,song);else snprintf(rb,sizeof rb,"%s",crLabel);
+  if(strlen(rb)>42)rb[42]=0; /* a la izquierda de las barras de vida (x<W-128) */
+  int w=(int)strlen(rb)*7+38,cx=(W-128)/2;hud_plaque(cx,7,w,25,RGB(240,180,70));font_text(cx-(int)strlen(rb)*7/2,13,rb,WHITE,1,1);}
  /* Barrio nuevo: aviso temporal arriba. */
  int d=district(g.x,g.y);if(g.screen==WORLD&&d!=g.hudDistrict){g.hudDistrict=d;g.hudDistrictT=2.2f;}
- if(g.hudDistrictT>0){const char *name=locale_text(districts[d]);int w=(int)strlen(name)*7+38;
+ if(!(g.car>=0&&crShowT>0)&&g.hudDistrictT>0){const char *name=locale_text(districts[d]);int w=(int)strlen(name)*7+38;
   hud_plaque(W/2,7,w,25,RGB(70,202,239));
   font_text(W/2-(int)strlen(name)*7/2,13,name,WHITE,1,1);}
  /* Objetivo nuevo: frase temporal abajo. */
@@ -1835,7 +1845,7 @@ void game_audio(short *stereo,unsigned frames){
  if(seenMenu!=menuEvent){seenMenu=menuEvent;menuSample=0;}
  if(seenShot!=shotEvent){seenShot=shotEvent;shotSample=0;soundKind=shotKind;}
  for(unsigned i=0;i<frames;i++){
-  int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:0;
+  int music=audioEnabled?radio_data[track_start[station]+audioPos/2]:audioRadio?car_radio_sample():0;
   if(audioEnabled){audioPos++;if(audioPos>=(unsigned)track_length[station]*2)audioPos=0;}
   int target=audioAmbient?256:0;if(fade<target)fade++;else if(fade>target)fade--;
   if((i&127)==0){if(engineLevel<trafficGain)engineLevel++;else if(engineLevel>trafficGain)engineLevel--;}

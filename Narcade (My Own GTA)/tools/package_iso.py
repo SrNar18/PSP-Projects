@@ -18,6 +18,7 @@ shutil.copy(root/'assets/SND0.AT3',stage/'PSP_GAME/SND0.AT3')  # musica en la XM
 for k in range(3):
  src=root/f'assets/title-slides/slide{k}.rgb565'
  if src.exists():shutil.copy(src,stage/'PSP_GAME/USRDIR'/f'TITLE{k}.BIN')  # v2.50: portada animada
+for src in sorted((root/'assets/radio').glob('RADIO*.BIN')):shutil.copy(src,stage/'PSP_GAME/USRDIR'/src.name)  # v2.52: emisoras de los carros (tools/build_radio.py)
 for k,name in enumerate(['valley','street','rooftop']):shutil.copy(root/f'assets/loading-v241/{name}.rgb565',stage/'PSP_GAME/USRDIR'/f'LOAD{k}.BIN')  # v2.41: ilustraciones de carga (se leen en la carga, no ocupan RAM)
 for source,dest in [('AVISOS.txt','NOTICES.TXT'),('tools/PSPSDK-LICENSE.txt','SDK.TXT'),('tools/Newlib-LICENSE.txt','NEWLIB.TXT'),('tools/Allura-LICENSE.txt','ALLURA.TXT'),('tools/DejaVu-LICENSE.txt','DEJAVU.TXT'),('tools/fonts/Oxanium-OFL.txt','OXANIUM.TXT'),('tools/fonts/Rajdhani-OFL.txt','RAJDHANI.TXT')]:
  shutil.copy(root/source,stage/'PSP_GAME/USRDIR'/dest)
