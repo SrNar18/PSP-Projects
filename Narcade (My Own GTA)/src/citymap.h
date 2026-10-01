@@ -249,7 +249,7 @@ static inline int cm_obstacle(float x,float z){
         if(dx*dx+dz*dz<12.f*12.f)return 1;
     }
     if(ml_pillar_at(x,z,0))return 1; /* v2.49: pilares del Metro circular */
-    if(ml_stairs_at(x,z,0))return 1; /* v2.50: escaleras de las estaciones (antes se atravesaban) */
+    /* v2.53: las escaleras del Metro van en world_solid (game.c): solidas para coches y peatones, transitables para el jugador */
     int bx=(int)floorf(x/320),bzc=(int)floorf(z/320);
     for(int dz=-1;dz<=0;dz++)for(int dx=-1;dx<=0;dx++){
         const CmParcel *ps;int n=cm_parcels(bx+dx,bzc+dz,&ps);unsigned f=cm_flags(bx+dx,bzc+dz);

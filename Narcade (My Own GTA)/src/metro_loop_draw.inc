@@ -33,7 +33,7 @@ static void ml_station(int i,int far){
         for(float s=s0;s<s1-.01f;s+=ML_STEP){float e=fminf(s+ML_STEP,s1);
             ml_ribbon(s,e,sd*pc,ML_PLAT_W,ML_DECK-3,ML_FLOOR,CONCRETE,SIDEWALK,COLOR(214,210,202),1);
             if(!far){ml_ribbon(s,e,sd*(ML_PLAT_IN+.5f),1,ML_FLOOR,ML_FLOOR+.25f,FLAT,FLAT,COLOR(250,200,60),0);
-                ml_ribbon(s,e,sd*(edge-.2f),.4f,ML_FLOOR,ML_FLOOR+4,METAL,METAL,COLOR(70,96,100),0);}
+                {float rs=sd>0?fmaxf(s,s0+9):s;if(rs<e)ml_ribbon(rs,e,sd*(edge-.2f),.4f,ML_FLOOR,ML_FLOOR+4,METAL,METAL,COLOR(70,96,100),0);}} /* v2.53: abertura hacia el rellano */
             if(sd<0){ml_ribbon(s,e,0,2*edge+4,ML_FLOOR+ML_TRAIN_H+5,ML_FLOOR+ML_TRAIN_H+6.4f,METAL,ROOF,COLOR(196,202,204),1); /* cubierta */
                 if(!far){ml_ribbon(s,e,-(edge+2),1,ML_FLOOR+ML_TRAIN_H+3,ML_FLOOR+ML_TRAIN_H+6.4f,METAL,METAL,COLOR(36,112,92),0);
                     ml_ribbon(s,e,edge+2,1,ML_FLOOR+ML_TRAIN_H+3,ML_FLOOR+ML_TRAIN_H+6.4f,METAL,METAL,COLOR(36,112,92),0);}}
@@ -54,11 +54,23 @@ static void ml_station(int i,int far){
         box(x-tz*.3f,z+tx*.3f,ML_FLOOR+ML_TRAIN_H-.2f,4.5f,.4f,2.4f,atan2f(tz,tx),FLAT,FLAT,COLOR(240,240,236));fixedGround=saved;}
     /* pasarela del anden interior a la escalera y escalera ancha hasta la acera interior (hacia atras en s) */
     {float a=edge,b=ML_STAIR_OFF+ML_STAIR_W*.5f;ml_ribbon(s0-4,s0+8,(a+b)*.5f,b-a+1,ML_FLOOR-1.2f,ML_FLOOR,CONCRETE,SIDEWALK,COLOR(214,210,202),1);}
-    {int steps=far?5:16;float run=ML_STAIR_FOOT-ML_PLAT_HALF-4;
-        for(int k=0;k<steps;k++){float a=(float)k/steps,b=(float)(k+1)/steps;float sa=s0-4-run*a,sb=s0-4-run*b;
-            float hgt=ML_FLOOR*(1-b)+.4f;ml_ribbon(sb,sa,ML_STAIR_OFF,ML_STAIR_W,0,hgt,CONCRETE,SIDEWALK,COLOR(206,202,194),0);}
-        if(!far)for(int sd=-1;sd<=1;sd+=2)for(float s=s0-4;s>s0-4-run+.1f;s-=4){float a=(s0-4-s)/run;                    /* barandillas */
-            ml_ribbon(s-4,s,ML_STAIR_OFF+sd*(ML_STAIR_W*.5f+.2f),.3f,ML_FLOOR*(1-a)+3.2f,ML_FLOOR*(1-a)+3.6f,METAL,METAL,COLOR(96,112,114),0);}}
+    /* v2.53 (Claude): escalera maciza y transitable (ml_walk_height). Antes cada peldano era una cinta sin
+       contrahuella: desde algunos angulos se veian las huellas de arriba y por en medio se veia a traves. Ahora cada
+       peldano es un bloque desde el suelo con su contrahuella; testero bajo el rellano, zocalos y barandillas. */
+    {int steps=far?6:16;float run=ML_STAIR_FOOT+ML_STAIR_TOP,sf=sc-ML_STAIR_FOOT;float prev=0;
+        for(int k=0;k<steps;k++){float sa=sf+run*k/steps,sb=sf+run*(k+1)/steps,hgt=ML_FLOOR*(k+1)/steps;
+            ml_ribbon(sa,sb,ML_STAIR_OFF,ML_STAIR_W,0,hgt,CONCRETE,SIDEWALK,COLOR(206,202,194),0);
+            ml_cap(sa,ML_STAIR_OFF,ML_STAIR_W,prev,hgt,CONCRETE,lit_color(COLOR(186,182,174),0,0,1)); /* contrahuella */
+            if(!far&&!cityMid)ml_ribbon(sa,sa+.6f,ML_STAIR_OFF,ML_STAIR_W-.4f,hgt-.05f,hgt+.12f,FLAT,FLAT,COLOR(250,200,60),0); /* canto amarillo */
+            prev=hgt;}
+        ml_cap(sf+run,ML_STAIR_OFF,ML_STAIR_W,0,ML_FLOOR,CONCRETE,lit_color(COLOR(176,172,166),0,0,1)); /* testero bajo el rellano */
+        if(!far)for(int sd=-1;sd<=1;sd+=2){float off=ML_STAIR_OFF+sd*(ML_STAIR_W*.5f+.3f);
+            for(int k=0;k<8;k++){float sa=sf+run*k/8,sb=sf+run*(k+1)/8,ya=ML_FLOOR*k/8,yb=ML_FLOOR*(k+1)/8; /* pasamanos inclinado */
+                float ax,az,tx,tz,bx,bz,ux,uz;ml_frame(sa,off,&ax,&az,&tx,&tz);ml_frame(sb,off,&bx,&bz,&ux,&uz);
+                quad(METAL,point(ax,ya+3.4f,az),point(bx,yb+3.4f,bz),point(bx,yb+4.0f,bz),point(ax,ya+4.0f,az),COLOR(96,112,114),1,1);
+                quad(METAL,point(ax,ya+.2f,az),point(bx,yb+.2f,bz),point(bx,yb+3.4f,bz),point(ax,ya+3.4f,az),COLOR(60,90,96),1,1); /* panel de cristal oscuro */
+            }}
+    }
     /* portico de entrada a pie de calle */
     {float ex,ez,tx,tz;ml_frame(sc-ML_STAIR_FOOT-5,ML_STAIR_OFF,&ex,&ez,&tx,&tz);float saved=fixedGround;fixedGround=geo_height(ex,ez);float a=atan2f(tz,tx);
         for(int sd=-1;sd<=1;sd+=2)box(ex-tz*sd*(ML_STAIR_W*.5f+.5f),ez+tx*sd*(ML_STAIR_W*.5f+.5f),0,1.2f,1.2f,13,a,METAL,METAL,COLOR(36,112,92));

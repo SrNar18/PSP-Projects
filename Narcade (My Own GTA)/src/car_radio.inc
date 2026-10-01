@@ -54,7 +54,9 @@ void game_radio_pump(void){
     if(seq!=crSeq){crSeq=seq;if(crFile){fclose(crFile);crFile=0;}crPlaying=crWant;
         crCutPos=crHead;crCutSeq++;                                     /* el audio descarta lo que quedaba */
         if(crPlaying>=0&&crPlaying<crStations&&(crFile=cr_open(crPlaying))!=0){
-            cr_pick(-1);uint32_t b=crStation[crPlaying].track[crTrack].blocks;crBlock=(unsigned)(cr_rand()%(b*3/4)); /* segundo al azar */
+            cr_pick(-1);uint32_t b=crStation[crPlaying].track[crTrack].blocks;
+            /* v2.53: segundo al azar de toda la cancion salvo los ultimos ~5 s (para no empezar justo en el corte; revision de Codex) */
+            crBlock=(unsigned)(cr_rand()%(b>60?b-54:b));
         }else crPlaying=-1;}
     if(crPlaying<0||!crFile)return;
     for(int n=0;n<8;n++){

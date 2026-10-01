@@ -164,8 +164,10 @@ static const Step *step_now(void){return &missions[g.mission<36?g.mission:35].st
 static int parkblock(int bx,int by){return cm_park(bx,by);}
 #include "climb_walls.inc"
 #include "car_radio.inc" /* v2.52 (Claude): radio de los carros */
+static int stairsWalkable=0; /* v2.53: el jugador sube las escaleras del Metro; coches y peatones chocan con ellas */
 static int world_solid(float x,float y){
  if(x<8||y<8||x>WORLD_W-8||y>WORLD_H-8)return 1;
+ if(!stairsWalkable&&ml_stairs_at(x,y,0))return 1;
  int ly=(int)y%320;
  if(x>1396&&x<1460&&ly>86){
   int bridge=0;for(int row=0;row<7;row++)if(fabsf(y-cm_footbridge_z(row))<13.f)bridge=1;
@@ -216,8 +218,10 @@ static float proj_heading(float x,float y,float angle){
  float a,b,c,d;physics_project(x,y,&a,&b);physics_project(x+cosf(angle)*.5f,y+sinf(angle)*.5f,&c,&d);return atan2f(d-b,c-a);
 }
 /* v2.6: escaleras y anden del Metro. Arriba solo se puede estar sobre el anden o la escalera; no hay saltos bruscos. */
+/* v2.53: escalera, rellano y anden del Metro circular, ademas de las plataformas de la ciudad */
+static float walk_lift(float x,float y,int up){float m=ml_walk_height(x,y,up,0);return m>=0?m:cm_lift(x,y,up);}
 static int lift_ok(float x,float y){
- int up=g.lift>15;float nl=cm_lift(x,y,up);
+ int up=g.lift>15;float nl=walk_lift(x,y,up);
  if(up&&nl<1)return 0;                 /* borde del anden */
  if(fabsf(nl-g.lift)>6)return 0;       /* no se entra a la escalera por el lateral */
  return 1;
@@ -253,14 +257,15 @@ static int cachecount(void);
    con un escalon suave; la escalera y el anden del metro siguen mandando cuando corresponde. */
 static void surface_tick(float dt){
  if(g.car>=0||g.inMetro)return;
- float st=cm_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)return;
+ float st=walk_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)return;
  float tg=cm_surface(g.x,g.y),d=tg-g.lift;
  if(fabsf(d)>3.f)g.lift=tg;else g.lift+=d>0?fminf(d,dt*14.f):fmaxf(d,-dt*14.f);
 }
 static int near_hub(int i,float radius){float tx,ty;terminal_xy(i,&tx,&ty);return dist(g.x,g.y,locations[i].x,locations[i].y)<radius||dist(g.x,g.y,tx,ty)<24;}
 static int foot_free(float x,float y){
- if(!free_at(x,y,5)||combat_wall_at(x,y,5))return 0;
- for(int i=0;i<CAR_COUNT;i++){
+ stairsWalkable=1;int ok=free_at(x,y,5);stairsWalkable=0;
+ if(!ok||combat_wall_at(x,y,5))return 0;
+ if(g.lift<=8)for(int i=0;i<CAR_COUNT;i++){ /* v2.53: en el anden los coches pasan por debajo */
   const Car *c=&g.cars[i];float px,py,cx,cy;physics_project(x,y,&px,&py);physics_project(c->x,c->y,&cx,&cy);float dx=px-cx,dy=py-cy;if(fabsf(dx)>27||fabsf(dy)>27)continue;
   float angle=physics_heading(c),ca=cosf(angle),sa=sinf(angle);if(fabsf(dx*ca+dy*sa)<22&&fabsf(-dx*sa+dy*ca)<13)return 0;
  }
@@ -449,7 +454,9 @@ static void metro_update(float dt){
 }
 /* The boarding zone covers the full width of the ground-level portal. */
 static int metro_entrance_near(void){for(int i=0;i<ML_STATIONS;i++){float ex,ez;ml_entrance(i,&ex,&ez);if(dist(g.x,g.y,ex,ez)<25)return i;}return -1;}
-static int metro_boardable(void){int i=metro_entrance_near();return !g.inMetro&&g.car<0&&i>=0&&g.metroWait>.6f&&metroStation==i;}
+static int metro_boardable(void){int i=metro_entrance_near();
+ if(g.lift>15){ml_walk_height(g.x,g.y,1,&i);} /* v2.53: tambien desde el anden, subiendo por la escalera */
+ return !g.inMetro&&g.car<0&&i>=0&&g.metroWait>.6f&&metroStation==i;}
 /* TRIANGULO (o R+[]): subir, o bajar en la estacion donde para el tren. Devuelve 1 si se uso. */
 static int metro_toggle(void){
  if(g.inMetro){
@@ -987,7 +994,7 @@ static void world_tick(float ax,float ay,float dt){
     if(!moved)break;
    }
    (void)slideOff; /* v2.28: la camara sigue al deslizamiento; ya no hace falta guia */
-   {float st=cm_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)g.lift=st;} /* escalera y anden; la superficie baja la lleva surface_tick */
+   {float st=walk_lift(g.x,g.y,g.lift>15);if(st>0||g.lift>15)g.lift=st;} /* escalera y anden; la superficie baja la lleva surface_tick */
   }
   float ax2,az2;physics_project(g.x,g.y,&ax2,&az2);
   float mvx=ax2-bx,mvz=az2-bz;g.footTravel=hypotf(mvx,mvz);
