@@ -41,11 +41,16 @@ def create(name):
                 base -= 12 * math.exp(-((v - 0.68) / 0.08) ** 2)
                 base += 11 * math.exp(-((v - 0.56) / 0.025) ** 2)
                 base -= 19 * max(0, (v - 0.76) / 0.24)
+                # Distinct daylight and street reflections survive RGB565
+                # without painting doors or wheels onto a shared body tile.
+                base += 16 * math.exp(-((v - (0.31 + .018*math.sin(u*12))) / .025) ** 2)
+                base -= 10 * math.exp(-((v - .84) / .09) ** 2)
             else:
                 base = 188 + 31 * math.exp(-((v - 0.20 - 0.05 * math.sin(u * 7)) / 0.12) ** 2)
                 base += 18 * math.exp(-((u - 0.30) / 0.15) ** 2)
                 base -= 22 * math.exp(-((v - 0.75) / 0.17) ** 2)
                 base += 5 * math.sin(u * 22 + v * 7)
+                base += 13 * math.exp(-((u - (.72-.09*v)) / .065) ** 2)
             photo = refpx[x,y]
             luminance = .2126*photo[0]+.7152*photo[1]+.0722*photo[2]
             # Preserve the old neutral tint range so car paint colors stay intact.

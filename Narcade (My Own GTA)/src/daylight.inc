@@ -219,18 +219,22 @@ static void headlights(float x,float z,float angle){
 }
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
 static void clouds(float time){
-    /* Keep cloud groups around the camera instead of scattering them across
-       the world grid. The old x/z range often left the visible sky empty. */
-    float wind=time*.009f;
+    /* Fixed world cells: moving the camera must never drag clouds with it. */
+    const float cell=310.f;
+    int ix=(int)floorf(eye.x/cell),iz=(int)floorf(eye.z/cell);
+    float wind=time*.7f;
     float sunset=(1-smooth01((sunY-.05f)/.35f))*(1-night);
-    for(int i=0;i<9;i++){
-        unsigned h=city_hash(i*7,13,3);
-        float angle=(i+wind*(1+(h>>10&3)*.15f))*2*PI/9;
-        /* Third-person camera tilts toward the street: cloud centres only a
-           few degrees above eye level stay inside its narrow visible sky. */
-        float distance=500+(h&63),y=eye.y+25+(h>>22&31);
+    for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+        int gx=ix+dx,gz=iz+dz;
+        unsigned h=city_hash(gx,gz,13);
+        if((h&3)==0)continue;
+        float cx=(gx+.18f+((h>>3&63)/100.f))*cell+wind;
+        float cz=(gz+.18f+((h>>10&63)/100.f))*cell;
+        float ddx=cx-eye.x,ddz=cz-eye.z;
+        float distance=sqrtf(ddx*ddx+ddz*ddz);
+        if(distance<260.f||distance>790.f)continue;
+        float y=155.f+(h>>22&31);
         float w=43+(h>>5&31),d=21+(h>>9&15);
-        float cx=eye.x+cosf(angle)*distance,cz=eye.z+sinf(angle)*distance;
         float bright=lerpf(1,.55f,night);int a=(int)(lerpf(170,75,night));
         uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)((250-48*sunset)*bright),(int)((252-76*sunset)*bright))&0x00ffffff;
         uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)((183+23*sunset)*bright),(int)((192-46*sunset)*bright),(int)((203-36*sunset)*bright))&0x00ffffff;

@@ -89,7 +89,23 @@ static float dist(float x,float y,float u,float v){float a=x-u,b=y-v;return sqrt
 static int wrapi(int x,int n){return (x%n+n)%n;}
 static int pressed(int b){return (g.pressed&b)!=0;}
 static int held(int b){return (g.held&b)!=0;}
-static void notice(const char *s){strncpy(g.notice,s,sizeof(g.notice)-1);g.notice[sizeof(g.notice)-1]=0;g.noticeT=4;}
+/* One readable HUD line per page, breaking at words instead of the screen edge. */
+static int hud_pages(const char *s,int wanted,char *out,size_t cap){
+ int pages=0;const char *p=s;char part[52];
+ if(out&&cap)out[0]=0;
+ while(*p){int n=0;while(*p==' ')p++;if(!*p)break;
+  while(*p&&n<48){const char *word=p;while(*p&&*p!=' ')p++;int len=(int)(p-word);
+   if(n&&n+1+len>48){p=word;break;}
+   if(n)part[n++]=' ';
+   if(len>48-n)len=48-n;
+   memcpy(part+n,word,len);n+=len;
+   if(*p==' ')p++;
+  }
+  part[n]=0;if(pages==wanted&&out&&cap){strncpy(out,part,cap-1);out[cap-1]=0;}pages++;
+ }
+ return pages?pages:1;
+}
+static void notice(const char *s){strncpy(g.notice,s,sizeof(g.notice)-1);g.notice[sizeof(g.notice)-1]=0;g.noticeT=fmaxf(4.f,3.8f*hud_pages(locale_text(g.notice),-1,NULL,0));}
 static void menu_click(void){menuEvent++;}
 static const char *weaponNames[8]={"PUNOS","PISTOLA","REVOLVER","SUBFUSIL","AK","ESCOPETA","RIFLE","BATE"};
 static int weapon_menu(float ax,float ay,float dt){
@@ -411,7 +427,7 @@ static void separate_cars(void){
 /* v2.49 (Claude): Metro circular (metro_loop.h). El tren da vueltas al anillo en un solo sentido y para 7 s en cada
    una de las seis estaciones. g.metroZ guarda su posicion s sobre el anillo. A bordo, el jugador va sentado dentro del
    vagon (no se dibuja) y la camara lo sigue; en cada parada puede bajarse con TRIANGULO. */
-static float metroSpeed=0;static int metroStation=-1;
+static float metroSpeed=0;static int metroStation=-1;static int metroQueue=-1;
 static int metro_next_station(float s){int best=0;float bd=1e9f;for(int i=0;i<ML_STATIONS;i++){float d=ml_ahead(s,ml_station_s(i));if(d<1e-3f)d+=ml_length(); /* la estacion donde esta parado no cuenta */
   if(d<bd){bd=d;best=i;}}return best;}
 static void metro_update(float dt){
@@ -426,9 +442,12 @@ static void metro_update(float dt){
   else g.metroZ=ml_wrap(g.metroZ+step);
  }
  if(g.inMetro){float x,z,tx,tz;ml_point(g.metroZ-ML_CAR*1.5f,&x,&z,&tx,&tz);g.x=x;g.y=z;g.lift=0;g.a=atan2f(tz,tx);g.viewYaw=geo_heading(g.x,g.y,g.a);g.cameraVelocity=0;g.walking=0;}
+ if(metroQueue>=0&&!g.inMetro){float ex,ez;ml_entrance(metroQueue,&ex,&ez);
+  if(g.car>=0||dist(g.x,g.y,ex,ez)>27)metroQueue=-1;
+  else if(metroStation==metroQueue&&g.metroWait>.6f){g.inMetro=1;metroQueue=-1;notice("METRO CIRCULAR: TRIANGULO para bajar en cualquier estacion.");}}
 }
-/* estacion cuya entrada esta a menos de 18 del jugador (o -1) */
-static int metro_entrance_near(void){for(int i=0;i<ML_STATIONS;i++){float ex,ez;ml_entrance(i,&ex,&ez);if(dist(g.x,g.y,ex,ez)<18)return i;}return -1;}
+/* The boarding zone covers the full width of the ground-level portal. */
+static int metro_entrance_near(void){for(int i=0;i<ML_STATIONS;i++){float ex,ez;ml_entrance(i,&ex,&ez);if(dist(g.x,g.y,ex,ez)<25)return i;}return -1;}
 static int metro_boardable(void){int i=metro_entrance_near();return !g.inMetro&&g.car<0&&i>=0&&g.metroWait>.6f&&metroStation==i;}
 /* TRIANGULO (o R+[]): subir, o bajar en la estacion donde para el tren. Devuelve 1 si se uso. */
 static int metro_toggle(void){
@@ -437,8 +456,9 @@ static int metro_toggle(void){
    float x,z,tx,tz;ml_point(ml_station_s(metroStation),&x,&z,&tx,&tz);g.a=atan2f(z-ez,x-ex)+PI;g.viewYaw=geo_heading(g.x,g.y,g.a);notice(mlStationNames[metroStation]);}
   else notice("Espera a la siguiente estacion para bajar.");
   return 1;}
- if(metro_boardable()){g.inMetro=1;notice("METRO CIRCULAR: TRIANGULO para bajar en cualquier estacion.");return 1;}
- if(metro_entrance_near()>=0&&g.car<0){notice("El Metro para 7 segundos en cada estacion. Espera aqui a que llegue.");return 1;}
+ if(metro_boardable()){g.inMetro=1;metroQueue=-1;notice("METRO CIRCULAR: TRIANGULO para bajar en cualquier estacion.");return 1;}
+ if(metro_entrance_near()>=0&&g.car<0){int here=metro_entrance_near();metroQueue=metroQueue==here?-1:here;
+  notice(metroQueue>=0?"METRO: espera junto a la entrada. Subiras al llegar el tren.":"METRO: espera cancelada.");return 1;}
  return 0;
 }
 static int district(float x,float y){if(x>1950&&y<640)return 7;if(x<760&&y<650)return 8;if(x<640&&y<1500)return 0;if(x<1100&&y<1450)return 1;if(x<1250)return 2;if(y<650)return 3;if(x>1600&&y>1500)return 4;if(x>1800)return 5;return 6;}
@@ -638,7 +658,7 @@ static void fresh_game(void);
 void game_continue(void){if(load_game()){g.screen=WORLD;notice("Partida cargada. SELECT camara / O cuaderno.");}else fresh_game();}
 static void dialog(const char *who,const char *s,int action){strncpy(g.speaker,who,sizeof(g.speaker)-1);g.speaker[sizeof(g.speaker)-1]=0;strncpy(g.dialog,s,sizeof(g.dialog)-1);g.dialog[sizeof(g.dialog)-1]=0;g.dialogAction=action;g.screen=DIALOG;g.screenT=0;}
 static void start_mission(void){g.missionTimer=0;g.checkpoint=0;g.raceTime=0;g.seenIntro=1;if(g.mission<36)dialog(missions[g.mission].who,missions[g.mission].intro,0);}
-static void fresh_game(void){g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
+static void fresh_game(void){metroQueue=-1;g.weapon=0;g.weaponWheel=0;g.weaponHold=0;g.stamina=100;g.exhausted=0;g.runTaps=0;g.tapAge=10;g.sprintTime=0;g.footSpeed=0;g.footTravel=0;g.footFiltered=0;g.footStall=0;g.moveGap=0;g.stickActive=0;g.cameraVelocity=0;g.cameraDistance=50;g.zoom=1;g.viewYaw=-PI*.5f;g.motion=0;g.gaitPhase=0;memset(g.trafficYield,0,sizeof(g.trafficYield));g.active=1;g.mission=0;g.step=0;g.cash=350;g.reputation=0;g.ending=0;g.x=62;g.y=1022;g.health=100;g.heat=0;g.car=-1;g.station=0;g.caches=0;g.jobs=0;g.side=0;g.playtime=0;g.lift=0;g.inMetro=0;g.metroDir=0;
 #ifdef NARCADE_SPAWN_X
  g.x=NARCADE_SPAWN_X;g.y=NARCADE_SPAWN_Y;g.lift=cm_on_platform(g.x,g.y)?CM_PLAT_H:0; /* solo pruebas: NARCADE_EXTRA_CFLAGS="-DNARCADE_SPAWN_X=.. -DNARCADE_SPAWN_Y=.." */
 #endif
@@ -707,7 +727,7 @@ static void race_start(int side){g.side=side;g.checkpoint=0;g.raceTime=side?140:
  int near[6]={13,22,4,21,17,1};for(int i=0;i<6;i++)g.route[i]=near[(i+origin)%6];(void)bx;(void)by;
  notice("RUTA INICIADA: cruza los seis aros amarillos en carro.");}
 static void interact(void){
- if(metro_toggle())return; /* v2.49: Metro circular (tambien con TRIANGULO) */
+ /* R+[] belongs to missions and services; Metro boarding uses TRIANGULO. */
  if(g.mission<36&&!g.side){const Step *s=step_now();const Location *l=&locations[s->loc];if(near_hub(s->loc,58)){
   if(s->kind==K_DRIVE){if(g.car<0){notice("Este objetivo requiere llegar en un carro.");return;}advance();return;}
   if(s->kind==K_RACE){if(g.car<0){notice("Consigue un carro antes de iniciar el recorrido.");return;}if(g.raceTime<=0)race_start(0);return;}
@@ -1394,13 +1414,19 @@ static void hud(void){
   hud_plaque(W/2,7,w,25,RGB(70,202,239));
   font_text(W/2-(int)strlen(name)*7/2,13,name,WHITE,1,1);}
  /* Objetivo nuevo: frase temporal abajo. */
- if(g.screen==WORLD&&g.mission<36){int key=g.mission*8+g.step+1;if(key!=g.hudStepKey){g.hudStepKey=key;g.hudObjectiveT=5.0f;}}
+ if(g.screen==WORLD&&g.mission<36){int key=g.mission*8+g.step+1;if(key!=g.hudStepKey){g.hudStepKey=key;const Step *st=step_now();snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);g.hudObjectiveT=fmaxf(5.f,3.8f*hud_pages(locale_text(b),-1,NULL,0));}}
  /* Esquina superior derecha: vida, carro, dinero, busqueda. */
- rect(W-122,8,112,5,RGB(40,48,50));rect(W-122,8,(int)(g.health*1.12f),5,g.health>30?TEAL:CORAL);
- if(g.car>=0){rect(W-122,15,112,3,RGB(40,48,50));rect(W-122,15,(int)(g.cars[g.car].hp*1.12f),3,GOLD);}
- else if(!g.inMetro){rect(W-122,15,112,4,RGB(40,48,50));rect(W-122,15,(int)(g.stamina*1.12f),4,g.exhausted?CORAL:GOLD);}
- snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,21,b,WHITE,1);
- if(wanted_stars()>=1){int blink=g.escape>0&&((int)(g.clock*4)&1);for(int i=0;i<5;i++)rect(W-122+i*10,36,7,4,wanted_stars()>i?(blink?RGB(120,70,60):CORAL):RGB(40,48,50));}
+ hud_plaque(W-77,5,148,38,RGB(75,208,226));
+ const float meters[2]={g.health,g.car>=0?g.cars[g.car].hp:g.stamina};
+ const char *labels[2]={"HP",g.car>=0?"AUTO":"STA"};
+ for(int row=0;row<2;row++){int yy=11+row*14;uint32_t active=row==0?(g.health>30?TEAL:CORAL):(g.exhausted?CORAL:GOLD);
+  font_text(W-144,yy-2,labels[row],active,1,0);
+  rect(W-111,yy-1,100,9,RGB(17,28,37));
+  int fill=(int)(clampf(meters[row],0,100)/10.f+.01f);
+  for(int seg=0;seg<10;seg++)rect(W-109+seg*10,yy+1,8,5,seg<fill?active:RGB(50,65,73));
+ }
+ snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,47,b,WHITE,1);
+ if(wanted_stars()>=1){int blink=g.escape>0&&((int)(g.clock*4)&1);for(int i=0;i<5;i++)rect(W-122+i*10,61,7,4,wanted_stars()>i?(blink?RGB(120,70,60):CORAL):RGB(40,48,50));}
  /* Cronometros de ruta / huida. */
  if(g.raceTime>0){snprintf(b,sizeof(b),"RUTA %d/6   %ds",g.checkpoint+1,(int)g.raceTime);box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,GOLD,1);}
  else if(g.mission<36&&step_now()->kind==K_CHASE&&g.missionTimer>0){snprintf(b,sizeof(b),"ALEJATE Y PIERDE LA BUSQUEDA / %ds",(int)fmaxf(0,step_now()->par-g.missionTimer));box_center(W/2,34,(int)strlen(b)*7+16,17,INK);text_center(W/2,37,b,CORAL,1);}
@@ -1409,16 +1435,18 @@ static void hud(void){
  if(g.noticeT>0){line=g.notice;col=WHITE;}
  else if(g.inMetro){if(g.metroWait>0&&metroStation>=0){snprintf(b,sizeof(b),"TRIANGULO BAJAR / %s",mlStationNames[metroStation]);line=b;}else{snprintf(b,sizeof(b),"PROXIMA: %s",mlStationNames[metro_next_station(g.metroZ)]);line=b;}col=LIME;}
  else if(metro_boardable()){line="TRIANGULO SUBIR AL METRO";col=LIME;}
- else if(metro_entrance_near()>=0&&g.car<0){line="METRO CIRCULAR: espera el tren aqui";col=LIME;}
+ else if(metro_entrance_near()>=0&&g.car<0){line=metroQueue>=0?"METRO: espera el tren / TRIANGULO cancelar":"TRIANGULO: esperar el Metro";col=LIME;}
  else if(g.mission<36){const Step *st=step_now();
   if(!g.side&&near_hub(st->loc,58)){const char *act=st->kind==K_DRIVE?"ENTREGAR":st->kind==K_RACE?"INICIAR RUTA":st->kind==K_CHASE?"INICIAR HUIDA":st->kind==K_TALK||st->kind==K_ENDING?"HABLAR":"INTERACTUAR";snprintf(b,sizeof(b),"%s %s",g.car>=0?"ARRIBA":"R+[]",act);line=b;col=LIME;}
   else if(g.hudObjectiveT>0){snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);line=b;col=LIME;}}
  if(!line&&!combat.aiming&&combat_wall_at(g.x,g.y,14))line="[] ESCALAR MURO";
- if(line){ /* a la derecha del minimapa: zona util x=92..470 (378 px, 51 caracteres por linea) */
-  line=locale_text(line);int n=(int)strlen(line);int cw=51;int lines=(n+cw-1)/cw;int w=lines>1?378:n*7+20;int cx=92+378/2;
-  int py=H-15-lines*13;hud_plaque(cx,py,w,lines*13+13,col);
-  if(lines==1)font_text(cx-n*7/2,H-10-13,line,col,1,0);
-  else textwrap_raw(cx-w/2+10,H-10-lines*13,w-20,line,col);}
+ if(line){ /* One line at a time, with enough time to read every page. */
+  static char previous[180];static float pageStart=0;
+  line=locale_text(line);if(strcmp(previous,line)){strncpy(previous,line,sizeof(previous)-1);previous[sizeof(previous)-1]=0;pageStart=g.clock;}
+  int count=hud_pages(line,-1,NULL,0);int page=(int)((g.clock-pageStart)/3.8f);if(page>=count)page=count-1;
+  char shown[52];hud_pages(line,page,shown,sizeof(shown));int n=(int)strlen(shown);int cx=281;
+  hud_plaque(cx,H-28,n*7+24,27,col);
+  font_text(cx-n*7/2,H-21,shown,col,1,0);}
  /* Minimapa. */
 #ifndef AB_NOMINIMAP
  minimap(46,H-46,32);

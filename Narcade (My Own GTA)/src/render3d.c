@@ -477,6 +477,20 @@ static void car(const R3Car *c){
     }
     Point grille=local(19.1f,0,0,c->x,c->z,c->angle);
     box(grille.x,grille.z,7.3f,.45f,7.3f,2.3f,c->angle,FLAT,FLAT,COLOR(33,39,41));
+    /* Recessed grille slats, separate from the bumper so their surfaces cannot
+       fight for the same depth pixel when the car turns. */
+    for(int slat=0;slat<3;slat++){
+        Point trim=local(19.42f,0,0,c->x,c->z,c->angle);
+        box(trim.x,trim.z,6.55f+slat*.64f,.24f,6.6f,.14f,c->angle,METAL,METAL,COLOR(122,132,135));
+    }
+    /* Two restrained bonnet creases follow the real profile. These break up
+       the flat painted slab while staying clear of the glass and headlamps. */
+    if(type!=3)for(int side=-1;side<=1;side+=2){
+        Point a=car_skin(c->x,c->z,c->angle,prof,n,floor,11.5f,11.55f,side,.72f);
+        Point e=car_skin(c->x,c->z,c->angle,prof,n,floor,16.6f,10.35f,side,.72f);
+        Point b=point(a.x,a.y+.16f,a.z),d=point(e.x,e.y+.16f,e.z);
+        quad(METAL,a,e,d,b,shade(paint,1.22f),1,1);
+    }
     /* Door shut lines and recessed handles are attached to the correct side
        surface. Their x positions follow each model's cabin, not a shared box. */
     static const float seamX[6][3]={{-9,0,10},{-14,0,9},{-6,7,99},{-9,7,99},{-1,11,99},{-14,0,11}};
