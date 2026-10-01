@@ -269,4 +269,14 @@ static void street_lamps_glow(void){
         Point l=geo_point(headX,28.3f,z);
         glow_quad(point(l.x-4,l.y-1.5f,l.z-3),point(l.x+4,l.y-1.5f,l.z-3),point(l.x+4,l.y+1.5f,l.z+3),point(l.x-4,l.y+1.5f,l.z+3),((uint32_t)(int)(240*night)<<24)|COLOR(255,240,190)&0x00ffffff);
     }
+    /* v2.53 (Claude): con una sola farola por manzana (cada 320) las calles quedaban casi negras de noche. Ahora hay
+       charcos de luz calida cada 100 a lo largo de cada calle, alternando de lado como el alumbrado real. */
+    uint32_t soft=((uint32_t)(int)(78*night)<<24)|(COLOR(255,214,150)&0x00ffffff);
+    for(int bz=0;bz<7;bz++)for(int bx=0;bx<8;bx++)for(int k=0;k<2;k++){
+        float along=120+k*100,side=k?-22.f:22.f;
+        float x=bx*320+42+side,z=bz*320+along;                                    /* calle norte-sur */
+        if(glowUsed<GLOW_MAX-400&&nearby(x,z,340)&&cm_on_road(bx*320+42.f,z)&&sphere_visible(x,z,26))light_pool(x,z,24,30,0,soft);
+        x=bx*320+along;z=bz*320+42-side;                                          /* calle este-oeste */
+        if(glowUsed<GLOW_MAX-400&&nearby(x,z,340)&&cm_on_road(x,bz*320+42.f)&&sphere_visible(x,z,26))light_pool(x,z,30,24,0,soft);
+    }
 }

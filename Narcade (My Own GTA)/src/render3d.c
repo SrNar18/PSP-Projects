@@ -391,23 +391,32 @@ static void fx_triangle(Vertex a,Vertex b,Vertex c,int shadow);static float dayT
 #include "daylight.inc"
 static void city(void){city_v26();}
 #include "car_detail.inc"
+static unsigned char carDetailed[64]; /* v2.53: modelo usado en el fotograma anterior (histeresis) */
+static const R3Car *carBase=0;
 static void car(const R3Car *c){
     if(!hullWarmOnly&&!nearby(c->x,c->z,500))return;
     if(!hullWarmOnly&&!sphere_visible(c->x,c->z,30))return;
     float dist=view_distance(c->x,c->z);
+    /* v2.53 (Claude): el paso de caja a modelo detallado tiene histeresis (155/185). Antes un coche cerca de 170, o
+       cuando el presupuesto de material variaba entre fotogramas, alternaba de modelo cada fotograma y se veia
+       "parpadeando con texturas sobrepuestas". */
+    int slot=carBase&&c>=carBase&&c<carBase+64?(int)(c-carBase):-1;
+    int detailed=slot>=0&&carDetailed[slot]?dist<185:dist<155;
     /* Muted production-car paint. Saturated colors made the shells read as toys. */
     static const uint32_t colors[]={COLOR(48,92,102),COLOR(205,172,76),COLOR(154,48,43),COLOR(213,217,215),COLOR(48,75,113),COLOR(99,91,114),
         COLOR(34,51,67),COLOR(115,44,43),COLOR(152,160,162),COLOR(117,95,80),COLOR(56,91,76),COLOR(45,49,55)};
     uint32_t paint=c->police?COLOR(207,226,229):colors[(unsigned)c->paint%12];
     int type=c->police?0:c->type%6;
-    if(!hullWarmOnly&&(dist>170||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800)){ /* preserve material capacity in dense traffic */
+    if(!hullWarmOnly&&(!detailed||used[METAL]>5400||used[CAR_PAINT]>5200||used[CAR_SIDE]>4800)){ /* preserve material capacity in dense traffic */
+        if(slot>=0)carDetailed[slot]=0;
         static const float roofLen[]={19,22,17,29,17,25};
         static const float roofBack[]={0,-2,2,0,1,-1};
         static const float roofHeight[]={6.5f,7.5f,7,10,4.5f,8.5f};
         box(c->x,c->z,3,type==3?40:36,18,type==4?6:7,c->angle,CAR_PAINT,CAR_PAINT,paint);
         Point roof=local(roofBack[type],0,0,c->x,c->z,c->angle);
-        box(roof.x,roof.z,type==4?9:10,roofLen[type],type==4?14:15,roofHeight[type],c->angle,GLASS,CAR_PAINT,COLOR(94,124,139));
-        if(dist<=170)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
+        /* v2.53: el techo arranca 0,6 dentro de la carroceria: antes su base coincidia con la tapa (z-fighting) */
+        box(roof.x,roof.z,(type==4?9:10)-.6f,roofLen[type],type==4?14:15,roofHeight[type]+.6f,c->angle,GLASS,CAR_PAINT,COLOR(94,124,139));
+        if(dist<=185)for(int side=-1;side<=1;side+=2)for(int end=-1;end<=1;end+=2){Point p=local(end*18.3f,0,side*5.5f,c->x,c->z,c->angle);
             box(p.x,p.z,5.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,end>0?COLOR(255,244,192):COLOR(255,61,42));}
         return;
     }
@@ -443,6 +452,7 @@ static void car(const R3Car *c){
         default:prof=sedan;mats=sedanM;n=8;break;
     }
     if(hullWarmOnly){hull_sides(0,0,0,prof,n,floor,paint,wr);hull_sides(0,0,0,prof,n,floor,paint,0);return;}
+    if(slot>=0)carDetailed[slot]=1;
     hull(c->x,c->z,c->angle,prof,n,mats,floor,paint,dist<100?wr:0);
     car_rear_glass(c->x,c->z,c->angle,type);
     /* bajos oscuros */
@@ -457,7 +467,10 @@ static void car(const R3Car *c){
         box(p.x,p.z,floor+2.5f,.8f,3.6f,1.8f,c->angle,FLAT,FLAT,COLOR(255,61,42));
     }
     if(used[METAL]>3000)return; /* lights remain visible when trim is omitted */
-    car_windscreen_trim(c->x,c->z,c->angle,prof,n,mats,paint);
+    /* v2.53 (Claude): las piezas finas (0,1-0,3 sobre la chapa) solo de cerca: a mas de ~90 la profundidad de 16 bits
+       no las separa de la carroceria y parpadeaban (escobillas, molduras, pliegues del capo, juntas y manetas). */
+    int fine=dist<90;
+    if(fine)car_windscreen_trim(c->x,c->z,c->angle,prof,n,mats,paint);
     for(int side=-1;side<=1;side+=2){
         car_arch(c->x,c->z,c->angle,prof,n,floor,-11.f,wr,side,paint);
         car_arch(c->x,c->z,c->angle,prof,n,floor,11.f,wr,side,paint);
@@ -485,7 +498,7 @@ static void car(const R3Car *c){
     }
     /* Two restrained bonnet creases follow the real profile. These break up
        the flat painted slab while staying clear of the glass and headlamps. */
-    if(type!=3)for(int side=-1;side<=1;side+=2){
+    if(type!=3&&fine)for(int side=-1;side<=1;side+=2){
         Point a=car_skin(c->x,c->z,c->angle,prof,n,floor,11.5f,11.55f,side,.72f);
         Point e=car_skin(c->x,c->z,c->angle,prof,n,floor,16.6f,10.35f,side,.72f);
         Point b=point(a.x,a.y+.16f,a.z),d=point(e.x,e.y+.16f,e.z);
@@ -495,7 +508,7 @@ static void car(const R3Car *c){
        surface. Their x positions follow each model's cabin, not a shared box. */
     static const float seamX[6][3]={{-9,0,10},{-14,0,9},{-6,7,99},{-9,7,99},{-1,11,99},{-14,0,11}};
     static const float handleX[6][2]={{-2,7},{-4,6},{4,99},{-3,8},{7,99},{-4,8}};
-    for(int side=-1;side<=1;side+=2){
+    if(fine)for(int side=-1;side<=1;side+=2){
         for(int k=0;k<3;k++)if(seamX[type][k]<90)car_seam(c->x,c->z,c->angle,prof,n,floor,seamX[type][k],side);
         for(int k=0;k<2;k++)if(handleX[type][k]<90){
             float hx=handleX[type][k],hy=10.25f;
@@ -996,6 +1009,7 @@ void r3_draw(uint32_t *fb,const R3Scene *s){
     for(int i=0;i<count;i++){int j=i;float d=view_distance(s->cars[i].x,s->cars[i].z);
         while(j>0&&distance[j-1]>d){distance[j]=distance[j-1];order[j]=order[j-1];j--;}
         distance[j]=d;order[j]=i;}
+    carBase=s->cars;
     for(int j=0;j<count;j++){int i=order[j];objectX=s->cars[i].x;objectZ=s->cars[i].z;objectYaw=s->cars[i].angle;car(&s->cars[i]);}
 #endif
     TRACE("r3:jugador");rigid=1;

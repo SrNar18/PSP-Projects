@@ -22,7 +22,8 @@ int main(void){
  float a0=g.cars[1].a;int seen[CR_MAX+1]={0};
  for(int k=0;k<=crStations;k++){game_tick(B_RIGHT,0,0,1.f/30);game_tick(0,0,0,1.f/30);run(10,0);
   int st=carRadio[1];seen[st]=1;
-  if(st==crStations){assert(crPlaying<0);assert(loud()==0||1);}else{assert(crPlaying==st);assert(loud()>500);}}
+  if(st==crStations){assert(crPlaying<0);for(int n=0;n<4096;n++)assert(car_radio_sample()==0);} /* APAGADA: la musica aislada es silencio (revision de Codex) */
+  else{assert(crPlaying==st);assert(loud()>500);}}
  for(int k=0;k<=crStations;k++)assert(seen[k]);
  game_tick(B_LEFT,0,0,1.f/30);game_tick(0,0,0,1.f/30);
  assert(fabsf(g.cars[1].a-a0)<1e-4f);
