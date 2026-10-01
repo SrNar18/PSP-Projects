@@ -297,7 +297,8 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
         if(w>150){tree(x0+14,z0+14);tree(x1-14,z0+14);tree(x0+14,z1-14);tree(x1-14,z1-14);garden(x0+8,cz-20,w-bw>40?(w-bw)*.5f-10:20,40,h,far);}
         break;}
     case CB_COMMERCIAL:{float aw=w*.5f,ad=d-12,bwid=w-aw-12,bd=d*.36f;float ax=x0+6+aw*.5f,bxx=x1-6-bwid*.5f,bzz=z0+6+bd*.5f;
-        if(far){box(ax,cz,6,aw,ad,36,0,STUCCO,ROOF,cityPastel[h&7]);box(bxx,bzz,6,bwid,bd,36,0,STUCCO,ROOF,cityPastel[h&7]);break;}
+        if(far){for(int f=0;f<2;f++){box(ax,cz,6+f*18,aw,ad,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);box(bxx,bzz,6+f*18,bwid,bd,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);} /* v2.52: escaparates tambien lejos */
+            residential_facade(ax,cz-ad*.5f,aw,24,1,18,0,0);break;}
         for(int f=0;f<2;f++){box(ax,cz,6+f*18,aw,ad,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);box(bxx,bzz,6+f*18,bwid,bd,18,0,f?STUCCO:SHOP,ROOF,f?cityPastel[h&7]:0xffffffffu);}
         box(ax,cz,42,aw+3,ad+3,2,0,ROOF,ROOF,COLOR(120,110,100));box(bxx,bzz,42,bwid+3,bd+3,2,0,ROOF,ROOF,COLOR(120,110,100));
         rooftop(ax,cz,44,h);rooftop(bxx,bzz,44,h>>4);
@@ -329,7 +330,12 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
             float edge1=x0+cw*(c+1)+(c+1<cols?(city_rand(bx,bz,191+c)-.5f)*cw*.32f:0);
             float xx=(edge0+edge1)*.5f,zz=rows==2?(r?z1-cd*.5f:z0+cd*.5f):cz;
             int floors=2+(hk%3)+bias;int mat=(hk>>2)&1?BRICK:STUCCO;uint32_t tint=mat==STUCCO?cityPastel[(hk>>3)&7]:cityBrick[(hk>>3)&3];float L=edge1-edge0+.08f,Wd=cd;
-            if(far){box(xx,zz,6,L,Wd,floors*24,0,mat,ROOF,tint);continue;}
+            if(far){ /* v2.52 (Claude): lejos tambien planta baja y ventanas (antes caja lisa: las ventanas "cargaban" al acercarse) */
+                box(xx,zz,6,L,Wd,20,0,CONCRETE,CONCRETE,COLOR(221,213,194));box(xx,zz,26,L,Wd,floors*24-20,0,mat,ROOF,tint);
+                residential_facade(xx,zz-Wd*.5f,L,26,floors-1,24,0,0);
+                if(c==0||c==cols-1)residential_facade(c==0?x0:x1,zz,Wd,26,floors-1,24,c==0?-PI*.5f:PI*.5f,0);
+                if(rows==1||r==1)residential_facade(xx,zz+Wd*.5f,L,26,floors-1,24,PI,0);
+                continue;}
             if(cols==1&&((hk>>9)&3)==0&&L>40&&Wd>40){ /* Only isolated buildings chamfer their shared walls. */
                 CmParcel cp;chamfered_rect(&cp,xx-L*.5f,zz-Wd*.5f,xx+L*.5f,zz+Wd*.5f,7);
                 prism(&cp,6,12,SHOP,ROOF,0xffffffffu);prism(&cp,18,floors*24-12,(hk&4)?MODERN:CONCRETE,ROOF,0xffffffffu);
@@ -341,6 +347,7 @@ static void fill_rect(int bx,int bz,float x0,float z0,float x1,float z1,int type
             { /* v2.48/v2.50: tambien en detalle medio y lejano (cristal simple) */
                 residential_facade(xx,zz-Wd*.5f,L,26,floors-1,24,0,0);
                 if(c==0||c==cols-1)residential_facade(c==0?x0:x1,zz,Wd,26,floors-1,24,c==0?-PI*.5f:PI*.5f,0);
+                if(rows==1||r==1)residential_facade(xx,zz+Wd*.5f,L,26,floors-1,24,PI,0); /* v2.52: la cara sur tambien da a la calle */
             }
             if(r==0)street_front(xx,z0,L,frontMat,hk,far);
             if(!cityMid&&(hk&64))for(int f=1;f<floors&&f<4;f+=2){
@@ -362,7 +369,7 @@ static void fill_poly_mass(const CmParcel *p,int bx,int bz,int far,unsigned h){
     if(area<2500)floors=2;
     int mat=(dist==6||dist==4)?((h&1)?CURTAIN:MODERN):((h&1)?BRICK:STUCCO);uint32_t tint=(mat==CURTAIN||mat==MODERN)?0xffffffffu:mat==BRICK?cityBrick[(h>>2)&3]:cityPastel[(h>>2)&7];
     CmParcel a,b;a=*p; /* Shared parcel edges are party walls, not empty gaps. */
-    if(far){prism(&a,6,floors*24,mat,ROOF,tint);return;}
+    if(far){prism(&a,6,12,SHOP,ROOF,0xffffffffu);prism(&a,18,floors*24-12,mat,ROOF,tint);return;} /* v2.52: planta comercial tambien lejos */
     prism(&a,6,12,SHOP,ROOF,0xffffffffu);            /* planta comercial */
     prism(&a,18,floors*24-12,mat,ROOF,tint);
     prism(&a,6+floors*24,2,ROOF,ROOF,COLOR(120,110,100));
@@ -706,7 +713,11 @@ static void cache_relight_ground(CellCache *c,uint32_t now){
  float gain[3];int changed=0;
  for(int i=0;i<3;i++){
   gain[i]=light[i]/fmaxf(c->groundLight[i],1.f);
-  if(fabsf(gain[i]-1.f)>.004f)changed=1;
+  /* v2.52 (Claude): antes se reajustaba con cambios de 0,4 %: un gris de 100 por 0,996 redondea otra vez a 100, asi
+     que el asfalto guardado no seguia a la luz (al anochecer y amanecer se quedaba claro u oscuro) hasta que la
+     manzana se reconstruia al acercarse: "la carretera se aclara cuando la piso". Con pasos de 3 % cada ajuste
+     mueve de verdad los colores (>= 0,5 desde un valor de 17). */
+  if(fabsf(gain[i]-1.f)>.03f)changed=1;
  }
  if(!changed)return;
  unsigned char *p=cachePool+c->off,*end=p+c->len;

@@ -219,25 +219,29 @@ static void headlights(float x,float z,float angle){
 }
 /* Nubes: planos translucidos a gran altura que derivan con el viento; forma irregular por hash. */
 static void clouds(float time){
-    /* Keep cloud groups around the camera instead of scattering them across
-       the world grid. The old x/z range often left the visible sky empty. */
-    float wind=time*.009f;
+    /* v2.52 (Claude): las nubes de v2.51 eran 9 discos aditivos en anillo alrededor de la camara, casi a la altura
+       de los ojos: de noche se veian como "soles" o aros de luz por todo el horizonte y seguian al jugador.
+       Ahora estan ancladas al mundo (rejilla de 420 que deriva con el viento), mas altas, aplanadas como nubes
+       de verdad, se desvanecen con la distancia (sin saltos al entrar o salir) y de noche casi no se ven. */
+    const float cell=420;float wind=fmodf(time*2.5f,cell);
     float sunset=(1-smooth01((sunY-.05f)/.35f))*(1-night);
-    for(int i=0;i<9;i++){
-        unsigned h=city_hash(i*7,13,3);
-        float angle=(i+wind*(1+(h>>10&3)*.15f))*2*PI/9;
-        /* Third-person camera tilts toward the street: cloud centres only a
-           few degrees above eye level stay inside its narrow visible sky. */
-        float distance=500+(h&63),y=eye.y+25+(h>>22&31);
-        float w=43+(h>>5&31),d=21+(h>>9&15);
-        float cx=eye.x+cosf(angle)*distance,cz=eye.z+sinf(angle)*distance;
-        float bright=lerpf(1,.55f,night);int a=(int)(lerpf(170,75,night));
-        uint32_t col=((uint32_t)a<<24)|COLOR((int)(255*bright),(int)((250-48*sunset)*bright),(int)((252-76*sunset)*bright))&0x00ffffff;
-        uint32_t underside=((uint32_t)(a/3)<<24)|COLOR((int)((183+23*sunset)*bright),(int)((192-46*sunset)*bright),(int)((203-36*sunset)*bright))&0x00ffffff;
-        sky_disc(point(cx,y-8,cz),w*.54f,d*.34f,underside);
-        sky_disc(point(cx-w*.20f,y+3,cz),w*.34f,d*.63f,col);
-        sky_disc(point(cx+w*.20f,y+5,cz),w*.31f,d*.59f,col);
-        sky_disc(point(cx,y+10,cz),w*.39f,d*.72f,col);
+    float bright=lerpf(1,.30f,night);float baseA=lerpf(150,14,night);
+    int cx0=(int)floorf((eye.x-wind)/cell),cz0=(int)floorf(eye.z/cell),drawn=0;
+    for(int dz=-2;dz<=2;dz++)for(int dx=-2;dx<=2&&drawn<14;dx++){
+        int gx=cx0+dx,gz=cz0+dz;unsigned h=city_hash(gx*7+101,gz*13+57,3);
+        if((h&3)==0)continue;                                           /* huecos de cielo despejado */
+        float cx=(gx+.2f+((h>>4)&255)/255.f*.6f)*cell+wind,cz=(gz+.2f+((h>>12)&255)/255.f*.6f)*cell;
+        float dist=hypotf(cx-eye.x,cz-eye.z);if(dist<240||dist>860)continue;
+        float fade=smooth01((dist-240)/90)*(1-smooth01((dist-700)/160));if(fade<.05f)continue;
+        float y=eye.y+40+((h>>22)&31)+dist*.02f; /* 6-9 grados sobre el horizonte: dentro del poco cielo que ve la camara */
+        float w=95+((h>>5)&63),d=16+((h>>9)&7);
+        int a=(int)(baseA*fade);
+        uint32_t col=((uint32_t)a<<24)|(COLOR((int)(255*bright),(int)((250-48*sunset)*bright),(int)((252-76*sunset)*bright))&0x00ffffff);
+        uint32_t underside=((uint32_t)(a/3)<<24)|(COLOR((int)((183+23*sunset)*bright),(int)((192-46*sunset)*bright),(int)((203-36*sunset)*bright))&0x00ffffff);
+        sky_disc(point(cx,y-5,cz),w*.55f,d*.30f,underside);
+        sky_disc(point(cx-w*.22f,y+2,cz),w*.36f,d*.55f,col);
+        sky_disc(point(cx+w*.18f,y+4,cz),w*.32f,d*.60f,col);
+        drawn++;
     }
     /* disco solar / luna */
     float sx=eye.x+sunX*600,sy=eye.y+sunY*600,sz=eye.z+sunZ*600;

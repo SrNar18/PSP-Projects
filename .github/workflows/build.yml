@@ -28,6 +28,7 @@ jobs:
           for k in 0 1 2; do [ -f assets/title-slides/slide$k.rgb565 ] && cp assets/title-slides/slide$k.rgb565 out/PSP/GAME/NARCADE/TITLE$k.BIN; done
           cp assets/loading-v241/street.rgb565 out/PSP/GAME/NARCADE/LOAD1.BIN
           cp assets/loading-v241/rooftop.rgb565 out/PSP/GAME/NARCADE/LOAD2.BIN
+          for f in assets/radio/RADIO*.BIN; do [ -f "$f" ] && cp "$f" out/PSP/GAME/NARCADE/; done
           cp Narcade.iso out/
           sha256sum out/Narcade.iso out/PSP/GAME/NARCADE/EBOOT.PBP out/PSP/GAME/NARCADE/LOAD*.BIN
       - uses: actions/upload-artifact@v4

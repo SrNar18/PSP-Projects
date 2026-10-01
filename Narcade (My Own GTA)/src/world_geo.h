@@ -1,26 +1,27 @@
 #ifndef NARCADE_WORLD_GEO_H
 #define NARCADE_WORLD_GEO_H
 #include <math.h>
-#include "medellin_profile.h"
+/* medellin_profile.h (tools/medellin_map.py) is the source of geo_rows below */
 /* Save positions and mission routes retain their original logical coordinates.
    Rendering, navigation maps and altitude share this one geographic transform. */
 static inline float geo_clamp(float x,float a,float b){return fminf(b,fmaxf(a,x));}
 /* Hold the valley outline steady across each built block.  The transition is
    made inside the east/west street, so building facades stay straight while
-   the avenues still follow Medellin's changing valley width. */
-static inline float geo_shape_z(float z){
-    float row=floorf(z/320.f),local=z-row*320.f;
-    float here=row*320.f+203.f;
-    if(local>=86.f)return geo_clamp(here,0.f,2239.f);
-    float t=geo_clamp(local/86.f,0.f,1.f);t=t*t*(3.f-2.f*t);
-    return geo_clamp(here-320.f*(1.f-t),0.f,2239.f);
-}
+   the avenues still follow Medellin's changing valley width.
+   v2.52 (Claude): one outline per block row, taken from medellin_profile.h at the block centre and smoothed so
+   neighbouring rows differ by at most 40 (left/right edge) and 30 (river). The raw profile jumped up to 507 units
+   inside an 86-unit street: on the west edge (where a new game starts) the avenues and the metro viaduct made a
+   sharp S, as if a piece of the map had been stretched. tools/qa_geo_v252.c checks the limit. */
+static const float geo_rows[8][3]={
+    {619.7f,1563.3f,2303.5f},{579.7f,1533.3f,2263.5f},{563.1f,1503.3f,2223.5f},{603.1f,1473.3f,2183.5f},
+    {643.1f,1443.3f,2143.5f},{683.1f,1413.3f,2103.5f},{723.1f,1417.6f,2063.5f},{763.1f,1447.6f,2047.5f}};
 static inline void geo_row(float z,float *left,float *river,float *right){
-    z=geo_shape_z(z);
-    float v=geo_clamp(z/70,0,31.99999f);int i=(int)v;float t=v-i;
-    *left=medellin_profile[i][0]*(1-t)+medellin_profile[i+1][0]*t;
-    *river=medellin_profile[i][1]*(1-t)+medellin_profile[i+1][1]*t;
-    *right=medellin_profile[i][2]*(1-t)+medellin_profile[i+1][2]*t;
+    float zz=geo_clamp(z,0.f,2239.999f),rowf=floorf(zz/320.f),local=zz-rowf*320.f;int row=(int)rowf,prev=row>0?row-1:0;
+    float t=local>=86.f?1.f:geo_clamp(local/86.f,0.f,1.f);t=t*t*(3.f-2.f*t);
+    if(z<0||row==0)t=1;
+    *left=geo_rows[prev][0]+(geo_rows[row][0]-geo_rows[prev][0])*t;
+    *river=geo_rows[prev][1]+(geo_rows[row][1]-geo_rows[prev][1])*t;
+    *right=geo_rows[prev][2]+(geo_rows[row][2]-geo_rows[prev][2])*t;
 }
 static inline void geo_project(float x,float z,float *gx,float *gz){
     float l,r,c;geo_row(z,&l,&c,&r);

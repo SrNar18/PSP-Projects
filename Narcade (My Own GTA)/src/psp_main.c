@@ -23,6 +23,8 @@ static volatile int running=1;
 static int exit_cb(int a,int b,void *p){(void)a;(void)b;(void)p;running=0;sceKernelExitGame();return 0;} /* v2.9.1: salir siempre, aunque un dialogo este abierto */
 static int callbacks(SceSize n,void *p){(void)n;(void)p;int cb=sceKernelCreateCallback("Narcade exit",exit_cb,0);sceKernelRegisterExitCallback(cb);sceKernelSleepThreadCB();return 0;}
 static void audio_cb(void *buffer,unsigned int frames,void *p){(void)p;game_audio(buffer,frames);}
+/* v2.52 (Claude): lee las canciones de la radio (RADIOn.BIN) sin bloquear el juego ni el audio */
+static int radio_worker(SceSize a,void *p){(void)a;(void)p;for(;;){game_radio_pump();sceKernelDelayThread(15000);}return 0;}
 
 /* ---- Guardado nativo: dialogo de la Memory Stick (sceUtilitySavedata), 4 ranuras ---- */
 #define SAVE_GAME "NARC00001"
@@ -194,6 +196,7 @@ static void handle_save_request(int req,uint32_t **buffers,int *index){
 int main(void){
  int th=sceKernelCreateThread("Narcade callbacks",callbacks,0x11,0x1000,0,0);if(th>=0)sceKernelStartThread(th,0,0);
  int wd=sceKernelCreateThread("Narcade watchdog",watchdog,0x08,0x2000,0,0);if(wd>=0)sceKernelStartThread(wd,0,0);
+ int rw=sceKernelCreateThread("Narcade radio",radio_worker,0x30,0x4000,THREAD_ATTR_USER,0);if(rw>=0)sceKernelStartThread(rw,0,0);
  r3_phase_hook(phase);
  scePowerSetClockFrequency(333,333,166);
  sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
