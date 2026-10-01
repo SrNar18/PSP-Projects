@@ -773,7 +773,7 @@ static void foot_pace(int moving,float dt){
 }
 static void stamina_tick(float dt){
  if(g.car<0&&!g.inMetro&&g.footTravel>.01f&&g.sprintTime>0&&!g.exhausted){
-  g.stamina=fmaxf(0,g.stamina-dt*(100.f/6));
+  g.stamina=fmaxf(0,g.stamina-dt*(100.f/8)); /* eight seconds of sustained sprint */
   if(g.stamina<=0){g.exhausted=1;g.sprintTime=0;g.runTaps=0;notice("Cansado: trota mientras recuperas la estamina.");}
  }else{
   g.stamina=fminf(100,g.stamina+dt*(g.footTravel>.01f?12.5f:18.f));
@@ -1316,6 +1316,13 @@ static void hud_plaque(int cx,int y,int w,int h,uint32_t accent){
  rect(x+10,y+2,24,1,accent);rect(x+10,y+h-3,13,1,accent);
  rect(x+w-23,y+h-3,11,1,RGB(119,67,125));
 }
+static inline void pxa(int x,int y,uint32_t c,int a);
+static void hud_meter_frame(int x,int y){
+ for(int row=0;row<36;row++)for(int col=0;col<114;col++){
+  unsigned p=hud_meter_frame_v253[row*114+col],a=(p>>12)*17;
+  if(a)pxa(x+col,y+row,RGB((p&15)*17,((p>>4)&15)*17,((p>>8)&15)*17),a);
+ }
+}
 /* v2.6: el minimapa se dibuja cada fotograma (3.200 muestras); el trazado se precalcula en una rejilla de 4 unidades
    (640x560 bytes = 358 KB) para no evaluar poligonos por pixel. Codigos: 0 fuera, 1 rio, 2 calle, 3 acera/plaza, 4 parque, 5 edificio. */
 #define MG_STEP 4
@@ -1426,14 +1433,13 @@ static void hud(void){
  /* Objetivo nuevo: frase temporal abajo. */
  if(g.screen==WORLD&&g.mission<36){int key=g.mission*8+g.step+1;if(key!=g.hudStepKey){g.hudStepKey=key;const Step *st=step_now();snprintf(b,sizeof(b),"%s  /  %s",locations[st->loc].name,st->text);g.hudObjectiveT=fmaxf(5.f,3.8f*hud_pages(locale_text(b),-1,NULL,0));}}
  /* Esquina superior derecha: vida, carro, dinero, busqueda. */
- hud_plaque(W-77,5,148,38,RGB(75,208,226));
+ hud_meter_frame(365,5);
  const float meters[2]={g.health,g.car>=0?g.cars[g.car].hp:g.stamina};
- const char *labels[2]={"HP",g.car>=0?"AUTO":"STA"};
- for(int row=0;row<2;row++){int yy=11+row*14;uint32_t active=row==0?(g.health>30?TEAL:CORAL):(g.exhausted?CORAL:GOLD);
-  font_text(W-144,yy-2,labels[row],active,1,0);
-  rect(W-111,yy-1,100,9,RGB(17,28,37));
+ const char *labels[2]={"HP",g.car>=0?"CAR":"STA"};
+ for(int row=0;row<2;row++){int yy=12+row*14;uint32_t active=row==0?(g.health>30?TEAL:CORAL):(g.exhausted?CORAL:GOLD);
+  font_text(370,yy-2,labels[row],active,1,0);
   int fill=(int)(clampf(meters[row],0,100)/10.f+.01f);
-  for(int seg=0;seg<10;seg++)rect(W-109+seg*10,yy+1,8,5,seg<fill?active:RGB(50,65,73));
+  for(int seg=0;seg<10;seg++)if(seg<fill)rect(394+seg*8,yy+2,6,5,active);
  }
  snprintf(b,sizeof(b),"$%d",g.cash);text(W-10-(int)strlen(b)*7,47,b,WHITE,1);
  if(wanted_stars()>=1){int blink=g.escape>0&&((int)(g.clock*4)&1);for(int i=0;i<5;i++)rect(W-122+i*10,61,7,4,wanted_stars()>i?(blink?RGB(120,70,60):CORAL):RGB(40,48,50));}

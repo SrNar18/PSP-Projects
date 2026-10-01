@@ -65,7 +65,8 @@ static void residential_facade(float x,float z,float width,float base,int floors
 /* Casa colonial: 1-2 plantas, color pastel, balcon y tejado a dos aguas. */
 static void colonial_house(float x,float z,float L,float W,int floors,uint32_t color,int far,unsigned h){
     float top=6+floors*22;
-    if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);residential_facade(x,z-W*.5f,L,6,floors,22,0,0);return;} /* v2.50: ventanas tambien lejos */
+    if(far){box(x,z,6,L,W,floors*22,0,STUCCO,ROOF,color);residential_facade(x,z-W*.5f,L,6,floors,22,0,0);
+        residential_facade(x,z+W*.5f,L,6,floors,22,PI,0);return;}
     for(int f=0;f<floors;f++)box(x,z,6+f*22,L,W,22,0,STUCCO,ROOF,f?color:shade(color,.92f));
     gable_roof(x,z,L,W,top,top+9,(h&1)?COLOR(190,90,60):COLOR(150,110,90));
     residential_facade(x,z-W*.5f,L,6,floors,22,0,1);
@@ -78,7 +79,8 @@ static void colonial_house(float x,float z,float L,float W,int floors,uint32_t c
 static void cylinder(float x,float z,float bottom,float r,float height,int n,float rot,int side,int top,uint32_t color);
 static void comuna_house(float x,float z,float L,float W,float base,int floors,int far,unsigned h){
     uint32_t tint=cityBrick[h&3];
-    if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);residential_facade(x,z-W*.5f,L,base,floors,20,0,0);return;} /* v2.50 */
+    if(far){box(x,z,base,L,W,floors*20,0,BRICK,SIDEWALK,tint);residential_facade(x,z-W*.5f,L,base,floors,20,0,0);
+        residential_facade(x,z+W*.5f,L,base,floors,20,PI,0);return;}
     for(int f=0;f<floors;f++)box(x,z,base+f*20,L,W,20,0,(h>>f)&1?BRICK:STUCCO,SIDEWALK,(h>>f)&1?tint:cityPastel[(h>>(4+f))&7]);
     box(x,z,base+floors*20,L+3,W+3,1.5f,0,SIDEWALK,SIDEWALK,COLOR(150,152,150)); /* techo de zinc */
     residential_facade(x,z-W*.5f,L,base,floors,20,0,1);

@@ -36,6 +36,10 @@ menu_continue_v242:
 menu_settings_v242:
 .incbin "assets/menu-settings-v242.565"
 .balign 16
+.global hud_meter_frame_v253
+hud_meter_frame_v253:
+.incbin "assets/hud-meter-frame-v253.4444"
+.balign 16
 .global menu_credits_v242
 menu_credits_v242:
 .incbin "assets/menu-credits-v242.565"

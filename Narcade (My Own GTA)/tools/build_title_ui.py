@@ -33,7 +33,7 @@ for n, half in enumerate((cards.crop((0, 0, cards.width // 2, cards.height)),
 for name,source,size in [
     ('continue','loading-v241/valley-source.jpg',(146,94)),
     ('new','loading-v241/street-source.jpg',(146,94)),
-    ('settings','luna-menu-source.png',(132,164)),
+    ('settings','luna-menu-source-v253.png',(132,164)),
     ('credits','loading-v241/rooftop-source.jpg',(146,56)),
     ('trophies','trophies-menu-source-v246.png',(146,56))]:
     im=ImageOps.fit(Image.open(ASSETS/source).convert('RGB'),size,method=Image.Resampling.LANCZOS)
